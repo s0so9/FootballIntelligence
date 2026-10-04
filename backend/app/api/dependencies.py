@@ -53,7 +53,7 @@ def get_data_provider() -> Generator[FootballDataProvider, None, None]:
         fotmob = FotMobFootballProvider(
             base_url=settings.fotmob_base_url,
             timeout_seconds=settings.provider_timeout_seconds,
-            retry_count=1,  # Conservative for unofficial API
+            retry_count=min(settings.provider_retry_count, 1),  # Cap at 1 for unofficial API
             cache=cache,
         )
         
