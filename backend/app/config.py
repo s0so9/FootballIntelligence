@@ -21,6 +21,20 @@ class Settings(BaseSettings):
     ollama_endpoint: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3-coder:30b"
 
+    # Football Data Providers
+    # Ryzellx (PRIMARY provider)
+    ryzellx_base_url: str = "https://football-live-api.vercel.app"
+    
+    # FotMob (FAST/LIVE provider)
+    fotmob_base_url: str = "https://www.fotmob.com/api"
+    
+    # OpenLigaDB (INDEPENDENT FALLBACK provider)
+    openligadb_base_url: str = "https://api.openligadb.de"
+    
+    # Provider behavior
+    provider_timeout_seconds: float = 10.0
+    provider_retry_count: int = 2
+
     # Logging
     log_level: str = "INFO"
 

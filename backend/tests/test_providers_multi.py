@@ -1,12 +1,16 @@
 """Tests for multi-provider football data abstraction foundation layer.
 
 Tests for FEAT-001: normalized models, exceptions, and cache.
+Tests for FEAT-002: RyzellxFootballProvider implementation.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, timezone
 import threading
 import time
+import json
+import httpx
+import respx
 
 from app.providers.exceptions import (
     ProviderError,
@@ -28,6 +32,7 @@ from app.providers.models import (
     ProviderStanding,
     ProviderLiveMatch,
 )
+from app.providers.ryzellx import RyzellxFootballProvider
 from app.domain.enums import MatchStatus, MatchEventType
 
 
@@ -511,3 +516,512 @@ class TestProviderCache:
         assert cached_match is not None
         assert cached_match.source_id == "match_123"
         assert cached_match.home_team_name == "Home FC"
+
+
+class TestRyzellxProvider:
+    """Tests for RyzellxFootballProvider."""
+    
+    @pytest.fixture
+    def provider(self):
+        """Create RyzellxFootballProvider instance for testing."""
+        cache = ProviderCache()
+        provider = RyzellxFootballProvider(
+            base_url="https://test-api.example.com",
+            timeout_seconds=5.0,
+            retry_count=2,
+            cache=cache
+        )
+        yield provider
+        # Cleanup
+        import asyncio
+        asyncio.run(provider.close())
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_matches_by_date(self, provider):
+        """Test get_matches_by_date returns normalized matches."""
+        test_date = date(2024, 1, 15)
+        
+        # Mock API response
+        mock_response = [
+            {
+                "id": "match_123",
+                "home_team": "Arsenal",
+                "home_id": "team_1",
+                "away_team": "Liverpool",
+                "away_id": "team_2",
+                "date": "2024-01-15T15:00:00Z",
+                "status": "scheduled",
+                "league": "Premier League",
+                "competition_id": "39"
+            },
+            {
+                "id": "match_124",
+                "home_team": "Chelsea",
+                "home_id": "team_3",
+                "away_team": "Manchester City",
+                "away_id": "team_4",
+                "date": "2024-01-15T17:30:00Z",
+                "status": "scheduled",
+                "league": "Premier League",
+                "competition_id": "39"
+            }
+        ]
+        
+        respx.get(f"{provider.base_url}/api/matches/date/{test_date.isoformat()}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        matches = await provider.get_matches_by_date(test_date)
+        
+        # Assertions
+        assert len(matches) == 2
+        assert all(isinstance(m, ProviderMatch) for m in matches)
+        assert matches[0].provider == "ryzellx"
+        assert matches[0].source_id == "match_123"
+        assert matches[0].home_team_name == "Arsenal"
+        assert matches[0].away_team_name == "Liverpool"
+        assert matches[0].status == MatchStatus.SCHEDULED
+        assert matches[0].home_score is None  # Not yet played
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_matches_by_range(self, provider):
+        """Test get_matches_by_range returns normalized matches."""
+        start_date = date(2024, 1, 15)
+        end_date = date(2024, 1, 20)
+        
+        # Mock API response
+        mock_response = [
+            {
+                "id": "match_125",
+                "home_team": "Team A",
+                "home_id": "team_a",
+                "away_team": "Team B",
+                "away_id": "team_b",
+                "date": "2024-01-17T20:00:00Z",
+                "status": "finished",
+                "home_score": 2,
+                "away_score": 1
+            }
+        ]
+        
+        respx.get(f"{provider.base_url}/api/matches/range").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        matches = await provider.get_matches_by_range(start_date, end_date)
+        
+        # Assertions
+        assert len(matches) == 1
+        assert matches[0].source_id == "match_125"
+        assert matches[0].status == MatchStatus.FINISHED
+        assert matches[0].home_score == 2
+        assert matches[0].away_score == 1
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_match(self, provider):
+        """Test get_match returns detailed match info."""
+        match_id = "match_456"
+        
+        # Mock API response
+        mock_response = {
+            "id": "match_456",
+            "home_team": "Real Madrid",
+            "home_id": "team_10",
+            "away_team": "Barcelona",
+            "away_id": "team_11",
+            "date": "2024-01-20T21:00:00Z",
+            "status": "live",
+            "minute": 67,
+            "home_score": 2,
+            "away_score": 2,
+            "venue": "Santiago Bernabéu",
+            "league": "La Liga",
+            "competition_id": "140"
+        }
+        
+        respx.get(f"{provider.base_url}/api/match/{match_id}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        match = await provider.get_match(match_id)
+        
+        # Assertions
+        assert match is not None
+        assert match.source_id == "match_456"
+        assert match.home_team_name == "Real Madrid"
+        assert match.away_team_name == "Barcelona"
+        assert match.status == MatchStatus.LIVE
+        assert match.minute == 67
+        assert match.home_score == 2
+        assert match.away_score == 2
+        assert match.is_live is True
+        assert match.venue_name == "Santiago Bernabéu"
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_match_not_found(self, provider):
+        """Test get_match returns None for 404."""
+        match_id = "nonexistent"
+        
+        respx.get(f"{provider.base_url}/api/match/{match_id}").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        
+        # Call method
+        match = await provider.get_match(match_id)
+        
+        # Assertions
+        assert match is None
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_live_matches(self, provider):
+        """Test get_live_matches returns live match data."""
+        # Mock API response
+        mock_response = [
+            {
+                "id": "live_1",
+                "home_team": "Team X",
+                "home_id": "team_x",
+                "away_team": "Team Y",
+                "away_id": "team_y",
+                "status": "live",
+                "minute": 34,
+                "home_score": 1,
+                "away_score": 0
+            },
+            {
+                "id": "live_2",
+                "home_team": "Team Z",
+                "home_id": "team_z",
+                "away_team": "Team W",
+                "away_id": "team_w",
+                "status": "2h",
+                "minute": 78,
+                "home_score": 2,
+                "away_score": 2
+            }
+        ]
+        
+        respx.get(f"{provider.base_url}/api/matches/live").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        live_matches = await provider.get_live_matches()
+        
+        # Assertions
+        assert len(live_matches) == 2
+        assert all(isinstance(m, ProviderLiveMatch) for m in live_matches)
+        assert live_matches[0].match_id == "live_1"
+        assert live_matches[0].status == MatchStatus.LIVE
+        assert live_matches[0].minute == 34
+        assert live_matches[0].home_score == 1
+        assert live_matches[0].away_score == 0
+        assert live_matches[0].is_live is True
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_team(self, provider):
+        """Test get_team returns team info."""
+        team_id = "team_789"
+        
+        # Mock API response
+        mock_response = {
+            "id": "team_789",
+            "name": "Manchester United",
+            "code": "MUN",
+            "country": "ENG",
+            "founded": 1878,
+            "stadium": "Old Trafford",
+            "logo": "https://example.com/mun.png"
+        }
+        
+        respx.get(f"{provider.base_url}/api/team/{team_id}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        team = await provider.get_team(team_id)
+        
+        # Assertions
+        assert team is not None
+        assert team.source_id == "team_789"
+        assert team.name == "Manchester United"
+        assert team.code == "MUN"
+        assert team.country == "ENG"
+        assert team.founded == 1878
+        assert team.venue_name == "Old Trafford"
+        assert team.logo_url == "https://example.com/mun.png"
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_player(self, provider):
+        """Test get_player returns player info."""
+        player_id = "player_999"
+        
+        # Mock API response
+        mock_response = {
+            "id": "player_999",
+            "name": "Cristiano Ronaldo",
+            "position": "Forward",
+            "number": 7,
+            "nationality": "PRT",
+            "dob": "1985-02-05",
+            "height": 187,
+            "weight": 83,
+            "team": "Al Nassr",
+            "team_id": "team_saudi"
+        }
+        
+        respx.get(f"{provider.base_url}/api/player/{player_id}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        player = await provider.get_player(player_id)
+        
+        # Assertions
+        assert player is not None
+        assert player.source_id == "player_999"
+        assert player.name == "Cristiano Ronaldo"
+        assert player.position == "Forward"
+        assert player.shirt_number == 7
+        assert player.nationality == "PRT"
+        assert player.date_of_birth == "1985-02-05"
+        assert player.height_cm == 187
+        assert player.weight_kg == 83
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_league(self, provider):
+        """Test get_league returns competition info."""
+        league_id = "39"
+        
+        # Mock API response
+        mock_response = {
+            "id": "39",
+            "name": "Premier League",
+            "country": "England",
+            "type": "league",
+            "current_season": "2023/2024",
+            "logo": "https://example.com/pl.png"
+        }
+        
+        respx.get(f"{provider.base_url}/api/league/{league_id}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        league = await provider.get_league(league_id)
+        
+        # Assertions
+        assert league is not None
+        assert league.source_id == "39"
+        assert league.name == "Premier League"
+        assert league.country == "England"
+        assert league.type == "league"
+        assert league.season == "2023/2024"
+        assert league.logo_url == "https://example.com/pl.png"
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_get_standings(self, provider):
+        """Test get_standings returns league table."""
+        league_id = "39"
+        
+        # Mock API response
+        mock_response = [
+            {
+                "position": 1,
+                "team_id": "team_1",
+                "team": "Manchester City",
+                "played": 20,
+                "won": 15,
+                "drawn": 3,
+                "lost": 2,
+                "goals_for": 45,
+                "goals_against": 20,
+                "goal_difference": 25,
+                "points": 48,
+                "form": "WWDWW"
+            },
+            {
+                "position": 2,
+                "team_id": "team_2",
+                "team": "Arsenal",
+                "played": 20,
+                "won": 14,
+                "drawn": 4,
+                "lost": 2,
+                "goals_for": 42,
+                "goals_against": 18,
+                "goal_difference": 24,
+                "points": 46,
+                "form": "WDWWL"
+            }
+        ]
+        
+        respx.get(f"{provider.base_url}/api/league/{league_id}/table").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        standings = await provider.get_standings(league_id)
+        
+        # Assertions
+        assert len(standings) == 2
+        assert all(isinstance(s, ProviderStanding) for s in standings)
+        assert standings[0].position == 1
+        assert standings[0].team_name == "Manchester City"
+        assert standings[0].points == 48
+        assert standings[0].form == "WWDWW"
+        assert standings[1].position == 2
+        assert standings[1].team_name == "Arsenal"
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_timeout_error(self, provider):
+        """Test that timeout raises ProviderTimeoutError."""
+        test_date = date(2024, 1, 15)
+        
+        respx.get(f"{provider.base_url}/api/matches/date/{test_date.isoformat()}").mock(
+            side_effect=httpx.TimeoutException("Timeout")
+        )
+        
+        with pytest.raises(ProviderTimeoutError) as exc_info:
+            await provider.get_matches_by_date(test_date)
+        
+        assert exc_info.value.provider_name == "ryzellx"
+        assert "timed out" in exc_info.value.message.lower()
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_http_4xx_error(self, provider):
+        """Test that 4xx errors raise ProviderHTTPError."""
+        match_id = "bad_id"
+        
+        respx.get(f"{provider.base_url}/api/match/{match_id}").mock(
+            return_value=httpx.Response(400, json={"error": "Bad request"})
+        )
+        
+        with pytest.raises(ProviderHTTPError) as exc_info:
+            await provider.get_match(match_id)
+        
+        assert exc_info.value.provider_name == "ryzellx"
+        assert exc_info.value.status_code == 400
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_http_5xx_retry(self, provider):
+        """Test that 5xx errors are retried."""
+        team_id = "team_123"
+        
+        # First two requests fail with 500, third succeeds
+        mock_response = {
+            "id": "team_123",
+            "name": "Test Team"
+        }
+        
+        route = respx.get(f"{provider.base_url}/api/team/{team_id}")
+        route.side_effect = [
+            httpx.Response(500, json={"error": "Server error"}),
+            httpx.Response(500, json={"error": "Server error"}),
+            httpx.Response(200, json=mock_response)
+        ]
+        
+        # Call method - should succeed after retries
+        team = await provider.get_team(team_id)
+        
+        # Assertions
+        assert team is not None
+        assert team.name == "Test Team"
+        assert route.call_count == 3  # Initial + 2 retries
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_invalid_json_error(self, provider):
+        """Test that invalid JSON raises ProviderInvalidDataError."""
+        test_date = date(2024, 1, 15)
+        
+        respx.get(f"{provider.base_url}/api/matches/date/{test_date.isoformat()}").mock(
+            return_value=httpx.Response(200, text="This is not JSON")
+        )
+        
+        with pytest.raises(ProviderInvalidDataError) as exc_info:
+            await provider.get_matches_by_date(test_date)
+        
+        assert exc_info.value.provider_name == "ryzellx"
+        assert "parse" in exc_info.value.message.lower()
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_cache_integration(self, provider):
+        """Test that cache is used correctly."""
+        team_id = "team_cached"
+        
+        # Mock API response
+        mock_response = {
+            "id": "team_cached",
+            "name": "Cached Team"
+        }
+        
+        route = respx.get(f"{provider.base_url}/api/team/{team_id}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # First call - should hit API
+        team1 = await provider.get_team(team_id)
+        assert team1 is not None
+        assert team1.name == "Cached Team"
+        assert route.call_count == 1
+        
+        # Second call - should hit cache
+        team2 = await provider.get_team(team_id)
+        assert team2 is not None
+        assert team2.name == "Cached Team"
+        assert route.call_count == 1  # Still 1, not called again
+        
+        # Verify both returns are the same
+        assert team1.source_id == team2.source_id
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_ryzellx_normalization_none_values(self, provider):
+        """Test that missing fields are normalized to None, not invented."""
+        match_id = "match_minimal"
+        
+        # Mock API response with minimal fields
+        mock_response = {
+            "id": "match_minimal",
+            "home_team": "Home Team",
+            "home_id": "home_1",
+            "away_team": "Away Team",
+            "away_id": "away_1",
+            "date": "2024-01-20T15:00:00Z",
+            "status": "scheduled"
+            # No xG, no stats, no venue, etc.
+        }
+        
+        respx.get(f"{provider.base_url}/api/match/{match_id}").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        match = await provider.get_match(match_id)
+        
+        # Assertions - all optional fields should be None
+        assert match is not None
+        assert match.venue_name is None
+        assert match.home_score is None
+        assert match.away_score is None
+        assert match.minute is None
+        assert match.competition_id is None
+        # No invented values!
+
