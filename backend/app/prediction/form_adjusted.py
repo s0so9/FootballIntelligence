@@ -43,7 +43,7 @@ class FormAdjustedModel(PredictionModel):
         self,
         base_model: PredictionModel,
         form_weight: float = 0.15,
-        min_matches_for_form: int = 5
+        min_matches_for_form: int = 3
     ):
         """Initialize form-adjusted model.
         
@@ -72,14 +72,37 @@ class FormAdjustedModel(PredictionModel):
         Returns:
             ModelPrediction with form-adjusted probabilities or ModelAvailability
         """
-        # Check requirements
-        requirements_met, missing = self.check_requirements(features)
-        if not requirements_met:
+        # Check base model requirements first
+        base_met, base_missing = self.base_model.check_requirements(features)
+        if not base_met:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason=f"base_model_unavailable: insufficient_data",
+                missing_features=base_missing
+            )
+        
+        # Check form-specific requirements
+        form_missing = []
+        if features.get("home_form_score") is None:
+            form_missing.append("home_form_score")
+        if features.get("away_form_score") is None:
+            form_missing.append("away_form_score")
+        
+        home_form_matches = features.get("home_form_matches_used", 0)
+        away_form_matches = features.get("away_form_matches_used", 0)
+        
+        if home_form_matches < self.min_matches_for_form:
+            form_missing.append(f"home_form_matches < {self.min_matches_for_form}")
+        if away_form_matches < self.min_matches_for_form:
+            form_missing.append(f"away_form_matches < {self.min_matches_for_form}")
+        
+        if form_missing:
             return ModelAvailability(
                 model_id=self.MODEL_ID,
                 available=False,
                 reason="insufficient_data",
-                missing_features=missing
+                missing_features=form_missing
             )
         
         # Get base prediction

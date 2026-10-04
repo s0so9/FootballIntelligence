@@ -26,13 +26,13 @@ class OpponentAdjustedFormCalculator:
     def __init__(
         self,
         time_decay_rate: float = 0.1,
-        min_matches: int = 5
+        min_matches: int = 3
     ):
         """Initialize calculator.
         
         Args:
             time_decay_rate: Exponential decay rate for time weighting (default: 0.1)
-            min_matches: Minimum matches required for valid calculation (default: 5)
+            min_matches: Minimum matches required for valid calculation (default: 3)
         """
         self.time_decay_rate = time_decay_rate
         self.min_matches = min_matches

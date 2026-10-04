@@ -706,7 +706,7 @@ def logistic_regression_predict_fn(
 
         # Build feature dict for the test match from training data
         features = _build_lr_features(match, train_matches)
-        pred = model.predict(features)
+        pred = model.predict_legacy(features)
         return (
             pred.home_win_probability,
             pred.draw_probability,

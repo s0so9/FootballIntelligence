@@ -47,7 +47,7 @@ class TestOpponentAdjustedFormCalculator:
                 home_goals=2,
                 away_goals=1,
                 outcome=MatchOutcome.HOME_WIN,
-                days_ago=i * 7
+                days_ago=(i + 1) * 7
             )
             for i in range(5)
         ]
@@ -72,7 +72,7 @@ class TestOpponentAdjustedFormCalculator:
                 home_goals=0,
                 away_goals=2,
                 outcome=MatchOutcome.AWAY_WIN,
-                days_ago=i * 7
+                days_ago=(i + 1) * 7
             )
             for i in range(5)
         ]
@@ -117,7 +117,7 @@ class TestOpponentAdjustedFormCalculator:
                 home_goals=5,
                 away_goals=0,
                 outcome=MatchOutcome.HOME_WIN,
-                days_ago=i * 7
+                days_ago=(i + 1) * 7
             )
             for i in range(10)
         ]
@@ -138,10 +138,10 @@ class TestOpponentAdjustedFormCalculator:
             self._create_match("m1", "team1", "opp1", 0, 2, MatchOutcome.AWAY_WIN, 60),
             self._create_match("m2", "team1", "opp2", 0, 2, MatchOutcome.AWAY_WIN, 50),
             self._create_match("m3", "team1", "opp3", 0, 2, MatchOutcome.AWAY_WIN, 40),
-            # Recent wins (14-0 days ago)
-            self._create_match("m4", "team1", "opp4", 2, 0, MatchOutcome.HOME_WIN, 14),
-            self._create_match("m5", "team1", "opp5", 2, 0, MatchOutcome.HOME_WIN, 7),
-            self._create_match("m6", "team1", "opp6", 2, 0, MatchOutcome.HOME_WIN, 0),
+            # Recent wins (21-7 days ago)
+            self._create_match("m4", "team1", "opp4", 2, 0, MatchOutcome.HOME_WIN, 21),
+            self._create_match("m5", "team1", "opp5", 2, 0, MatchOutcome.HOME_WIN, 14),
+            self._create_match("m6", "team1", "opp6", 2, 0, MatchOutcome.HOME_WIN, 7),
         ]
         
         reference_date = datetime.utcnow()
@@ -164,7 +164,7 @@ class TestOpponentAdjustedFormCalculator:
                 home_goals=0,
                 away_goals=2,
                 outcome=MatchOutcome.AWAY_WIN,
-                days_ago=i * 7
+                days_ago=(i + 1) * 7
             )
             for i in range(5)
         ]
@@ -189,7 +189,7 @@ class TestOpponentAdjustedFormCalculator:
                 home_goals=2,
                 away_goals=1,
                 outcome=MatchOutcome.HOME_WIN,
-                days_ago=i * 7
+                days_ago=(i + 1) * 7
             )
             for i in range(5)
         ]

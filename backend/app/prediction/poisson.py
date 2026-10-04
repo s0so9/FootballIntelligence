@@ -210,6 +210,13 @@ class PoissonModel(PredictionModel):
             else:  # home_goals < away_goals
                 away_win += prob
         
+        # Normalize to ensure sum = 1.0
+        total = home_win + draw + away_win
+        if total > 0:
+            home_win /= total
+            draw /= total
+            away_win /= total
+        
         return home_win, draw, away_win
     
     @staticmethod

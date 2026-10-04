@@ -78,18 +78,17 @@ class MonteCarloSimulation(PredictionModel):
         Returns:
             ModelPrediction with simulation-derived probabilities or ModelAvailability
         """
-        # Check requirements
-        requirements_met, missing = self.check_requirements(features)
-        if not requirements_met:
-            return ModelAvailability(
-                model_id=self.MODEL_ID,
-                available=False,
-                reason="insufficient_data",
-                missing_features=missing
-            )
-        
         # Get lambdas from base model or features
         if self.base_model is not None:
+            # Check base model requirements first
+            base_met, base_missing = self.base_model.check_requirements(features)
+            if not base_met:
+                return ModelAvailability(
+                    model_id=self.MODEL_ID,
+                    available=False,
+                    reason=f"base_model_unavailable: insufficient_data",
+                    missing_features=base_missing
+                )
             base_prediction = self.base_model.predict(features, match_context)
             
             if isinstance(base_prediction, ModelAvailability):

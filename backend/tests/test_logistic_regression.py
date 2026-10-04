@@ -161,18 +161,18 @@ class TestLRPredict:
         self.model.fit(_make_training_data(60))
 
     def test_returns_prediction_object(self):
-        result = self.model.predict(_simple_features())
+        result = self.model.predict_legacy(_simple_features())
         assert isinstance(result, LogisticRegressionPrediction)
 
     def test_probabilities_sum_to_one(self):
-        result = self.model.predict(_simple_features())
+        result = self.model.predict_legacy(_simple_features())
         total = (result.home_win_probability +
                  result.draw_probability +
                  result.away_win_probability)
         assert abs(total - 1.0) < 1e-9
 
     def test_all_probabilities_in_range(self):
-        result = self.model.predict(_simple_features())
+        result = self.model.predict_legacy(_simple_features())
         assert 0.0 <= result.home_win_probability <= 1.0
         assert 0.0 <= result.draw_probability <= 1.0
         assert 0.0 <= result.away_win_probability <= 1.0
@@ -184,19 +184,19 @@ class TestLRPredict:
     def test_unfitted_model_raises(self):
         m = LogisticRegressionModel()
         with pytest.raises(RuntimeError, match="fitted"):
-            m.predict(_simple_features())
+            m.predict_legacy(_simple_features())
 
     def test_max_class_is_valid_label(self):
-        result = self.model.predict(_simple_features())
+        result = self.model.predict_legacy(_simple_features())
         assert result.max_class in ("home_win", "draw", "away_win")
 
     def test_feature_vector_stored(self):
-        result = self.model.predict(_simple_features())
+        result = self.model.predict_legacy(_simple_features())
         assert result.feature_vector is not None
         assert len(result.feature_vector) > 0
 
     def test_features_used_stored(self):
-        result = self.model.predict(_simple_features())
+        result = self.model.predict_legacy(_simple_features())
         assert result.features_used is not None
 
 
@@ -211,7 +211,7 @@ class TestLRMissingFeatures:
         m = LogisticRegressionModel(n_epochs=20, seed=42)
         m.fit(_make_training_data(30))
         features = {"home_attack_strength": None, "away_attack_strength": 1.2}
-        result = m.predict(features)
+        result = m.predict_legacy(features)
         total = (result.home_win_probability +
                  result.draw_probability +
                  result.away_win_probability)
@@ -221,7 +221,7 @@ class TestLRMissingFeatures:
         """All features missing → all imputed to means."""
         m = LogisticRegressionModel(n_epochs=20, seed=42)
         m.fit(_make_training_data(30))
-        result = m.predict({})
+        result = m.predict_legacy({})
         total = (result.home_win_probability +
                  result.draw_probability +
                  result.away_win_probability)
@@ -263,8 +263,8 @@ class TestLRDeterminism:
         m = LogisticRegressionModel(n_epochs=50, seed=42)
         m.fit(_make_training_data(40))
         features = _simple_features()
-        p1 = m.predict(features)
-        p2 = m.predict(features)
+        p1 = m.predict_legacy(features)
+        p2 = m.predict_legacy(features)
         assert p1.home_win_probability == p2.home_win_probability
         assert p1.draw_probability == p2.draw_probability
         assert p1.away_win_probability == p2.away_win_probability
@@ -282,9 +282,9 @@ class TestLRTrainPredictSeparation:
         training = _make_training_data(30)
         m.fit(training)
         features = _simple_features()
-        pred_before = m.predict(features)
+        pred_before = m.predict_legacy(features)
         # Calling predict again with same features should give same result
-        pred_after = m.predict(features)
+        pred_after = m.predict_legacy(features)
         assert pred_before.home_win_probability == pred_after.home_win_probability
 
     def test_predictions_do_not_update_model(self):
@@ -308,7 +308,7 @@ class TestLREnsembleCompatibility:
 
         m = LogisticRegressionModel(n_epochs=30, seed=42)
         m.fit(_make_training_data(30))
-        pred = m.predict(_simple_features())
+        pred = m.predict_legacy(_simple_features())
 
         inp = ModelPredictionInput(
             model_id="lr_v1",

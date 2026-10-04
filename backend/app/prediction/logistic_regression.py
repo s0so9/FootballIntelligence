@@ -292,7 +292,7 @@ class LogisticRegressionModel(PredictionModel):
 
         Convenience method that returns a plain tuple.
         """
-        pred = self.predict(features)
+        pred = self.predict_legacy(features)
         return (
             pred.home_win_probability,
             pred.draw_probability,
