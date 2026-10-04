@@ -19,6 +19,11 @@ class MarketOutcomeResponse(BaseModel):
     model_probability: float = Field(..., description="Raw model probability")
     calibrated_probability: Optional[float] = Field(None, description="Calibrated probability")
     fair_odds: float = Field(..., description="Fair decimal odds")
+    
+    class Config:
+        """Pydantic configuration."""
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
 
 
 class BookmakerComparisonResponse(BaseModel):

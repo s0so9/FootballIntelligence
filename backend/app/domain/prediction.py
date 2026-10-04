@@ -63,6 +63,8 @@ class Prediction(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
         json_schema_extra = {
             "example": {
                 "id": "prediction_123",
@@ -183,6 +185,8 @@ class Model(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
         json_schema_extra = {
             "example": {
                 "id": "model_poisson_v1",
@@ -262,6 +266,8 @@ class ModelMetadata(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
 
 
 class ModelVersion(BaseModel):
@@ -281,6 +287,8 @@ class ModelVersion(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
 
 
 class ModelRun(BaseModel):
@@ -302,6 +310,8 @@ class ModelRun(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
 
 
 # Supporting structures for MENSIONE Prediction Engine Core
@@ -354,6 +364,8 @@ class ConfidenceAssessment(BaseModel):
     class Config:
         """Pydantic configuration."""
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
 
 
 class PredictionWithOutcome(BaseModel):

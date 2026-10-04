@@ -12,8 +12,12 @@ from pydantic import BaseModel, Field, field_validator
 from app.domain.enums import ModelType
 
 
-class ModelMetadata(BaseModel):
-    """Metadata describing a prediction model."""
+class PredictionModelMetadata(BaseModel):
+    """Metadata describing a prediction model's interface requirements.
+    
+    This is distinct from domain.prediction.ModelMetadata (which tracks versioning/deployment).
+    This class describes what a model needs to operate (features, samples, etc.).
+    """
 
     model_id: str = Field(..., description="Unique model identifier")
     model_type: ModelType = Field(..., description="Model type")
@@ -26,10 +30,25 @@ class ModelMetadata(BaseModel):
     class Config:
         """Pydantic configuration."""
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
 
 
 class ModelPrediction(BaseModel):
-    """Structured prediction output from a single model."""
+    """Structured prediction output from a single model.
+    
+    Score Distribution Semantics:
+    -----------------------------
+    The score_distribution field contains probabilities for specific scorelines.
+    Models MAY return partial distributions (e.g., only the top 10 most likely scorelines).
+    
+    - If distribution sums to < 1.0, the missing probability mass represents "all other scorelines"
+    - Consumers that need normalized probabilities must renormalize the distribution themselves
+    - Example: {(1,0): 0.15, (0,0): 0.10, (2,1): 0.08} (sum=0.33) means these are the top 3 
+      scorelines with combined 33% probability, and all other scorelines account for 67%
+    
+    This design allows models to return compact distributions without computing all possible scores.
+    """
 
     # Model identification
     model_id: str = Field(..., description="Model identifier")
@@ -41,7 +60,7 @@ class ModelPrediction(BaseModel):
     # Score distribution (optional but recommended)
     score_distribution: Dict[Tuple[int, int], float] = Field(
         default_factory=dict,
-        description="Scoreline probabilities e.g. {(0,0): 0.05, (1,0): 0.08}"
+        description="Scoreline probabilities e.g. {(0,0): 0.05, (1,0): 0.08}. May be partial (sum < 1.0)."
     )
     
     # 1X2 probabilities (required)
@@ -129,11 +148,11 @@ class PredictionModel(ABC):
         pass
 
     @abstractmethod
-    def get_metadata(self) -> ModelMetadata:
+    def get_metadata(self) -> PredictionModelMetadata:
         """Return model metadata.
 
         Returns:
-            ModelMetadata with model information
+            PredictionModelMetadata with model information
         """
         pass
 

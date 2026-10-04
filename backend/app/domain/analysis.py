@@ -216,6 +216,8 @@ class AnalysisContext(BaseModel):
         """Pydantic configuration."""
 
         from_attributes = True
+        # Suppress warnings about model_* field names conflicting with Pydantic's namespace
+        protected_namespaces = ()
         json_schema_extra = {
             "example": {
                 "match": {

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.prediction.interfaces import (
-    ModelMetadata,
+    PredictionModelMetadata,
     ModelPrediction,
     ModelAvailability,
     PredictionModel,
@@ -51,9 +51,9 @@ class MockPredictionModel(PredictionModel):
             metadata={"test": True}
         )
 
-    def get_metadata(self) -> ModelMetadata:
+    def get_metadata(self) -> PredictionModelMetadata:
         """Return mock metadata."""
-        return ModelMetadata(
+        return PredictionModelMetadata(
             model_id=self.model_id,
             model_type=ModelType.POISSON,
             version="1.0.0",
@@ -281,8 +281,8 @@ def test_mock_model_predict_with_insufficient_data():
 
 
 def test_model_metadata():
-    """Test ModelMetadata creation."""
-    metadata = ModelMetadata(
+    """Test PredictionModelMetadata creation."""
+    metadata = PredictionModelMetadata(
         model_id="poisson_v1",
         model_type=ModelType.POISSON,
         version="1.0.0",

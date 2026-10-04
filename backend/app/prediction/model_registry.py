@@ -3,8 +3,9 @@
 Manages registration, retrieval, and metadata for all prediction models.
 """
 
-from typing import Dict, List, Optional
-from app.prediction.interfaces import PredictionModel, ModelMetadata
+from typing import Dict, List, Optional, Union
+from app.prediction.interfaces import PredictionModel, PredictionModelMetadata
+from app.domain.enums import ModelType
 
 
 class ModelRegistry:
@@ -46,27 +47,30 @@ class ModelRegistry:
         """
         return self._models.get(model_id)
 
-    def list_models(self) -> List[ModelMetadata]:
+    def list_models(self) -> List[PredictionModelMetadata]:
         """List all registered models.
 
         Returns:
-            List of ModelMetadata for all registered models
+            List of PredictionModelMetadata for all registered models
         """
         return [model.get_metadata() for model in self._models.values()]
 
-    def get_by_type(self, model_type: str) -> List[PredictionModel]:
+    def get_by_type(self, model_type: Union[ModelType, str]) -> List[PredictionModel]:
         """Retrieve all models of a specific type.
 
         Args:
-            model_type: Model type (e.g., "poisson", "elo")
+            model_type: Model type (enum or string e.g., ModelType.POISSON or "poisson")
 
         Returns:
             List of PredictionModel instances matching the type
         """
+        # Normalize to string
+        type_str = model_type.value if isinstance(model_type, ModelType) else model_type
+        
         matching_models = []
         for model in self._models.values():
             metadata = model.get_metadata()
-            if metadata.model_type.value == model_type:
+            if metadata.model_type.value == type_str:
                 matching_models.append(model)
         return matching_models
 
