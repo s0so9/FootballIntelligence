@@ -2940,3 +2940,137 @@ Potential future work (when authorized):
 
 **STOPPED as instructed. Awaiting user direction before proceeding to next major block.**
 
+
+---
+## Entry: 2026-10-03 (Continued) - PHASE 1 STEPS 12-14: Advanced Models, Ensemble, and Calibration
+
+### Steps Completed
+
+#### Step 12 — Elo Rating + Dixon-Coles + Model Metadata
+
+**Elo Rating System (`backend/app/prediction/elo.py`)**
+- `EloCalculator` — stateless, deterministic Elo math helpers (expected score, rating update, outcome-to-score, draw probability estimation)
+- `EloRatingSystem` — stateful rating tracker; configurable K-factor, initial rating, home advantage; strict chronological processing; no future leakage
+- `EloRatingState` — snapshot of ratings at any point in time with `.copy()` for isolation
+- `EloMatchResult` — full audit record of each match update (ratings before/after, expected scores, actual scores, k-factor, home advantage)
+- `EloPrediction` — normalised 1X2 probabilities derived from Elo ratings; draw probability estimated from team balance; probabilities sum to exactly 1.0
+- `process_matches_chronologically()` — sorts input by `played_at` before processing, enforcing no-future-leakage regardless of caller ordering
+
+**Dixon-Coles Adjustment (`backend/app/prediction/dixon_coles.py`)**
+- `DixonColesModel` — layers on top of `PoissonModel`; applies τ correction to four low-scoring outcomes (0-0, 1-0, 0-1, 1-1); renormalises full distribution
+- `DixonColesPrediction` — contains both the original `PoissonPrediction` (unchanged) and all DC-adjusted market outputs (1X2, BTTS, O/U, top scorelines)
+- `DixonColesAdjustment` — records the rho used and the four τ correction factors for traceability
+- `predict_from_poisson()` — accepts pre-computed `PoissonPrediction` to avoid redundant computation
+- `rho=0.0` reproduces exact Poisson probabilities; configurable per-instance
+- Default rho = −0.13 (based on Dixon & Coles 1997 empirical estimate)
+
+**Model Metadata (`backend/app/domain/prediction.py`)**
+- Extended `Model.parameters` from `Dict[str, float]` → `Dict[str, Any]` to support mixed configuration types (float, int, bool, str)
+- Added fields: `model_id`, `model_name`, `model_type` (canonical registry identifiers), `is_deterministic`, `run_seed`, `tags`
+- Added convenience methods: `get_registry_id()`, `get_registry_name()`, `get_type_string()`
+- Added `ModelMetadata` class — richer companion for model registry/versioning (training data description, feature names, lifecycle timestamps, `.to_model()` converter)
+- Fully backwards-compatible: existing `PredictionService` code unchanged
+
+#### Step 13 — Ensemble Foundation (`backend/app/prediction/ensemble.py`)
+
+- `ModelPredictionInput` — common input interface; carries 1X2 probabilities, optional BTTS, optional xG; `validate()` raises on out-of-range values
+- `EnsembleModel` — weighted ensemble engine; configurable weights, automatic normalisation, deterministic output
+- `_resolve_weights()` — configured weight used if present, else default weight = 1.0 (equal treatment of unknown models)
+- `_combine_btts()` — BTTS output only when ALL active models supply it; `None` otherwise (no silent market mixing)
+- `ModelContribution` — per-model audit record: normalised weight, original weight, individual probability contributions
+- `EnsemblePrediction` — final combined 1X2 (and optional BTTS), with contribution metadata, `n_models`, `total_weight`, unique `id`
+- Zero-weight models excluded from combination; all-zero-weight raises `ValueError`
+- `EnsembleModel.predict()` validates all inputs before combining (fail-fast)
+
+#### Step 14 — Calibration Foundation (`backend/app/prediction/calibration.py`)
+
+- `brier_score()` — binary Brier score; empty dataset → NaN; validates probabilities and outcomes
+- `log_loss_binary()` — binary log loss; epsilon clipping prevents log(0) overflow; empty → NaN
+- `log_loss_multiclass()` — multiclass log loss for 1X2 and general N-class predictions
+- `reliability_data()` — equal-width binning; skips empty bins; `ReliabilityBin` per bin with mean_pred and fraction_positive
+- `calibration_error()` — ECE via weighted bin average; empty → NaN; delegates to `reliability_data()`
+- `evaluate_binary()` — single call returns `BinaryCalibrationResult` with Brier + log loss + reliability + ECE
+- `evaluate_1x2()` — multiclass 1X2 evaluation; decomposes into three binary series + multiclass log loss; returns `Multiclass1X2CalibrationResult`
+- `PlattScaler` — structural stub; `fit()` raises `NotImplementedError`; `transform()` raises before fit
+- `IsotonicScaler` — structural stub; same contract as `PlattScaler`
+- `is_reliable` property on all result types: True when `n_samples >= 30`
+- All edge cases handled: empty datasets, probabilities of exactly 0 and 1, insufficient sample sizes
+
+---
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `backend/app/prediction/elo.py` | Elo rating system and prediction |
+| `backend/app/prediction/dixon_coles.py` | Dixon-Coles adjustment over Poisson |
+| `backend/app/prediction/ensemble.py` | Weighted ensemble model |
+| `backend/app/prediction/calibration.py` | Calibration metrics and evaluation |
+| `backend/tests/test_elo.py` | Elo + Dixon-Coles + metadata tests |
+| `backend/tests/test_ensemble.py` | Ensemble tests |
+| `backend/tests/test_calibration.py` | Calibration metric tests |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/app/domain/prediction.py` | Extended `Model`, added `ModelMetadata` |
+| `backend/app/prediction/__init__.py` | Added exports for all new classes/functions |
+
+---
+
+### Verification Results
+
+#### Test Suite
+
+```
+351 passed, 40 warnings in 4.69s
+```
+
+All 351 tests passed on first run (0 failures, 0 errors).
+
+- Previously passing tests (Steps 1–11): all still pass ✓
+- New Step 12 tests (test_elo.py): all pass ✓
+- New Step 13 tests (test_ensemble.py): all pass ✓
+- New Step 14 tests (test_calibration.py): all pass ✓
+
+#### API Endpoints
+
+FastAPI server started from `backend/` directory with `.venv\Scripts\python.exe -m uvicorn app.main:app`:
+
+| Endpoint | Status | Result |
+|----------|--------|--------|
+| `GET /health` | 200 OK | ✓ |
+| `GET /api/v1/matches` | 200 OK | ✓ |
+| `GET /docs` | 200 OK | ✓ |
+
+#### Architecture Integrity
+
+- Existing `PoissonModel`, `PredictionService`, `AnalysisContext`, Ollama AI Analyst untouched ✓
+- No frontend changes ✓
+- No new external packages installed ✓
+- No mock data presented as real data ✓
+- All numerical predictions derived from mathematical models ✓
+- Chronological ordering enforced throughout ✓
+- No future data leakage in Elo or Dixon-Coles ✓
+
+---
+
+### Current Status
+
+**✓ PHASE 1 Steps 12–14 COMPLETE**
+
+| Step | Status |
+|------|--------|
+| Step 12: Elo + Dixon-Coles + Model Metadata | ✅ Implemented and tested |
+| Step 13: Ensemble Foundation | ✅ Implemented and tested |
+| Step 14: Calibration Foundation | ✅ Implemented and tested |
+
+### Next Steps (PHASE 1 continuation)
+
+Per PROJECT_SPEC.md, remaining PHASE 1 work includes:
+- Database layer (PostgreSQL via SQLAlchemy)
+- Real data provider integration
+- Live prediction pipeline
+- Odds integration
+- Frontend implementation (React components, pages, API client)

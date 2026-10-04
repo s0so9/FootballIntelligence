@@ -1,7 +1,7 @@
 """Prediction domain models."""
 
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Any, Optional, Dict, List
 from pydantic import BaseModel, Field, field_validator
 
 from app.domain.enums import PredictionMarketType, ModelType
@@ -114,19 +114,70 @@ class PredictionMarket(BaseModel):
 
 
 class Model(BaseModel):
-    """Prediction model metadata."""
+    """Prediction model metadata.
+
+    Designed to be compatible with future model registry/versioning work.
+    Extended with richer metadata fields while remaining backwards-compatible
+    with existing code that only sets id/name/type/version/parameters/created_at/is_active.
+    """
 
     id: str = Field(..., description="Model identifier")
     name: str = Field(..., description="Model name")
     type: ModelType = Field(..., description="Model type")
     version: str = Field(..., description="Model version")
-    
+
     description: Optional[str] = Field(None, description="Model description")
-    parameters: Optional[Dict[str, float]] = Field(None, description="Model parameters")
-    
+
+    # Parameters accepts mixed types (float, int, str, bool) to support
+    # configuration values from all model types.
+    parameters: Optional[Dict[str, Any]] = Field(
+        None, description="Model configuration parameters"
+    )
+
+    # Extended metadata for model registry compatibility
+    model_id: Optional[str] = Field(
+        None,
+        description="Canonical model identifier for registry (defaults to id)",
+    )
+    model_name: Optional[str] = Field(
+        None,
+        description="Canonical model name for registry (defaults to name)",
+    )
+    model_type: Optional[str] = Field(
+        None,
+        description="String representation of model type for registry",
+    )
+
+    # Run/determinism information
+    is_deterministic: bool = Field(
+        True,
+        description="Whether the model produces deterministic outputs",
+    )
+    run_seed: Optional[int] = Field(
+        None,
+        description="Random seed used for this model run (if applicable)",
+    )
+
     created_at: datetime = Field(..., description="Model creation timestamp")
     is_active: bool = Field(True, description="Whether model is active")
-    
+
+    # Tags for filtering/grouping in a registry
+    tags: Optional[List[str]] = Field(
+        None, description="Optional tags for categorisation"
+    )
+
+    def get_registry_id(self) -> str:
+        """Return the canonical registry identifier."""
+        return self.model_id or self.id
+
+    def get_registry_name(self) -> str:
+        """Return the canonical registry name."""
+        return self.model_name or self.name
+
+    def get_type_string(self) -> str:
+        """Return model type as a string."""
+        return self.model_type or self.type.value
+
     class Config:
         """Pydantic configuration."""
 
@@ -137,10 +188,79 @@ class Model(BaseModel):
                 "name": "Poisson Model",
                 "type": "poisson",
                 "version": "1.0.0",
+                "is_deterministic": True,
                 "created_at": "2026-10-01T00:00:00",
                 "is_active": True,
             }
         }
+
+
+class ModelMetadata(BaseModel):
+    """Extended model metadata for registry and versioning support.
+
+    This is a richer companion to `Model` and is intended for use in
+    model registries, comparison pipelines, and audit trails.
+    It is kept separate from `Model` to avoid breaking existing code.
+    """
+
+    model_id: str = Field(..., description="Unique model identifier")
+    model_name: str = Field(..., description="Human-readable model name")
+    model_type: ModelType = Field(..., description="Model type enum")
+    version: str = Field(..., description="Semantic version string e.g. '1.0.0'")
+
+    description: Optional[str] = Field(None, description="Detailed model description")
+
+    # Configuration snapshot
+    configuration: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Full model configuration / hyperparameters",
+    )
+
+    # Determinism
+    is_deterministic: bool = Field(True, description="Produces identical output for identical input")
+    run_seed: Optional[int] = Field(None, description="Seed for reproducibility (if stochastic)")
+
+    # Lifecycle timestamps
+    created_at: datetime = Field(..., description="When this model version was created")
+    deployed_at: Optional[datetime] = Field(None, description="When this model was deployed")
+    retired_at: Optional[datetime] = Field(None, description="When this model was retired")
+
+    is_active: bool = Field(True, description="Whether this model is currently active")
+
+    # Training / data references
+    training_data_description: Optional[str] = Field(
+        None, description="Description of training data used"
+    )
+    feature_names: Optional[List[str]] = Field(
+        None, description="Features consumed by this model"
+    )
+
+    # Tags
+    tags: Optional[List[str]] = Field(None, description="Tags for filtering")
+
+    def to_model(self) -> "Model":
+        """Convert to the simpler Model domain object."""
+        return Model(
+            id=self.model_id,
+            name=self.model_name,
+            type=self.model_type,
+            version=self.version,
+            description=self.description,
+            parameters=self.configuration,
+            model_id=self.model_id,
+            model_name=self.model_name,
+            model_type=self.model_type.value,
+            is_deterministic=self.is_deterministic,
+            run_seed=self.run_seed,
+            created_at=self.created_at,
+            is_active=self.is_active,
+            tags=self.tags,
+        )
+
+    class Config:
+        """Pydantic configuration."""
+
+        from_attributes = True
 
 
 class ModelVersion(BaseModel):
