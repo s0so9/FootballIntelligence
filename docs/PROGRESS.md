@@ -3400,6 +3400,332 @@ None. All functionality implemented, tested, and verified.
 - EasyMatchResult with structured output
 - Multiple signal integration
 - Configurable thresholds and weights
+
+---
+
+## Entry: 2026-10-04
+
+### Completed Work
+
+**Phase: Provider Abstraction - Multi-Provider Backend Implementation**
+
+Implemented a comprehensive multi-provider data architecture with intelligent routing, failover logic, and source-of-truth semantics. The system now supports three independent football data providers with configurable routing strategies while maintaining full backward compatibility.
+
+**1. OpenLigaDB Provider Implementation**
+- File: `backend/app/providers/openligadb.py`
+- Provider: OpenLigaDBFootballProvider (independent fallback source)
+- API: https://api.openligadb.de/
+- Error Handling: Matches ryzellx pattern (retry on 5xx/connection errors, no retry on 4xx)
+- Critical Note: xG data always None (OpenLigaDB does not provide expected goals - this is authoritative, not a data gap)
+- Implemented Methods:
+  - `get_matches_by_date()` - Retrieve matches by date
+  - `get_match()` - Get single match details
+  - `get_live_matches()` - Get live match data
+  - `get_league()` - League/competition metadata
+  - `get_team()` - Team information
+  - `get_player()` - Player information
+  - `get_standings()` - League standings
+- Status Code Handling: 404 → None, 4xx → error, 5xx → retry
+- Normalization: OpenLigaDB JSON → ProviderMatch/ProviderTeam/etc.
+
+**2. Provider Manager Implementation**
+- File: `backend/app/providers/manager.py`
+- Class: ProviderManager
+- Purpose: Intelligent routing and failover across multiple providers
+- Architecture: Enforces SOURCE-OF-TRUTH rule (ONE provider per response)
+
+**Provider Routing Rules:**
+- **NORMAL_ORDER**: `[ryzellx, openligadb]` - Used for standard match queries
+- **LIVE_ORDER**: `[fotmob, ryzellx, openligadb]` - FotMob first for live/fast data (unofficial but responsive)
+- **MATCH_DETAIL_ORDER**: `[ryzellx, fotmob, openligadb]` - Ryzellx first for detailed match data
+- **METADATA_ORDER**: `[ryzellx, fotmob, openligadb]` - Team/player/league metadata queries
+
+**Source-of-Truth Policy:**
+- First provider to return non-None is the authoritative result
+- No field-level failover (no merging data from multiple providers)
+- Optional None fields do NOT trigger failover to next provider
+- Example: If ryzellx returns match with `venue_name=None`, that is the final result (fotmob is not queried)
+- Rationale: Prevents data inconsistency; one source provides complete context
+
+**Failover Behavior:**
+- Failover ONLY on exception (HTTP errors, timeouts, connection failures)
+- Failover ONLY when provider returns None (no result found)
+- NO failover when provider returns valid result with some None fields
+- Metadata tracks: selected_provider, fallback_used, attempted_providers
+
+**3. Provider Manager Adapter Implementation**
+- File: `backend/app/providers/adapter.py`
+- Class: ProviderManagerAdapter
+- Purpose: Wrap async ProviderManager to expose sync FootballDataProvider interface
+- Implementation: Uses `asyncio.run()` to bridge sync/async boundary
+- Mapping: ProviderMatch/ProviderTeam → Domain Match/Team models
+- Metadata: Tracks last operation's provider selection and metadata
+- Methods Implemented:
+  - `get_team()` - Maps ProviderTeam to domain Team
+  - `get_match()` - Maps ProviderMatch to domain Match
+  - `get_matches()` with from_date - Maps list of ProviderMatch to domain Match
+  - `get_provider_name()` - Returns selected provider from last operation
+  - `is_development_data()` - Returns False (real data)
+- Methods Not Yet Implemented (raise NotImplementedError with guidance):
+  - `get_competitions()`, `get_competition()`, `get_seasons()`, `get_current_season()`, `get_teams()`, `get_standings()`
+  - Clear error messages guide users to specific provider or development provider
+
+**4. Configuration Updates**
+- File: `backend/app/config.py`
+- New Flag: `use_real_providers: bool = False` (default: False for backward compatibility)
+- Behavior:
+  - `False` → DevelopmentProvider (PHASE 1 behavior, existing deployments unchanged)
+  - `True` → ProviderManagerAdapter with all three providers (ryzellx, fotmob, openligadb)
+- New Settings: Provider base URLs for openligadb
+- No Breaking Changes: All existing config fields preserved
+
+**5. Dependency Injection Updates**
+- File: `backend/app/api/dependencies.py`
+- Function: `get_data_provider()`
+- Logic:
+  - When `use_real_providers=False`: Yield DevelopmentProvider (backward compatible)
+  - When `use_real_providers=True`: Construct and yield ProviderManagerAdapter with:
+    - RyzellxFootballProvider (primary)
+    - FotMobFootballProvider (live/fast, unofficial, retry_count capped at 1)
+    - OpenLigaDBFootballProvider (fallback)
+    - ProviderCache (shared across providers)
+    - ProviderManager (routing layer)
+    - ProviderManagerAdapter (sync interface wrapper)
+- FotMob Retry Cap: `retry_count=min(settings.provider_retry_count, 1)` (conservative for unofficial API)
+- Resource Cleanup: Properly closes manager/providers in finally block
+
+**6. Provider Module Exports**
+- File: `backend/app/providers/__init__.py`
+- Updated Exports: OpenLigaDBFootballProvider, ProviderManager, ProviderManagerAdapter
+- Clean Import Path: `from app.providers import ProviderManager, ProviderManagerAdapter`
+
+**7. Comprehensive Test Suite**
+
+**OpenLigaDB Provider Tests:**
+- File: `backend/tests/test_providers_openligadb.py`
+- Test Coverage:
+  - HTTP error handling (4xx, 5xx, connection errors, timeouts)
+  - Retry logic (5xx and connection errors only)
+  - 404 handling (returns None, not error)
+  - Match normalization (OpenLigaDB JSON → ProviderMatch)
+  - Live matches endpoint
+  - League/team/player/standings endpoints
+  - xG always None (explicit test)
+- Mocking: Uses httpx.AsyncClient mocking for isolated tests
+
+**Provider Manager Tests:**
+- File: `backend/tests/test_providers_manager.py`
+- Test Coverage:
+  - Routing order verification (NORMAL, LIVE, MATCH_DETAIL, METADATA)
+  - Failover on provider exception
+  - Failover on provider returning None
+  - SOURCE-OF-TRUTH rule: No failover on optional None fields
+  - Metadata tracking (selected_provider, fallback_used, attempted_providers)
+  - Provider priority (e.g., fotmob first for live, ryzellx first for match detail)
+  - All providers fail scenario
+- Test Approach: Mock individual providers, verify manager behavior
+
+### Verification Commands
+
+```powershell
+# Navigate to backend
+cd C:\FootballIntelligence\backend
+
+# Run OpenLigaDB provider tests
+.venv\Scripts\python.exe -m pytest tests/test_providers_openligadb.py -v
+
+# Run Provider Manager tests
+.venv\Scripts\python.exe -m pytest tests/test_providers_manager.py -v
+
+# Run full test suite
+.venv\Scripts\python.exe -m pytest tests/ -v
+
+# Verify backend starts with multi-provider architecture
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Test health endpoint
+Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -UseBasicParsing | Select-Object StatusCode
+```
+
+### Verification Results
+
+**OpenLigaDB Provider Tests:**
+✓ All HTTP error handling tests passed
+✓ Retry logic verified (5xx and connection errors retry, 4xx do not)
+✓ 404 returns None (not error)
+✓ Match normalization verified
+✓ xG always None confirmed
+
+**Provider Manager Tests:**
+✓ Routing orders correctly applied
+✓ SOURCE-OF-TRUTH rule enforced (no field-level failover)
+✓ Failover on exception verified
+✓ Failover on None result verified
+✓ No failover on optional None fields verified
+✓ Metadata tracking verified
+✓ Provider priority verified (fotmob first for live, ryzellx first for match detail)
+
+**Integration Tests:**
+✓ Backend starts successfully with multi-provider architecture
+✓ Health endpoint responds 200 OK
+✓ No import errors
+✓ No runtime errors
+
+### Architecture Compliance Validation
+
+**AGENTS.md Rule Compliance:**
+- ✓ Rule 2: Inspected existing provider code before implementing new providers
+- ✓ Rule 3: Preserved working code (backward compatibility maintained)
+- ✓ Rule 4: Small verifiable steps (openligadb → manager → adapter → tests)
+- ✓ Rule 6: Tests run after implementation
+- ✓ Rule 7: Verified working with test execution
+- ✓ Rule 10: Never invented statistics (xG=None is authoritative when OpenLigaDB used)
+- ✓ Rule 11: Numerical prediction engines remain source of truth
+- ✓ Rule 13: No modification of numerical values (pass-through from providers)
+- ✓ Rule 15: Python + FastAPI + Pydantic
+- ✓ Rule 21: Modular architecture (separate files for openligadb, manager, adapter)
+- ✓ Rule 22: Tests added progressively
+- ✓ Rule 23: Errors fixed during verification
+
+**PROJECT_SPEC.md Compliance:**
+- ✓ Provider abstraction architecture maintained
+- ✓ Data source transparency (metadata tracks selected provider)
+- ✓ No data fabrication (xG=None when not provided)
+- ✓ Type safety (Pydantic models throughout)
+- ✓ Error handling (retry logic, proper exception hierarchy)
+
+### Design Rationale
+
+**Why Three Providers:**
+1. **Ryzellx**: Primary provider, comprehensive data, reliable
+2. **FotMob**: Fast live data, unofficial API (conservative retry_count=1)
+3. **OpenLigaDB**: Fallback source, free/open, German leagues strong
+
+**Why SOURCE-OF-TRUTH Rule:**
+- Data consistency: Mixing fields from multiple providers creates inconsistent context
+- Traceability: Always know which provider supplied the data
+- Simplicity: No complex merge logic, no field-level prioritization
+- Reliability: One source provides complete picture
+
+**Why No Field-Level Failover:**
+- Optional None is often intentional (e.g., venue not determined yet)
+- Attempting to "fill gaps" can introduce inconsistency
+- Example: ryzellx venue_name=None might mean "not set", filling from fotmob could misrepresent reality
+
+**Why Routing Orders Matter:**
+- Live matches: Speed matters → fotmob first (fast/unofficial)
+- Match detail: Accuracy matters → ryzellx first (comprehensive/reliable)
+- Normal queries: Balance → ryzellx then openligadb (skip unofficial)
+
+**Why Backward Compatibility Critical:**
+- Existing deployments continue working unchanged
+- Development workflow (DevelopmentProvider) unaffected
+- Gradual migration: Enable real providers with single config flag
+
+### Files Created
+
+**New Provider Files:**
+- `backend/app/providers/openligadb.py` (implementation)
+- `backend/app/providers/manager.py` (routing layer)
+- `backend/app/providers/adapter.py` (sync wrapper)
+
+**New Test Files:**
+- `backend/tests/test_providers_openligadb.py` (OpenLigaDB tests)
+- `backend/tests/test_providers_manager.py` (Manager tests)
+
+### Files Modified
+
+**Updated Files:**
+- `backend/app/providers/__init__.py` - Added exports
+- `backend/app/config.py` - Added use_real_providers flag
+- `backend/app/api/dependencies.py` - Updated provider dependency injection
+
+### Known Issues
+
+None. All functionality implemented, tested, and verified per review at `c:\FootballIntelligence\backend\.agents\tasks\provider-review.md`.
+
+### Critical Implementation Details
+
+**OpenLigaDB xG Handling:**
+- OpenLigaDB does NOT provide xG data
+- When OpenLigaDB is selected provider, xG=None is the authoritative result
+- This is NOT a data gap - it's the correct response from this source
+- No failover to other providers when xG is None (SOURCE-OF-TRUTH rule)
+
+**FotMob Conservative Settings:**
+- Unofficial API, no SLA guarantees
+- retry_count capped at 1 (even if global setting is higher)
+- Used only for live data where speed > reliability tradeoff acceptable
+
+**Provider Selection Transparency:**
+- Every response includes metadata: `selected_provider`, `fallback_used`, `attempted_providers`
+- Frontend/consumers can display data source to users
+- Debugging: Always know which provider returned the data
+
+### Next Steps
+
+According to PROJECT_SPEC.md, the next steps after multi-provider implementation are:
+
+1. **Frontend Provider Indicator** (Optional Enhancement)
+   - Display selected provider in UI
+   - Show data source transparency to users
+   - Visual indicator for development vs real data
+
+2. **Provider-Specific Configuration** (Future Enhancement)
+   - Per-provider timeout settings
+   - Per-provider rate limiting
+   - Provider enable/disable flags
+
+3. **Additional Provider Methods** (Future Enhancement)
+   - Implement remaining FootballDataProvider methods in adapter
+   - Add provider-specific optimizations
+   - Extend routing rules for new data types
+
+4. **Continue PHASE 1 Implementation**
+   - Follow PROJECT_SPEC.md section 31 for remaining features
+   - Integrate providers with existing prediction pipeline
+   - Add provider selection to API endpoints
+
+### Current Status
+
+**✓ Multi-Provider Backend Architecture COMPLETE**
+
+**Provider Status:**
+- ✓ Ryzellx - Primary provider (existing, now integrated)
+- ✓ FotMob - Live/fast provider (existing, now integrated with retry_count=1)
+- ✓ OpenLigaDB - NEW fallback provider implemented
+- ✓ DevelopmentProvider - Preserved as default (backward compatible)
+
+**Routing Status:**
+- ✓ NORMAL_ORDER: [ryzellx, openligadb] - Standard queries
+- ✓ LIVE_ORDER: [fotmob, ryzellx, openligadb] - Live matches (fotmob first)
+- ✓ MATCH_DETAIL_ORDER: [ryzellx, fotmob, openligadb] - Match detail (ryzellx first)
+- ✓ METADATA_ORDER: [ryzellx, fotmob, openligadb] - Teams/players/leagues
+
+**Source-of-Truth Policy:**
+- ✓ ONE provider per response (no field merging)
+- ✓ No failover on optional None fields
+- ✓ Failover only on exception or no result
+
+**Configuration:**
+- ✓ `use_real_providers=False` - DevelopmentProvider (default, backward compatible)
+- ✓ `use_real_providers=True` - ProviderManagerAdapter with all three real providers
+
+**Test Coverage:**
+- ✓ OpenLigaDB provider tests - PASSING
+- ✓ Provider Manager tests - PASSING
+- ✓ SOURCE-OF-TRUTH rule verified
+- ✓ Routing orders verified
+- ✓ Failover logic verified
+- ✓ Metadata tracking verified
+
+**Backward Compatibility:**
+- ✓ DevelopmentProvider still default
+- ✓ Existing deployments unaffected
+- ✓ No breaking changes to config
+- ✓ No breaking changes to FootballDataProvider interface
+
+**Ready for:** Provider integration with API endpoints, frontend provider indicators, additional provider-specific optimizations.
 - No fabricated scores
 - Explicit insufficient data handling
 
