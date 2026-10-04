@@ -34,11 +34,43 @@ from app.prediction.calibration import (
     log_loss_multiclass,
     reliability_data,
 )
+from app.prediction.negative_binomial import (
+    NegativeBinomialModel,
+    NegativeBinomialPrediction,
+)
+from app.prediction.logistic_regression import (
+    LogisticRegressionModel,
+    LogisticRegressionPrediction,
+    TrainingStats,
+)
 from app.prediction.ensemble import (
     EnsembleModel,
     EnsemblePrediction,
     ModelContribution,
     ModelPredictionInput,
+)
+from app.prediction.backtest import (
+    BacktestAggregator,
+    BacktestMetrics,
+    BacktestResult,
+    BacktestRunner,
+    ChronologicalSplitter,
+    PredictionRecord,
+    WindowSplit,
+    run_backtest,
+    poisson_predict_fn,
+    negative_binomial_predict_fn,
+    elo_predict_fn,
+    logistic_regression_predict_fn,
+)
+from app.prediction.comparison import (
+    ComparisonResult,
+    MetricComparison,
+    ModelComparator,
+    ModelMetricSnapshot,
+    ModelRanking,
+    RankingMetric,
+    snapshot_from_backtest_metrics,
 )
 from app.prediction.service import PredictionService
 
@@ -80,4 +112,32 @@ __all__ = [
     "reliability_data",
     # Service
     "PredictionService",
+    # Negative Binomial
+    "NegativeBinomialModel",
+    "NegativeBinomialPrediction",
+    # Logistic Regression
+    "LogisticRegressionModel",
+    "LogisticRegressionPrediction",
+    "TrainingStats",
+    # Backtest
+    "BacktestAggregator",
+    "BacktestMetrics",
+    "BacktestResult",
+    "BacktestRunner",
+    "ChronologicalSplitter",
+    "PredictionRecord",
+    "WindowSplit",
+    "run_backtest",
+    "poisson_predict_fn",
+    "negative_binomial_predict_fn",
+    "elo_predict_fn",
+    "logistic_regression_predict_fn",
+    # Comparison
+    "ComparisonResult",
+    "MetricComparison",
+    "ModelComparator",
+    "ModelMetricSnapshot",
+    "ModelRanking",
+    "RankingMetric",
+    "snapshot_from_backtest_metrics",
 ]

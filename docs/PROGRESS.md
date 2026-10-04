@@ -3074,3 +3074,145 @@ Per PROJECT_SPEC.md, remaining PHASE 1 work includes:
 - Live prediction pipeline
 - Odds integration
 - Frontend implementation (React components, pages, API client)
+
+---
+## Entry: 2026-10-03 (Continued) - PHASE 1 STEPS 15-17: Advanced Models, Backtesting, Model Comparison
+
+### Steps Completed
+
+#### Step 15 — Advanced Prediction Models
+
+**Negative Binomial (`backend/app/prediction/negative_binomial.py`)**
+- `NegativeBinomialModel` — NB goal distribution; configurable dispersion parameter r; same market output interface as PoissonModel (1X2, BTTS, O/U, scorelines)
+- `nb_pmf()` — uses log-space Gamma arithmetic for numerical stability
+- `variance()` — returns μ + μ²/r; converges to μ (Poisson) as r → ∞
+- Edge cases: μ=0 correctly assigns all probability to k=0
+- High-dispersion (r=1000) verified to approximate Poisson within 1%
+- Deterministic, normalised outputs; compatible with `ModelPredictionInput` / ensemble layer
+- `ModelType.NEGATIVE_BINOMIAL` added to enum
+
+**Logistic Regression (`backend/app/prediction/logistic_regression.py`)**
+- `LogisticRegressionModel` — multiclass softmax LR for 1X2; no external ML frameworks (pure Python + math)
+- SGD with L2 regularisation; deterministic with fixed seed; shuffled per-epoch using epoch-offset seed
+- Strict train/predict separation: predict() is pure (does not modify weights)
+- Feature standardisation from training statistics; None values imputed to training means
+- `TrainingStats` captures means, stds, n_samples, feature keys
+- `ModelType.LOGISTIC_REGRESSION` added to enum
+
+#### Step 16 — Backtesting Engine (`backend/app/prediction/backtest.py`)
+
+- `ChronologicalSplitter` — enforces strict chronological ordering; both rolling-window and expanding-window modes; validates train/test non-overlap
+- `BacktestRunner` — calls predict_fn per test match passing only prior training data; skips None predictions and invalid probabilities
+- `PredictionRecord` — atomic prediction+result unit; auto-computes per-outcome Brier components on creation
+- `BacktestAggregator` — computes accuracy, multiclass Brier, multiclass log loss, ECE; uses existing calibration module for consistency
+- `BacktestMetrics` — `is_reliable` flag (n >= 30); ROI intentionally absent (not fabricated)
+- `run_backtest()` — high-level convenience; filters to finished matches; supports 'expanding' and 'rolling' modes
+- Predict function adapters: `poisson_predict_fn`, `negative_binomial_predict_fn`, `elo_predict_fn`, `logistic_regression_predict_fn`
+- All adapters rebuild model state from training data only on each window (no cross-window leakage)
+
+#### Step 17 — Model Comparison (`backend/app/prediction/comparison.py`)
+
+- `ModelMetricSnapshot` — per-model metric bundle; `is_reliable` flag; `get_metric()` dispatcher
+- `ModelComparator` — configurable primary metric, tie threshold, min reliable samples
+- Ranking: deterministic sort by (metric value, model_id) for ties; models with None metric ranked last
+- Tie handling: differences within threshold share same rank; pairwise winner = None
+- `MetricComparison` — pairwise comparison with winner, is_tie, both_reliable, difference
+- `ComparisonResult` — full ranked output with warnings; `has_reliable_winner` guard
+- `snapshot_from_backtest_metrics()` — bridges backtest output to comparison layer
+- Never declares "best" without sufficient sample size; explicit warnings for all unreliable models
+- Ensemble models carry `is_ensemble` flag preserved through rankings
+
+---
+
+### Files Created
+
+| File | Description |
+|------|-------------|
+| `backend/app/prediction/negative_binomial.py` | Negative Binomial goal model |
+| `backend/app/prediction/logistic_regression.py` | Multiclass logistic regression |
+| `backend/app/prediction/backtest.py` | Chronological backtesting engine |
+| `backend/app/prediction/comparison.py` | Model comparison and ranking layer |
+| `backend/tests/test_negative_binomial.py` | NB model tests |
+| `backend/tests/test_logistic_regression.py` | LR model tests |
+| `backend/tests/test_backtest.py` | Backtesting engine tests |
+| `backend/tests/test_comparison.py` | Comparison layer tests |
+| `backend/scripts/backtest_verify.py` | Representative backtest verification script |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `backend/app/domain/enums.py` | Added NEGATIVE_BINOMIAL, LOGISTIC_REGRESSION to ModelType |
+| `backend/app/prediction/__init__.py` | Added exports for all new classes/functions |
+
+---
+
+### Verification Results
+
+#### Test Suite
+
+```
+505 passed, 40 warnings in 5.66s
+```
+
+All 505 tests passed on first run (0 failures, 0 errors).
+
+- Previously passing tests (Steps 1–14): all still pass ✓
+- New Step 15 tests (test_negative_binomial.py, test_logistic_regression.py): all pass ✓
+- New Step 16 tests (test_backtest.py): all pass ✓
+- New Step 17 tests (test_comparison.py): all pass ✓
+
+#### API Endpoints
+
+| Endpoint | Status |
+|----------|--------|
+| `GET /health` | 200 OK ✓ |
+| `GET /api/v1/matches` | 200 OK ✓ |
+| `GET /docs` | 200 OK ✓ |
+
+#### Representative Backtest (50 synthetic matches, expanding window)
+
+```
+Finished matches (dev provider): 3
+Synthetic matches used for verification: 50
+
+  poisson     : n= 45  acc=0.133  brier=0.2458  reliable=True
+  neg_binom   : n= 45  acc=0.133  brier=0.2455  reliable=True
+  elo         : n= 45  acc=0.178  brier=0.2397  reliable=True
+  lr          : n= 45  acc=0.044  brier=0.2961  reliable=True
+
+Rankings (Brier score, lower=better):
+  Rank 1: elo        brier=0.2397  reliable=True
+  Rank 2: neg_binom  brier=0.2455  reliable=True
+  Rank 3: poisson    brier=0.2458  reliable=True
+  Rank 4: lr         brier=0.2961  reliable=True
+
+Best model: elo  has_reliable_winner=True
+```
+
+Chronological safety confirmed: no future leakage; test matches always after training matches; no match appears in both train and test.
+
+#### Architecture Integrity
+
+- Existing Steps 1–14 untouched ✓
+- No frontend changes ✓
+- No new external packages ✓
+- No mock data presented as real data ✓
+- ROI not fabricated (absent without real odds) ✓
+- All numerical predictions derived from models ✓
+
+---
+
+### Current Status
+
+**✓ PHASE 1 Steps 15–17 COMPLETE**
+
+| Step | Status |
+|------|--------|
+| Step 15: Negative Binomial + Logistic Regression | ✅ Implemented and tested |
+| Step 16: Backtesting Engine | ✅ Implemented and tested |
+| Step 17: Model Comparison | ✅ Implemented and tested |
+
+### Next Steps
+
+Per `PROJECT_SPEC.md` PHASE 1: database layer (SQLAlchemy/PostgreSQL), real data provider integration, live prediction pipeline, odds integration, and frontend implementation (Mensione — dark space/galaxy aesthetic).

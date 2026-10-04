@@ -56,8 +56,10 @@ class ModelType(str, Enum):
     """Prediction model type enumeration."""
 
     POISSON = "poisson"
+    NEGATIVE_BINOMIAL = "negative_binomial"
     DIXON_COLES = "dixon_coles"
     ELO = "elo"
+    LOGISTIC_REGRESSION = "logistic_regression"
     RANDOM_FOREST = "random_forest"
     GRADIENT_BOOSTING = "gradient_boosting"
     NEURAL_NETWORK = "neural_network"
