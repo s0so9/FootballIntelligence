@@ -598,7 +598,7 @@ def poisson_predict_fn(
         # Compute team-specific attack rates from training matches
         h_lam = _calc_attack_rate(match.home_team_id, train_matches) or home_attack
         a_lam = _calc_attack_rate(match.away_team_id, train_matches) or away_attack
-        result = model.predict(h_lam, a_lam)
+        result = model.predict_from_lambda(h_lam, a_lam)
         return (
             result.home_win_probability,
             result.draw_probability,
@@ -622,7 +622,7 @@ def negative_binomial_predict_fn(
     ) -> Optional[Tuple[float, float, float]]:
         h_lam = _calc_attack_rate(match.home_team_id, train_matches) or 1.5
         a_lam = _calc_attack_rate(match.away_team_id, train_matches) or 1.2
-        result = model.predict(h_lam, a_lam)
+        result = model.predict_from_lambda(h_lam, a_lam)
         return (
             result.home_win_probability,
             result.draw_probability,
