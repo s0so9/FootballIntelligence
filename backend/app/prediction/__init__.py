@@ -43,6 +43,8 @@ from app.prediction.logistic_regression import (
     LogisticRegressionPrediction,
     TrainingStats,
 )
+from app.prediction.form_adjusted import FormAdjustedModel
+from app.prediction.monte_carlo import MonteCarloSimulation
 from app.prediction.ensemble import (
     EnsembleModel,
     EnsemblePrediction,
@@ -137,6 +139,10 @@ __all__ = [
     "LogisticRegressionModel",
     "LogisticRegressionPrediction",
     "TrainingStats",
+    # Form Adjusted
+    "FormAdjustedModel",
+    # Monte Carlo
+    "MonteCarloSimulation",
     # Backtest
     "BacktestAggregator",
     "BacktestMetrics",

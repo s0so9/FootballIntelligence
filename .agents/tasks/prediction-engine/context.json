@@ -1,0 +1,28 @@
+{
+  "project_type": "FastAPI backend with SQLAlchemy ORM, Pydantic domain models, existing prediction/feature modules",
+  "language": "Python 3.x",
+  "build_system": "Python with pytest for testing, direct module imports, no build compilation step required",
+  "test_framework": "pytest 7.4.4 - tests located in backend/tests/ directory",
+  "build_command": "N/A - Python interpreted language",
+  "test_command": "cd c:\\FootballIntelligence\\backend && python -m pytest tests/ -v",
+  "verification_instructions": "Run pytest on relevant test files after each feature. All tests must pass. New functionality must have corresponding test coverage. Check import errors by running python -m app.prediction.engine from backend directory.",
+  "snapshot_or_generated_files": "None - no build artifacts to commit",
+  "environment_constraints": "Windows PowerShell environment. Use semicolons (;) not && for command chaining. Backend has .venv virtual environment. 651 existing passing tests must remain passing.",
+  "contribution_requirements": "Per AGENTS.md: (1) Never delete working code without reason, (2) Work in small verifiable steps, (3) Run tests after every step, (4) Never claim 'implemented' without verification, (5) Never fabricate data, (6) AI Analyst is explanation layer only, (7) Numerical engine is source of truth, (8) Represent unavailable data explicitly, (9) Update docs/PROGRESS.md after completion",
+  "key_patterns": "Existing models return dataclass predictions with probabilities. Provider abstraction in app/providers/base.py. Feature extraction in app/features/ with leakage prevention. Domain models use Pydantic with from_attributes=True. Database models use SQLAlchemy with BaseModel mixin providing id/created_at/updated_at. All models have provider_source_id + provider_id for idempotent ingestion.",
+  "relevant_files": [
+    "c:\\FootballIntelligence\\.agents\\tasks\\prediction-engine\\design.md",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\prediction.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\analysis.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\enums.py",
+    "c:\\FootballIntelligence\\backend\\app\\features\\match_features.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\poisson.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\elo.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\dixon_coles.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\ensemble.py",
+    "c:\\FootballIntelligence\\backend\\app\\database\\models.py",
+    "c:\\FootballIntelligence\\backend\\tests\\test_poisson.py",
+    "c:\\FootballIntelligence\\backend\\tests\\test_elo.py"
+  ],
+  "directory_structure": "backend/app/ contains: ai/ (AI Analyst), analysis/ (context building), api/v1/ (FastAPI routes), database/ (SQLAlchemy models + session), domain/ (Pydantic models), features/ (feature engineering with leakage prevention), ingestion/ (provider data ingestion), latency/ (instrumentation), prediction/ (existing models: poisson, elo, dixon_coles, ensemble, backtest, calibration), providers/ (data provider abstraction), utils/. Tests mirror this structure in backend/tests/."
+}

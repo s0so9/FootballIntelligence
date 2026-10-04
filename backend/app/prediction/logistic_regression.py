@@ -30,7 +30,15 @@ import math
 import random
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+
+from app.prediction.interfaces import (
+    PredictionModel,
+    ModelPrediction,
+    ModelAvailability,
+    PredictionModelMetadata,
+)
+from app.domain.enums import ModelType
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +126,7 @@ class TrainingStats:
 # Logistic Regression model
 # ---------------------------------------------------------------------------
 
-class LogisticRegressionModel:
+class LogisticRegressionModel(PredictionModel):
     """Multiclass logistic regression 1X2 model.
 
     Training uses mini-batch stochastic gradient descent with a fixed
@@ -134,6 +142,9 @@ class LogisticRegressionModel:
 
     Labels:  "home_win" | "draw" | "away_win"
     """
+
+    MODEL_ID = "logistic_regression_v1"
+    MODEL_VERSION = "1.0.0"
 
     def __init__(
         self,
@@ -286,6 +297,153 @@ class LogisticRegressionModel:
             pred.home_win_probability,
             pred.draw_probability,
             pred.away_win_probability,
+        )
+
+    # ------------------------------------------------------------------
+    # PredictionModel interface implementation
+    # ------------------------------------------------------------------
+
+    def predict(
+        self,
+        features: Dict[str, Optional[float]],
+        match_context: Optional[Dict[str, Any]] = None
+    ) -> ModelPrediction | ModelAvailability:
+        """Generate prediction using PredictionModel interface.
+
+        Args:
+            features: Feature dictionary from MatchFeatureExtractor.
+            match_context: Additional context (unused by this model).
+
+        Returns:
+            ModelPrediction with 1X2 probabilities or ModelAvailability.
+        """
+        # Check requirements
+        requirements_met, missing = self.check_requirements(features)
+        if not requirements_met:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="model_not_fitted" if not self._is_fitted else "insufficient_features",
+                missing_features=missing
+            )
+
+        # Get prediction using legacy method
+        legacy_pred = self.predict_legacy(features)
+
+        # Derive expected goals (approximation from probabilities)
+        # Use typical scoreline expectations: home ~1.4, away ~1.1 for balanced
+        # Adjust based on win probabilities
+        home_expected = 1.0 + (legacy_pred.home_win_probability * 0.8) - (legacy_pred.away_win_probability * 0.4)
+        away_expected = 1.0 + (legacy_pred.away_win_probability * 0.8) - (legacy_pred.home_win_probability * 0.4)
+
+        # Calculate confidence based on prediction certainty
+        max_prob = max(
+            legacy_pred.home_win_probability,
+            legacy_pred.draw_probability,
+            legacy_pred.away_win_probability
+        )
+        confidence = 0.5 + (max_prob - 0.333) * 0.75  # Map [0.333, 1.0] to [0.5, 1.0]
+
+        # Calculate data quality from feature availability
+        available_features = sum(1 for k in self.feature_keys if features.get(k) is not None)
+        data_quality = available_features / len(self.feature_keys)
+
+        return ModelPrediction(
+            model_id=self.MODEL_ID,
+            home_score_mean=home_expected,
+            away_score_mean=away_expected,
+            score_distribution={},  # Logistic regression doesn't produce scoreline distribution
+            home_win_prob=legacy_pred.home_win_probability,
+            draw_prob=legacy_pred.draw_probability,
+            away_win_prob=legacy_pred.away_win_probability,
+            confidence_score=confidence,
+            data_quality_score=data_quality,
+            metadata={
+                "model_type": "logistic_regression",
+                "features_used": legacy_pred.features_used,
+                "n_features": len(legacy_pred.features_used) if legacy_pred.features_used else 0,
+                "training_samples": self._training_stats.n_samples if self._training_stats else 0
+            }
+        )
+
+    def get_metadata(self) -> PredictionModelMetadata:
+        """Return model metadata.
+
+        Returns:
+            PredictionModelMetadata with model information.
+        """
+        return PredictionModelMetadata(
+            model_id=self.MODEL_ID,
+            model_type=ModelType.LOGISTIC_REGRESSION,
+            version=self.MODEL_VERSION,
+            description="Multiclass logistic regression for 1X2 prediction",
+            required_features=self.feature_keys,
+            optional_features=[],
+            min_samples_required=10  # Need at least 10 samples for meaningful training
+        )
+
+    def check_requirements(
+        self,
+        features: Dict[str, Optional[float]]
+    ) -> Tuple[bool, List[str]]:
+        """Check if required data is available.
+
+        Args:
+            features: Feature dictionary
+
+        Returns:
+            (requirements_met, missing_requirements)
+        """
+        missing = []
+
+        # Check if model is fitted
+        if not self._is_fitted:
+            missing.append("model_not_fitted")
+            return False, missing
+
+        # Check feature availability (at least 50% of features required)
+        available_features = sum(1 for k in self.feature_keys if features.get(k) is not None)
+        feature_completeness = available_features / len(self.feature_keys)
+
+        if feature_completeness < 0.5:
+            missing.append(f"insufficient_features: {available_features}/{len(self.feature_keys)} available")
+
+        return len(missing) == 0, missing
+
+    def predict_legacy(
+        self,
+        features: Dict[str, Optional[float]],
+    ) -> LogisticRegressionPrediction:
+        """Predict 1X2 probabilities from a feature dictionary (legacy method).
+
+        This is the original predict method, renamed for backward compatibility.
+
+        Args:
+            features: Feature dictionary from MatchFeatureExtractor.
+                      None values are imputed with training-set means.
+
+        Returns:
+            LogisticRegressionPrediction with normalised probabilities.
+
+        Raises:
+            RuntimeError: If model has not been fitted.
+        """
+        if not self._is_fitted:
+            raise RuntimeError(
+                "Model must be fitted before calling predict(). "
+                "Call fit() first."
+            )
+
+        x = self._extract_and_standardise(features)
+        probs = self._softmax(self._weights, x)
+
+        return LogisticRegressionPrediction(
+            home_win_probability=probs[LABEL_HOME],
+            draw_probability=probs[LABEL_DRAW],
+            away_win_probability=probs[LABEL_AWAY],
+            feature_vector=x,
+            features_used=self.feature_keys,
+            generated_at=datetime.now(),
         )
 
     # ------------------------------------------------------------------

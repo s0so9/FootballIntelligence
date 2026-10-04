@@ -79,7 +79,7 @@ class TestPoissonModel:
     def test_predict_basic(self):
         """Verify basic prediction works."""
         model = PoissonModel(max_goals=5)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         assert isinstance(prediction, PoissonPrediction)
         assert prediction.home_lambda == 1.5
@@ -91,15 +91,15 @@ class TestPoissonModel:
         model = PoissonModel()
         
         with pytest.raises(ValueError, match="home_lambda must be >= 0"):
-            model.predict(home_lambda=-1.0, away_lambda=1.0)
+            model.predict_from_lambda(home_lambda=-1.0, away_lambda=1.0)
         
         with pytest.raises(ValueError, match="away_lambda must be >= 0"):
-            model.predict(home_lambda=1.0, away_lambda=-1.0)
+            model.predict_from_lambda(home_lambda=1.0, away_lambda=-1.0)
     
     def test_goal_probabilities_length(self):
         """Verify goal probabilities have correct length."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should have probabilities for 0 to max_goals (inclusive)
         assert len(prediction.home_goal_probabilities) == 11
@@ -108,7 +108,7 @@ class TestPoissonModel:
     def test_goal_probabilities_sum(self):
         """Verify goal probabilities sum close to 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         home_sum = sum(prediction.home_goal_probabilities)
         away_sum = sum(prediction.away_goal_probabilities)
@@ -124,7 +124,7 @@ class TestScorelineMatrix:
     def test_scoreline_matrix_size(self):
         """Verify scoreline matrix has correct size."""
         model = PoissonModel(max_goals=5)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should have (max_goals+1) x (max_goals+1) entries
         assert len(prediction.scoreline_probabilities) == 36  # 6 x 6
@@ -132,7 +132,7 @@ class TestScorelineMatrix:
     def test_scoreline_matrix_sum(self):
         """Verify scoreline probabilities sum close to 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         total = sum(prediction.scoreline_probabilities.values())
         
@@ -143,7 +143,7 @@ class TestScorelineMatrix:
     def test_scoreline_independence(self):
         """Verify scoreline probabilities follow independence assumption."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # P(home=1, away=2) should equal P(home=1) * P(away=2)
         joint_prob = prediction.scoreline_probabilities[(1, 2)]
@@ -160,7 +160,7 @@ class Test1X2Probabilities:
     def test_1x2_sum_to_one(self):
         """Verify 1X2 probabilities sum close to 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=2.0, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=2.0, away_lambda=1.0)
         
         total = (prediction.home_win_probability +
                 prediction.draw_probability +
@@ -171,7 +171,7 @@ class Test1X2Probabilities:
     def test_1x2_all_valid_probabilities(self):
         """Verify all 1X2 probabilities are between 0 and 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.5)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.5)
         
         assert 0.0 <= prediction.home_win_probability <= 1.0
         assert 0.0 <= prediction.draw_probability <= 1.0
@@ -180,7 +180,7 @@ class Test1X2Probabilities:
     def test_1x2_equal_lambdas_favors_draw(self):
         """Verify equal lambdas result in symmetric probabilities."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.5)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.5)
         
         # Home and away win probabilities should be equal
         assert abs(prediction.home_win_probability - prediction.away_win_probability) < 0.01
@@ -188,7 +188,7 @@ class Test1X2Probabilities:
     def test_1x2_higher_home_lambda_favors_home(self):
         """Verify higher home lambda increases home win probability."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=2.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=2.5, away_lambda=1.0)
         
         # Home win should be more likely than away win
         assert prediction.home_win_probability > prediction.away_win_probability
@@ -201,7 +201,7 @@ class TestBTTSProbabilities:
     def test_btts_sum_to_one(self):
         """Verify BTTS probabilities sum close to 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         total = prediction.btts_yes_probability + prediction.btts_no_probability
         assert abs(total - 1.0) < 0.01
@@ -209,7 +209,7 @@ class TestBTTSProbabilities:
     def test_btts_all_valid_probabilities(self):
         """Verify BTTS probabilities are between 0 and 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         assert 0.0 <= prediction.btts_yes_probability <= 1.0
         assert 0.0 <= prediction.btts_no_probability <= 1.0
@@ -217,7 +217,7 @@ class TestBTTSProbabilities:
     def test_btts_low_lambda_favors_no(self):
         """Verify low lambdas increase BTTS No probability."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=0.5, away_lambda=0.5)
+        prediction = model.predict_from_lambda(home_lambda=0.5, away_lambda=0.5)
         
         # Low scoring match - less likely both teams score
         assert prediction.btts_no_probability > prediction.btts_yes_probability
@@ -225,7 +225,7 @@ class TestBTTSProbabilities:
     def test_btts_high_lambda_favors_yes(self):
         """Verify high lambdas increase BTTS Yes probability."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=2.5, away_lambda=2.0)
+        prediction = model.predict_from_lambda(home_lambda=2.5, away_lambda=2.0)
         
         # High scoring match - more likely both teams score
         assert prediction.btts_yes_probability > prediction.btts_no_probability
@@ -237,7 +237,7 @@ class TestOverUnderProbabilities:
     def test_over_under_common_lines(self):
         """Verify common lines are calculated."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should have standard lines
         assert 0.5 in prediction.over_under_probabilities
@@ -248,7 +248,7 @@ class TestOverUnderProbabilities:
     def test_over_under_sum_to_one(self):
         """Verify over and under probabilities sum close to 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         for line, (over_prob, under_prob) in prediction.over_under_probabilities.items():
             total = over_prob + under_prob
@@ -257,7 +257,7 @@ class TestOverUnderProbabilities:
     def test_over_under_all_valid_probabilities(self):
         """Verify all over/under probabilities are between 0 and 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         for line, (over_prob, under_prob) in prediction.over_under_probabilities.items():
             assert 0.0 <= over_prob <= 1.0
@@ -266,7 +266,7 @@ class TestOverUnderProbabilities:
     def test_over_under_low_lambda_favors_under(self):
         """Verify low total lambda favors under."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=0.8, away_lambda=0.7)
+        prediction = model.predict_from_lambda(home_lambda=0.8, away_lambda=0.7)
         
         # Total expected goals = 1.5, should favor under 2.5
         over, under = prediction.over_under_probabilities[2.5]
@@ -275,7 +275,7 @@ class TestOverUnderProbabilities:
     def test_over_under_high_lambda_favors_over(self):
         """Verify high total lambda favors over."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=2.0, away_lambda=2.0)
+        prediction = model.predict_from_lambda(home_lambda=2.0, away_lambda=2.0)
         
         # Total expected goals = 4.0, should favor over 2.5
         over, under = prediction.over_under_probabilities[2.5]
@@ -288,7 +288,7 @@ class TestCorrectScoreProbabilities:
     def test_top_scorelines_returned(self):
         """Verify top scorelines are returned."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should return top scorelines
         assert len(prediction.top_scorelines) > 0
@@ -297,7 +297,7 @@ class TestCorrectScoreProbabilities:
     def test_top_scorelines_sorted(self):
         """Verify top scorelines are sorted by probability."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should be sorted descending
         for i in range(len(prediction.top_scorelines) - 1):
@@ -308,7 +308,7 @@ class TestCorrectScoreProbabilities:
     def test_top_scoreline_probabilities_valid(self):
         """Verify top scoreline probabilities are between 0 and 1."""
         model = PoissonModel(max_goals=10)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         for scoreline, prob in prediction.top_scorelines:
             assert 0.0 <= prob <= 1.0
@@ -322,7 +322,7 @@ class TestTruncation:
     def test_probability_mass_captured_reported(self):
         """Verify probability mass captured is reported."""
         model = PoissonModel(max_goals=5)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should be less than 1.0 due to truncation
         assert 0.0 < prediction.probability_mass_captured <= 1.0
@@ -332,8 +332,8 @@ class TestTruncation:
         model_low = PoissonModel(max_goals=3)
         model_high = PoissonModel(max_goals=10)
         
-        pred_low = model_low.predict(home_lambda=3.0, away_lambda=3.0)
-        pred_high = model_high.predict(home_lambda=3.0, away_lambda=3.0)
+        pred_low = model_low.predict_from_lambda(home_lambda=3.0, away_lambda=3.0)
+        pred_high = model_high.predict_from_lambda(home_lambda=3.0, away_lambda=3.0)
         
         # Higher max_goals should capture more mass
         assert pred_high.probability_mass_captured > pred_low.probability_mass_captured
@@ -341,7 +341,7 @@ class TestTruncation:
     def test_high_max_goals_near_complete_mass(self):
         """Verify high max_goals captures nearly all probability mass."""
         model = PoissonModel(max_goals=15)
-        prediction = model.predict(home_lambda=1.5, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # Should capture >99.9% of mass
         assert prediction.probability_mass_captured > 0.999
@@ -353,7 +353,7 @@ class TestMissingAndInvalidData:
     def test_zero_lambda_valid(self):
         """Verify lambda=0 is handled correctly."""
         model = PoissonModel(max_goals=5)
-        prediction = model.predict(home_lambda=0.0, away_lambda=1.0)
+        prediction = model.predict_from_lambda(home_lambda=0.0, away_lambda=1.0)
         
         # Home should have P(0 goals) = 1.0
         assert prediction.home_goal_probabilities[0] == 1.0
@@ -381,8 +381,8 @@ class TestDeterminism:
         """Verify same inputs produce identical outputs."""
         model = PoissonModel(max_goals=10)
         
-        pred1 = model.predict(home_lambda=1.5, away_lambda=1.0)
-        pred2 = model.predict(home_lambda=1.5, away_lambda=1.0)
+        pred1 = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
+        pred2 = model.predict_from_lambda(home_lambda=1.5, away_lambda=1.0)
         
         # All probabilities should be identical
         assert pred1.home_win_probability == pred2.home_win_probability
@@ -399,7 +399,7 @@ class TestDeterminism:
         
         # Run same prediction 10 times
         predictions = [
-            model.predict(home_lambda=1.8, away_lambda=1.2)
+            model.predict_from_lambda(home_lambda=1.8, away_lambda=1.2)
             for _ in range(10)
         ]
         

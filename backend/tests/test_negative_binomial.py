@@ -60,7 +60,7 @@ class TestNBPMF:
         mu = 1.5
 
         nb_probs = [nb.nb_pmf(k, mu) for k in range(6)]
-        p_pred = pm.predict(mu, 1.0)
+        p_pred = pm.predict_from_lambda(mu, 1.0)
         # Compare NB vs Poisson for home goals only
         for k in range(4):
             poisson_p = p_pred.home_goal_probabilities[k]
@@ -130,41 +130,41 @@ class TestNBPredict:
         self.model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
 
     def test_returns_prediction_object(self):
-        result = self.model.predict(1.5, 1.1)
+        result = self.model.predict_from_lambda(1.5, 1.1)
         assert isinstance(result, NegativeBinomialPrediction)
 
     def test_lambdas_stored(self):
-        result = self.model.predict(1.5, 1.1)
+        result = self.model.predict_from_lambda(1.5, 1.1)
         assert result.home_lambda == 1.5
         assert result.away_lambda == 1.1
 
     def test_dispersion_stored(self):
-        result = self.model.predict(1.5, 1.1)
+        result = self.model.predict_from_lambda(1.5, 1.1)
         assert result.dispersion == 20.0
 
     def test_negative_lambda_raises(self):
         with pytest.raises(ValueError, match="home_lambda"):
-            self.model.predict(-0.1, 1.0)
+            self.model.predict_from_lambda(-0.1, 1.0)
         with pytest.raises(ValueError, match="away_lambda"):
-            self.model.predict(1.0, -0.1)
+            self.model.predict_from_lambda(1.0, -0.1)
 
     def test_zero_lambda_valid(self):
-        result = self.model.predict(0.0, 1.5)
+        result = self.model.predict_from_lambda(0.0, 1.5)
         assert result.home_goal_probabilities[0] == 1.0
         assert all(p < 1e-9 for p in result.home_goal_probabilities[1:])
 
     def test_goal_prob_length(self):
-        result = self.model.predict(1.5, 1.1)
+        result = self.model.predict_from_lambda(1.5, 1.1)
         assert len(result.home_goal_probabilities) == 11
         assert len(result.away_goal_probabilities) == 11
 
     def test_scoreline_matrix_size(self):
-        result = self.model.predict(1.5, 1.1)
+        result = self.model.predict_from_lambda(1.5, 1.1)
         assert len(result.scoreline_probabilities) == 121  # 11x11
 
     def test_scoreline_independence(self):
         """P(h=1, a=2) = P(home=1) * P(away=2)."""
-        result = self.model.predict(1.5, 1.1)
+        result = self.model.predict_from_lambda(1.5, 1.1)
         joint = result.scoreline_probabilities[(1, 2)]
         marginal = result.home_goal_probabilities[1] * result.away_goal_probabilities[2]
         assert abs(joint - marginal) < 1e-12
@@ -175,7 +175,7 @@ class TestNBMarkets:
 
     def setup_method(self):
         self.model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
-        self.result = self.model.predict(1.5, 1.1)
+        self.result = self.model.predict_from_lambda(1.5, 1.1)
 
     def test_1x2_sum_to_one(self):
         total = (self.result.home_win_probability +
@@ -204,20 +204,20 @@ class TestNBMarkets:
         assert self.result.probability_mass_captured > 0.95
 
     def test_higher_home_lambda_favors_home(self):
-        result = self.model.predict(3.0, 0.5)
+        result = self.model.predict_from_lambda(3.0, 0.5)
         assert result.home_win_probability > result.away_win_probability
 
     def test_equal_lambda_symmetric(self):
-        result = self.model.predict(1.5, 1.5)
+        result = self.model.predict_from_lambda(1.5, 1.5)
         assert abs(result.home_win_probability - result.away_win_probability) < 0.01
 
     def test_low_lambda_favors_under(self):
-        result = self.model.predict(0.5, 0.5)
+        result = self.model.predict_from_lambda(0.5, 0.5)
         over, under = result.over_under_probabilities[2.5]
         assert under > over
 
     def test_high_lambda_favors_over(self):
-        result = self.model.predict(3.0, 3.0)
+        result = self.model.predict_from_lambda(3.0, 3.0)
         over, under = result.over_under_probabilities[2.5]
         assert over > under
 
@@ -227,8 +227,8 @@ class TestNBDeterminism:
 
     def test_same_inputs_same_outputs(self):
         m = NegativeBinomialModel(dispersion=15.0, max_goals=10)
-        r1 = m.predict(1.5, 1.1)
-        r2 = m.predict(1.5, 1.1)
+        r1 = m.predict_from_lambda(1.5, 1.1)
+        r2 = m.predict_from_lambda(1.5, 1.1)
         assert r1.home_win_probability == r2.home_win_probability
         assert r1.draw_probability == r2.draw_probability
         assert r1.away_win_probability == r2.away_win_probability
@@ -238,8 +238,8 @@ class TestNBDeterminism:
         """Different dispersion must produce different probabilities."""
         m_low = NegativeBinomialModel(dispersion=2.0)
         m_high = NegativeBinomialModel(dispersion=100.0)
-        r_low = m_low.predict(1.5, 1.1)
-        r_high = m_high.predict(1.5, 1.1)
+        r_low = m_low.predict_from_lambda(1.5, 1.1)
+        r_high = m_high.predict_from_lambda(1.5, 1.1)
         # They should differ (overdispersion effect)
         assert r_low.draw_probability != r_high.draw_probability
 
@@ -249,7 +249,7 @@ class TestNBEnsembleCompatibility:
 
     def test_can_create_model_prediction_input(self):
         m = NegativeBinomialModel()
-        result = m.predict(1.5, 1.1)
+        result = m.predict_from_lambda(1.5, 1.1)
         inp = ModelPredictionInput(
             model_id="nb_v1",
             model_type=ModelType.NEGATIVE_BINOMIAL,
@@ -269,8 +269,8 @@ class TestNBEnsembleCompatibility:
         pm = PoissonModel(max_goals=10)
         nb = NegativeBinomialModel(dispersion=20.0)
 
-        pr = pm.predict(1.5, 1.1)
-        nr = nb.predict(1.5, 1.1)
+        pr = pm.predict_from_lambda(1.5, 1.1)
+        nr = nb.predict_from_lambda(1.5, 1.1)
 
         ensemble = EnsembleModel(weights={"poisson": 0.6, "nb": 0.4})
         result = ensemble.predict([

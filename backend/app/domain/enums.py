@@ -60,6 +60,7 @@ class ModelType(str, Enum):
     DIXON_COLES = "dixon_coles"
     ELO = "elo"
     LOGISTIC_REGRESSION = "logistic_regression"
+    FORM_ADJUSTED = "form_adjusted"
     RANDOM_FOREST = "random_forest"
     GRADIENT_BOOSTING = "gradient_boosting"
     NEURAL_NETWORK = "neural_network"

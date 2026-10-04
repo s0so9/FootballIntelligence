@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Implement ensemble engine, calibration engine, confidence engine, and contextual adjustments (player impact, tactical matchup) per design.md sections 6-7",
+  "status": "pending",
+  "steps": [
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\ensemble_engine.py with EnsembleEngine class per design.md section 6 - combines multiple ModelPredictions with configurable weighting strategies",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\calibration_engine.py with CalibrationEngine class per design.md section 10 - isotonic regression calibration using historical predictions",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\confidence_engine.py with ConfidenceEngine class per design.md section 11 - assesses confidence from data quality, model agreement, historical accuracy",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\player_impact.py with PlayerImpactEngine per design.md section 12 - calculates lineup impact on predictions",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\tactical_matchup.py with TacticalMatchupEngine per design.md section 13 - analyzes tactical advantages",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\contextual_adjuster.py combining player impact + tactical adjustments into final prediction",
+    "Create comprehensive tests: test_ensemble_engine.py, test_calibration_engine.py, test_confidence_engine.py, test_player_impact.py, test_tactical_matchup.py",
+    "Run pytest tests/test_ensemble_engine.py tests/test_calibration_engine.py tests/test_confidence_engine.py tests/test_player_impact.py tests/test_tactical_matchup.py -v"
+  ],
+  "acceptance_criteria": [
+    "EnsembleEngine combines predictions with static, reliability-based, and performance-based weighting",
+    "EnsembleEngine calculates model agreement metrics correctly",
+    "CalibrationEngine fits isotonic regression on historical predictions and calibrates new predictions",
+    "ConfidenceEngine produces confidence scores [0-1] from multiple factors",
+    "PlayerImpactEngine adjusts xG based on confirmed lineup changes (never fabricates player data)",
+    "TacticalMatchupEngine identifies advantages from structured features (never invents tactical analysis)",
+    "All engines handle missing/insufficient data gracefully",
+    "Test coverage >85% for all 6 new engine modules"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_ensemble_engine.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_calibration_engine.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_confidence_engine.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_player_impact.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_tactical_matchup.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/ --tb=short (all tests pass)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

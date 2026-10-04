@@ -37,9 +37,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
 
 from app.prediction.poisson import PoissonModel, PoissonPrediction
+from app.prediction.interfaces import (
+    PredictionModel,
+    ModelPrediction,
+    ModelAvailability,
+    PredictionModelMetadata,
+)
+from app.domain.enums import ModelType
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +113,7 @@ class DixonColesPrediction:
 # Dixon-Coles model
 # ---------------------------------------------------------------------------
 
-class DixonColesModel:
+class DixonColesModel(PredictionModel):
     """Apply Dixon-Coles correlation adjustment to a Poisson prediction.
 
     This model layers on top of the existing PoissonModel and adjusts the
@@ -125,6 +133,9 @@ class DixonColesModel:
 
     DEFAULT_RHO = -0.13
     """Default rho value based on Dixon & Coles (1997) empirical estimate."""
+    
+    MODEL_ID = "dixon_coles_v1"
+    MODEL_VERSION = "1.0.0"
 
     def __init__(
         self,
@@ -149,116 +160,6 @@ class DixonColesModel:
 
         self.rho = rho
         self.poisson_model = poisson_model or PoissonModel(max_goals=10)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def predict(
-        self,
-        home_lambda: float,
-        away_lambda: float,
-    ) -> DixonColesPrediction:
-        """Generate a Dixon-Coles adjusted prediction.
-
-        Args:
-            home_lambda: Expected goals for home team (>= 0).
-            away_lambda: Expected goals for away team (>= 0).
-
-        Returns:
-            DixonColesPrediction with both raw Poisson and adjusted outputs.
-
-        Raises:
-            ValueError: If lambda values are invalid.
-        """
-        if home_lambda < 0:
-            raise ValueError(f"home_lambda must be >= 0, got {home_lambda}")
-        if away_lambda < 0:
-            raise ValueError(f"away_lambda must be >= 0, got {away_lambda}")
-
-        # Step 1: base Poisson prediction
-        poisson_pred = self.poisson_model.predict(
-            home_lambda=home_lambda,
-            away_lambda=away_lambda,
-        )
-
-        # Step 2: compute correction factors
-        adjustment = self._compute_adjustment(home_lambda, away_lambda)
-
-        # Step 3: apply correction to scoreline probabilities
-        adjusted_probs = self._apply_adjustment(
-            poisson_pred.scoreline_probabilities,
-            adjustment,
-        )
-
-        # Step 4: renormalise
-        adjusted_probs = self._normalise(adjusted_probs)
-
-        # Step 5: derive market probabilities from adjusted distribution
-        home_win, draw, away_win = self._calculate_1x2(adjusted_probs)
-        btts_yes, btts_no = self._calculate_btts(adjusted_probs)
-        over_under = self._calculate_over_under(adjusted_probs)
-        top_scorelines = self._get_top_scorelines(adjusted_probs, n=10)
-        mass_captured = sum(adjusted_probs.values())
-
-        return DixonColesPrediction(
-            poisson_prediction=poisson_pred,
-            adjustment=adjustment,
-            adjusted_scoreline_probabilities=adjusted_probs,
-            home_win_probability=home_win,
-            draw_probability=draw,
-            away_win_probability=away_win,
-            btts_yes_probability=btts_yes,
-            btts_no_probability=btts_no,
-            over_under_probabilities=over_under,
-            top_scorelines=top_scorelines,
-            probability_mass_captured=mass_captured,
-        )
-
-    def predict_from_poisson(
-        self,
-        poisson_prediction: PoissonPrediction,
-    ) -> DixonColesPrediction:
-        """Apply Dixon-Coles adjustment to an existing PoissonPrediction.
-
-        This allows reuse of a pre-computed Poisson prediction, avoiding
-        redundant calculations.
-
-        Args:
-            poisson_prediction: Pre-computed Poisson prediction.
-
-        Returns:
-            DixonColesPrediction with adjusted probabilities.
-        """
-        home_lambda = poisson_prediction.home_lambda
-        away_lambda = poisson_prediction.away_lambda
-
-        adjustment = self._compute_adjustment(home_lambda, away_lambda)
-        adjusted_probs = self._apply_adjustment(
-            poisson_prediction.scoreline_probabilities,
-            adjustment,
-        )
-        adjusted_probs = self._normalise(adjusted_probs)
-
-        home_win, draw, away_win = self._calculate_1x2(adjusted_probs)
-        btts_yes, btts_no = self._calculate_btts(adjusted_probs)
-        over_under = self._calculate_over_under(adjusted_probs)
-        top_scorelines = self._get_top_scorelines(adjusted_probs, n=10)
-        mass_captured = sum(adjusted_probs.values())
-
-        return DixonColesPrediction(
-            poisson_prediction=poisson_prediction,
-            adjustment=adjustment,
-            adjusted_scoreline_probabilities=adjusted_probs,
-            home_win_probability=home_win,
-            draw_probability=draw,
-            away_win_probability=away_win,
-            btts_yes_probability=btts_yes,
-            btts_no_probability=btts_no,
-            over_under_probabilities=over_under,
-            top_scorelines=top_scorelines,
-            probability_mass_captured=mass_captured,
-        )
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -390,3 +291,243 @@ class DixonColesModel:
             key=lambda x: x[1],
             reverse=True,
         )[:n]
+
+    # ------------------------------------------------------------------
+    # PredictionModel Interface Implementation
+    # ------------------------------------------------------------------
+
+    def predict(
+        self,
+        features: Dict[str, Optional[float]],
+        match_context: Optional[Dict[str, Any]] = None
+    ) -> ModelPrediction | ModelAvailability:
+        """Generate prediction using the PredictionModel interface.
+
+        Args:
+            features: Feature dictionary from MatchFeatureExtractor
+            match_context: Additional context (optional)
+
+        Returns:
+            ModelPrediction if successful, ModelAvailability if unable to predict
+        """
+        # Check requirements (same as Poisson - we need attack/defense strength)
+        requirements_met, missing = self.check_requirements(features)
+        if not requirements_met:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="insufficient_data",
+                missing_features=missing
+            )
+
+        # Extract lambda values from features
+        home_lambda = features.get("home_goals_scored_avg", 0.0) or 0.0
+        away_lambda = features.get("away_goals_scored_avg", 0.0) or 0.0
+
+        # Adjust based on opponent defense if available
+        if features.get("away_goals_conceded_avg"):
+            home_lambda *= (features["away_goals_conceded_avg"] / 1.0)
+        if features.get("home_goals_conceded_avg"):
+            away_lambda *= (features["home_goals_conceded_avg"] / 1.0)
+
+        if home_lambda < 0 or away_lambda < 0:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="invalid_features",
+                missing_features=[]
+            )
+
+        # Generate Dixon-Coles prediction using legacy method
+        dc_pred = self.predict_from_lambda(home_lambda, away_lambda)
+
+        # Convert to ModelPrediction
+        score_dist = {
+            (h, a): prob
+            for (h, a), prob in dc_pred.adjusted_scoreline_probabilities.items()
+        }
+
+        return ModelPrediction(
+            model_id=self.MODEL_ID,
+            home_score_mean=home_lambda,
+            away_score_mean=away_lambda,
+            score_distribution=score_dist,
+            home_win_prob=dc_pred.home_win_probability,
+            draw_prob=dc_pred.draw_probability,
+            away_win_prob=dc_pred.away_win_probability,
+            confidence_score=self._calculate_confidence(features),
+            data_quality_score=self._calculate_data_quality(features),
+            metadata={
+                "rho": self.rho,
+                "adjustment_tau_00": dc_pred.adjustment.tau_00,
+                "adjustment_tau_10": dc_pred.adjustment.tau_10,
+                "adjustment_tau_01": dc_pred.adjustment.tau_01,
+                "adjustment_tau_11": dc_pred.adjustment.tau_11,
+                "probability_mass_captured": dc_pred.probability_mass_captured
+            }
+        )
+
+    def get_metadata(self) -> PredictionModelMetadata:
+        """Return model metadata."""
+        return PredictionModelMetadata(
+            model_id=self.MODEL_ID,
+            model_type=ModelType.DIXON_COLES,
+            version=self.MODEL_VERSION,
+            description="Dixon-Coles adjustment for low-score correlation",
+            required_features=["home_goals_scored_avg", "away_goals_scored_avg"],
+            optional_features=["home_goals_conceded_avg", "away_goals_conceded_avg"],
+            min_samples_required=5
+        )
+
+    def check_requirements(
+        self, 
+        features: Dict[str, Optional[float]]
+    ) -> Tuple[bool, List[str]]:
+        """Check if required data is available."""
+        required = ["home_goals_scored_avg", "away_goals_scored_avg"]
+        missing = [f for f in required if features.get(f) is None]
+        return (len(missing) == 0, missing)
+
+    def _calculate_confidence(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate confidence score."""
+        confidence = 0.75  # Base confidence slightly higher due to adjustment
+        if features.get("home_goals_conceded_avg") is not None:
+            confidence += 0.1
+        if features.get("away_goals_conceded_avg") is not None:
+            confidence += 0.1
+        if features.get("home_match_count", 0) >= 10:
+            confidence += 0.025
+        if features.get("away_match_count", 0) >= 10:
+            confidence += 0.025
+        return min(1.0, confidence)
+
+    def _calculate_data_quality(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate data quality score."""
+        total_features = 4
+        available = sum(
+            1 for f in [
+                "home_goals_scored_avg",
+                "away_goals_scored_avg",
+                "home_goals_conceded_avg",
+                "away_goals_conceded_avg"
+            ]
+            if features.get(f) is not None
+        )
+        return available / total_features
+
+    # Legacy interface for backward compatibility
+    def predict_from_lambda(
+        self,
+        home_lambda: float,
+        away_lambda: float,
+    ) -> DixonColesPrediction:
+        """Apply Dixon-Coles adjustment to prediction (legacy interface).
+        
+        This method preserves the original interface for backward compatibility.
+        
+        Args:
+            home_lambda: Expected goals for home team (>= 0).
+            away_lambda: Expected goals for away team (>= 0).
+
+        Returns:
+            DixonColesPrediction with adjusted probabilities.
+
+        Raises:
+            ValueError: If lambda values are invalid.
+        """
+        return self._predict_internal(home_lambda, away_lambda)
+
+    def predict_from_poisson(
+        self,
+        poisson_prediction: PoissonPrediction,
+    ) -> DixonColesPrediction:
+        """Apply Dixon-Coles adjustment to an existing PoissonPrediction.
+
+        This allows reuse of a pre-computed Poisson prediction, avoiding
+        redundant calculations.
+
+        Args:
+            poisson_prediction: Pre-computed Poisson prediction.
+
+        Returns:
+            DixonColesPrediction with adjusted probabilities.
+        """
+        home_lambda = poisson_prediction.home_lambda
+        away_lambda = poisson_prediction.away_lambda
+
+        adjustment = self._compute_adjustment(home_lambda, away_lambda)
+        adjusted_probs = self._apply_adjustment(
+            poisson_prediction.scoreline_probabilities,
+            adjustment,
+        )
+        adjusted_probs = self._normalise(adjusted_probs)
+
+        home_win, draw, away_win = self._calculate_1x2(adjusted_probs)
+        btts_yes, btts_no = self._calculate_btts(adjusted_probs)
+        over_under = self._calculate_over_under(adjusted_probs)
+        top_scorelines = self._get_top_scorelines(adjusted_probs, n=10)
+        mass_captured = sum(adjusted_probs.values())
+
+        return DixonColesPrediction(
+            poisson_prediction=poisson_prediction,
+            adjustment=adjustment,
+            adjusted_scoreline_probabilities=adjusted_probs,
+            home_win_probability=home_win,
+            draw_probability=draw,
+            away_win_probability=away_win,
+            btts_yes_probability=btts_yes,
+            btts_no_probability=btts_no,
+            over_under_probabilities=over_under,
+            top_scorelines=top_scorelines,
+            probability_mass_captured=mass_captured,
+        )
+
+    def _predict_internal(
+        self,
+        home_lambda: float,
+        away_lambda: float,
+    ) -> DixonColesPrediction:
+        """Internal prediction method."""
+        if home_lambda < 0:
+            raise ValueError(f"home_lambda must be >= 0, got {home_lambda}")
+        if away_lambda < 0:
+            raise ValueError(f"away_lambda must be >= 0, got {away_lambda}")
+
+        # Step 1: base Poisson prediction
+        poisson_pred = self.poisson_model.predict_from_lambda(
+            home_lambda=home_lambda,
+            away_lambda=away_lambda,
+        )
+
+        # Step 2: compute correction factors
+        adjustment = self._compute_adjustment(home_lambda, away_lambda)
+
+        # Step 3: apply correction to scoreline probabilities
+        adjusted_probs = self._apply_adjustment(
+            poisson_pred.scoreline_probabilities,
+            adjustment,
+        )
+
+        # Step 4: renormalise
+        adjusted_probs = self._normalise(adjusted_probs)
+
+        # Step 5: derive market probabilities from adjusted distribution
+        home_win, draw, away_win = self._calculate_1x2(adjusted_probs)
+        btts_yes, btts_no = self._calculate_btts(adjusted_probs)
+        over_under = self._calculate_over_under(adjusted_probs)
+        top_scorelines = self._get_top_scorelines(adjusted_probs, n=10)
+        mass_captured = sum(adjusted_probs.values())
+
+        return DixonColesPrediction(
+            poisson_prediction=poisson_pred,
+            adjustment=adjustment,
+            adjusted_scoreline_probabilities=adjusted_probs,
+            home_win_probability=home_win,
+            draw_probability=draw,
+            away_win_probability=away_win,
+            btts_yes_probability=btts_yes,
+            btts_no_probability=btts_no,
+            over_under_probabilities=over_under,
+            top_scorelines=top_scorelines,
+            probability_mass_captured=mass_captured,
+        )

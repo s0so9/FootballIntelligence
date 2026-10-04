@@ -1,0 +1,13 @@
+{
+  "task_id": "task-prediction-engine",
+  "task_description": "Implement the MENSIONE Prediction Engine Core - a production-grade multi-model ensemble prediction system that generates football match predictions from real data",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004",
+    "FEAT-005"
+  ],
+  "blocked_reason": null
+}

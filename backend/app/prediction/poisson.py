@@ -16,8 +16,17 @@ The model calculates:
 """
 
 import math
-from typing import Dict, Tuple, Optional, List
+from datetime import datetime
+from typing import Dict, Tuple, Optional, List, Any
 from dataclasses import dataclass
+
+from app.prediction.interfaces import (
+    PredictionModel,
+    ModelPrediction,
+    ModelAvailability,
+    PredictionModelMetadata,
+)
+from app.domain.enums import ModelType
 
 
 @dataclass
@@ -52,7 +61,7 @@ class PoissonPrediction:
     probability_mass_captured: float
 
 
-class PoissonModel:
+class PoissonModel(PredictionModel):
     """Poisson-based football prediction model.
     
     This model assumes:
@@ -65,6 +74,9 @@ class PoissonModel:
     - Does not account for correlation in low-scoring matches
     - Truncates distribution at max_goals
     """
+    
+    MODEL_ID = "poisson_v1"
+    MODEL_VERSION = "1.0.0"
     
     def __init__(self, max_goals: int = 10):
         """Initialize Poisson model.
@@ -81,12 +93,16 @@ class PoissonModel:
         
         self.max_goals = max_goals
     
-    def predict(
+    # Backward compatibility: keep the original predict method for existing code
+    def predict_from_lambda(
         self,
         home_lambda: float,
         away_lambda: float,
     ) -> PoissonPrediction:
-        """Generate prediction for a match using Poisson model.
+        """Generate prediction for a match using Poisson model (legacy interface).
+        
+        This method preserves the original interface for backward compatibility.
+        New code should use the predict() method with features dict.
         
         Args:
             home_lambda: Expected goals for home team (must be >= 0)
@@ -98,46 +114,7 @@ class PoissonModel:
         Raises:
             ValueError: If lambda values are invalid
         """
-        # Validate inputs
-        if home_lambda < 0:
-            raise ValueError(f"home_lambda must be >= 0, got {home_lambda}")
-        if away_lambda < 0:
-            raise ValueError(f"away_lambda must be >= 0, got {away_lambda}")
-        
-        # Calculate goal probabilities for each team
-        home_probs = self._calculate_goal_probabilities(home_lambda)
-        away_probs = self._calculate_goal_probabilities(away_lambda)
-        
-        # Calculate scoreline matrix
-        scoreline_probs = self._calculate_scoreline_probabilities(home_probs, away_probs)
-        
-        # Calculate market probabilities
-        home_win, draw, away_win = self._calculate_1x2_probabilities(scoreline_probs)
-        btts_yes, btts_no = self._calculate_btts_probabilities(scoreline_probs)
-        over_under = self._calculate_over_under_probabilities(scoreline_probs)
-        
-        # Get top scorelines
-        top_scorelines = self._get_top_scorelines(scoreline_probs, n=10)
-        
-        # Calculate probability mass captured
-        total_prob = sum(scoreline_probs.values())
-        
-        return PoissonPrediction(
-            home_lambda=home_lambda,
-            away_lambda=away_lambda,
-            max_goals=self.max_goals,
-            home_goal_probabilities=home_probs,
-            away_goal_probabilities=away_probs,
-            scoreline_probabilities=scoreline_probs,
-            home_win_probability=home_win,
-            draw_probability=draw,
-            away_win_probability=away_win,
-            btts_yes_probability=btts_yes,
-            btts_no_probability=btts_no,
-            over_under_probabilities=over_under,
-            top_scorelines=top_scorelines,
-            probability_mass_captured=total_prob,
-        )
+        return self._predict_internal(home_lambda, away_lambda)
     
     def _calculate_goal_probabilities(self, lambda_: float) -> List[float]:
         """Calculate Poisson probability mass function for 0 to max_goals.
@@ -351,3 +328,227 @@ class PoissonModel:
             lambda_ *= opponent_defense_strength
         
         return max(0.0, lambda_)  # Ensure non-negative
+
+    # ========================================================================
+    # PredictionModel Interface Implementation
+    # ========================================================================
+
+    def predict(
+        self,
+        features: Dict[str, Optional[float]],
+        match_context: Optional[Dict[str, Any]] = None
+    ) -> ModelPrediction | ModelAvailability:
+        """Generate prediction using the PredictionModel interface.
+
+        Args:
+            features: Feature dictionary from MatchFeatureExtractor
+            match_context: Additional context (optional, not used by Poisson)
+
+        Returns:
+            ModelPrediction if successful, ModelAvailability if unable to predict
+        """
+        # Check requirements
+        requirements_met, missing = self.check_requirements(features)
+        if not requirements_met:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="insufficient_data",
+                missing_features=missing
+            )
+
+        # Extract lambda values from features
+        home_lambda = features.get("home_goals_scored_avg", 0.0) or 0.0
+        away_lambda = features.get("away_goals_scored_avg", 0.0) or 0.0
+
+        # Adjust based on opponent defense if available
+        if features.get("away_goals_conceded_avg"):
+            home_lambda *= (features["away_goals_conceded_avg"] / 1.0)  # Normalize
+        if features.get("home_goals_conceded_avg"):
+            away_lambda *= (features["home_goals_conceded_avg"] / 1.0)  # Normalize
+
+        # Validate lambdas
+        if home_lambda < 0 or away_lambda < 0:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="invalid_features",
+                missing_features=[]
+            )
+
+        # Generate prediction using existing internal method
+        poisson_pred = self._predict_internal(home_lambda, away_lambda)
+
+        # Convert to ModelPrediction
+        # Build score distribution dict
+        score_dist = {
+            (h, a): prob
+            for (h, a), prob in poisson_pred.scoreline_probabilities.items()
+        }
+
+        return ModelPrediction(
+            model_id=self.MODEL_ID,
+            home_score_mean=home_lambda,
+            away_score_mean=away_lambda,
+            score_distribution=score_dist,
+            home_win_prob=poisson_pred.home_win_probability,
+            draw_prob=poisson_pred.draw_probability,
+            away_win_prob=poisson_pred.away_win_probability,
+            confidence_score=self._calculate_confidence(features),
+            data_quality_score=self._calculate_data_quality(features),
+            metadata={
+                "max_goals": self.max_goals,
+                "probability_mass_captured": poisson_pred.probability_mass_captured,
+                "top_scorelines": [
+                    {"scoreline": f"{h}-{a}", "probability": p}
+                    for (h, a), p in poisson_pred.top_scorelines[:5]
+                ]
+            }
+        )
+
+    def get_metadata(self) -> PredictionModelMetadata:
+        """Return model metadata.
+
+        Returns:
+            PredictionModelMetadata with model information
+        """
+        return PredictionModelMetadata(
+            model_id=self.MODEL_ID,
+            model_type=ModelType.POISSON,
+            version=self.MODEL_VERSION,
+            description="Independent Poisson distribution for home and away goals",
+            required_features=[
+                "home_goals_scored_avg",
+                "away_goals_scored_avg"
+            ],
+            optional_features=[
+                "home_goals_conceded_avg",
+                "away_goals_conceded_avg"
+            ],
+            min_samples_required=5
+        )
+
+    def check_requirements(
+        self, 
+        features: Dict[str, Optional[float]]
+    ) -> Tuple[bool, List[str]]:
+        """Check if required data is available.
+
+        Args:
+            features: Feature dictionary
+
+        Returns:
+            (requirements_met, missing_requirements)
+        """
+        required = ["home_goals_scored_avg", "away_goals_scored_avg"]
+        missing = [f for f in required if features.get(f) is None]
+        
+        return (len(missing) == 0, missing)
+
+    def _calculate_confidence(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate confidence score based on data availability.
+
+        Args:
+            features: Feature dictionary
+
+        Returns:
+            Confidence score between 0.0 and 1.0
+        """
+        # Base confidence
+        confidence = 0.7
+
+        # Increase if defense features available
+        if features.get("home_goals_conceded_avg") is not None:
+            confidence += 0.1
+        if features.get("away_goals_conceded_avg") is not None:
+            confidence += 0.1
+
+        # Increase if additional context available
+        if features.get("home_match_count", 0) >= 10:
+            confidence += 0.05
+        if features.get("away_match_count", 0) >= 10:
+            confidence += 0.05
+
+        return min(1.0, confidence)
+
+    def _calculate_data_quality(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate data quality score.
+
+        Args:
+            features: Feature dictionary
+
+        Returns:
+            Data quality score between 0.0 and 1.0
+        """
+        total_features = 4  # Core features we look for
+        available = sum(
+            1 for f in [
+                "home_goals_scored_avg",
+                "away_goals_scored_avg",
+                "home_goals_conceded_avg",
+                "away_goals_conceded_avg"
+            ]
+            if features.get(f) is not None
+        )
+
+        return available / total_features
+
+    def _predict_internal(
+        self,
+        home_lambda: float,
+        away_lambda: float,
+    ) -> PoissonPrediction:
+        """Internal prediction method (preserves backward compatibility).
+        
+        This is the original predict() method, renamed for internal use.
+        
+        Args:
+            home_lambda: Expected goals for home team (must be >= 0)
+            away_lambda: Expected goals for away team (must be >= 0)
+        
+        Returns:
+            PoissonPrediction with all probabilities
+        
+        Raises:
+            ValueError: If lambda values are invalid
+        """
+        # Validate inputs
+        if home_lambda < 0:
+            raise ValueError(f"home_lambda must be >= 0, got {home_lambda}")
+        if away_lambda < 0:
+            raise ValueError(f"away_lambda must be >= 0, got {away_lambda}")
+        
+        # Calculate goal probabilities for each team
+        home_probs = self._calculate_goal_probabilities(home_lambda)
+        away_probs = self._calculate_goal_probabilities(away_lambda)
+        
+        # Calculate scoreline matrix
+        scoreline_probs = self._calculate_scoreline_probabilities(home_probs, away_probs)
+        
+        # Calculate market probabilities
+        home_win, draw, away_win = self._calculate_1x2_probabilities(scoreline_probs)
+        btts_yes, btts_no = self._calculate_btts_probabilities(scoreline_probs)
+        over_under = self._calculate_over_under_probabilities(scoreline_probs)
+        
+        # Get top scorelines
+        top_scorelines = self._get_top_scorelines(scoreline_probs, n=10)
+        
+        # Calculate probability mass captured
+        total_prob = sum(scoreline_probs.values())
+        
+        return PoissonPrediction(
+            home_lambda=home_lambda,
+            away_lambda=away_lambda,
+            max_goals=self.max_goals,
+            home_goal_probabilities=home_probs,
+            away_goal_probabilities=away_probs,
+            scoreline_probabilities=scoreline_probs,
+            home_win_probability=home_win,
+            draw_probability=draw,
+            away_win_probability=away_win,
+            btts_yes_probability=btts_yes,
+            btts_no_probability=btts_no,
+            over_under_probabilities=over_under,
+            top_scorelines=top_scorelines,
+            probability_mass_captured=total_prob,
+        )

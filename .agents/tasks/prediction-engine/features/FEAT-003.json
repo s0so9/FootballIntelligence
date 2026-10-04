@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement new specialized models: Form-Adjusted Model, Logistic Regression Model, and Monte Carlo Simulation per design.md sections 5.7-5.9",
+  "status": "pending",
+  "steps": [
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\form_adjusted.py implementing FormAdjustedModel per design.md section 5.7 - uses time-decayed form features to adjust Poisson lambdas",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\monte_carlo.py implementing MonteCarloSimulation per design.md section 5.9 - generates match outcome distribution through repeated simulation",
+    "Refactor c:\\FootballIntelligence\\backend\\app\\prediction\\logistic_regression.py to implement PredictionModel interface per design.md section 5.8",
+    "Register all 3 new models in model_registry.py with proper metadata",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_form_adjusted.py testing form weight calculations, time decay, insufficient data handling",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_monte_carlo.py testing simulation convergence, deterministic seeding, probability distribution",
+    "Update c:\\FootballIntelligence\\backend\\tests\\test_logistic_regression.py to test new interface",
+    "Run pytest tests/test_form_adjusted.py tests/test_monte_carlo.py tests/test_logistic_regression.py -v"
+  ],
+  "acceptance_criteria": [
+    "FormAdjustedModel correctly applies time-decayed form weights to base predictions",
+    "MonteCarloSimulation produces stable probability distributions (10000+ iterations)",
+    "LogisticRegression properly handles missing features and returns ModelAvailability when insufficient",
+    "All 3 models return ModelAvailability (not exceptions or fake data) when data insufficient",
+    "All 3 models expose proper metadata via get_metadata()",
+    "Models registered in ModelRegistry and retrievable by ID",
+    "Test coverage >85% for all 3 new model files"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_form_adjusted.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_monte_carlo.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_logistic_regression.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/ --tb=short (all tests pass)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

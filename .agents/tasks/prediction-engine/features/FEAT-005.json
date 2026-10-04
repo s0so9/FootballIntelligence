@@ -1,0 +1,41 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Implement prediction engine orchestrator, market derivation, MENSIONE pick generation, prediction versioning, database persistence, and AnalysisContext enrichment",
+  "status": "pending",
+  "steps": [
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\market_derivation.py with MarketDerivationEngine per design.md section 14 - derives all markets from score distribution",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\mensione_pick.py with MensionePickGenerator per design.md section 15 - ranks markets by EV and generates recommended pick",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\engine.py with PredictionEngine orchestrator class per design.md section 16 - coordinates entire prediction pipeline",
+    "Add prediction versioning to c:\\FootballIntelligence\\backend\\app\\database\\models.py: PredictionVersion, PredictionRun tables per design.md section 17",
+    "Create Alembic migration for new prediction_versions and prediction_runs tables",
+    "Create c:\\FootballIntelligence\\backend\\app\\prediction\\persistence.py with PredictionPersistenceService for database storage",
+    "Update c:\\FootballIntelligence\\backend\\app\\analysis\\context.py to enrich AnalysisContext with prediction engine outputs (maintain backward compatibility)",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_prediction_engine.py testing full end-to-end pipeline with real features",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_market_derivation.py",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_mensione_pick.py",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_prediction_persistence.py",
+    "Run full test suite: pytest tests/ -v"
+  ],
+  "acceptance_criteria": [
+    "PredictionEngine.generate_prediction() executes full pipeline: data quality → models → ensemble → calibration → confidence → markets → pick",
+    "MarketDerivationEngine correctly derives all markets (1X2, O/U, BTTS, correct score) from scoreline distribution",
+    "MensionePickGenerator ranks markets and applies confidence thresholds correctly",
+    "Predictions persist to database with versioning metadata",
+    "AnalysisContext enrichment maintains backward compatibility (all existing fields preserved)",
+    "Engine handles partial model availability gracefully (some models unavailable OK)",
+    "Engine returns explicit PredictionUnavailable when critical data missing",
+    "Full integration test passes: match → features → prediction → markets → database → AnalysisContext",
+    "All tests pass including original 651 tests"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_prediction_engine.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_market_derivation.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_mensione_pick.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_prediction_persistence.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/ -v --tb=line (full test suite passes)",
+    "cd c:\\FootballIntelligence\\backend && python -c 'from app.prediction.engine import PredictionEngine; print(PredictionEngine)' (verify imports work)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

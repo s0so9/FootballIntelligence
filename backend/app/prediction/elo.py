@@ -28,7 +28,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+
+from app.prediction.interfaces import (
+    PredictionModel,
+    ModelPrediction,
+    ModelAvailability,
+    PredictionModelMetadata,
+)
+from app.domain.enums import ModelType
 
 
 # ---------------------------------------------------------------------------
@@ -493,3 +501,219 @@ class EloRatingSystem:
             home_advantage=self.home_advantage,
             generated_at=datetime.now(),
         )
+
+
+# ---------------------------------------------------------------------------
+# PredictionModel interface wrapper
+# ---------------------------------------------------------------------------
+
+class EloModel(PredictionModel):
+    """Elo prediction model implementing PredictionModel interface.
+    
+    This wraps the EloRatingSystem to provide the standard prediction interface.
+    The Elo ratings must be maintained externally and passed via features.
+    """
+    
+    MODEL_ID = "elo_v1"
+    MODEL_VERSION = "1.0.0"
+    
+    def __init__(
+        self,
+        k_factor: float = 32.0,
+        initial_rating: float = 1500.0,
+        home_advantage: float = 100.0,
+    ):
+        """Initialize Elo model.
+        
+        Args:
+            k_factor: Rating sensitivity
+            initial_rating: Starting rating for unknown teams
+            home_advantage: Elo points added to home team for prediction
+        """
+        self.rating_system = EloRatingSystem(
+            k_factor=k_factor,
+            initial_rating=initial_rating,
+            home_advantage=home_advantage
+        )
+    
+    def predict(
+        self,
+        features: Dict[str, Optional[float]],
+        match_context: Optional[Dict[str, Any]] = None
+    ) -> ModelPrediction | ModelAvailability:
+        """Generate prediction using Elo ratings.
+        
+        Args:
+            features: Feature dictionary (expects elo_home, elo_away)
+            match_context: Additional context with home_team_id, away_team_id
+        
+        Returns:
+            ModelPrediction if successful, ModelAvailability if unable to predict
+        """
+        # Check requirements
+        requirements_met, missing = self.check_requirements(features)
+        if not requirements_met:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="insufficient_data",
+                missing_features=missing
+            )
+        
+        # Get Elo ratings from features or match context
+        home_rating = features.get("elo_home")
+        away_rating = features.get("elo_away")
+        
+        # If not in features, try to get from rating system using team IDs
+        if home_rating is None or away_rating is None:
+            if not match_context or "home_team_id" not in match_context or "away_team_id" not in match_context:
+                return ModelAvailability(
+                    model_id=self.MODEL_ID,
+                    available=False,
+                    reason="missing_team_ratings",
+                    missing_features=["elo_home", "elo_away"]
+                )
+            
+            home_team_id = match_context["home_team_id"]
+            away_team_id = match_context["away_team_id"]
+            
+            home_rating = self.rating_system.get_rating(home_team_id)
+            away_rating = self.rating_system.get_rating(away_team_id)
+        
+        # Generate Elo prediction
+        # Create temporary Elo system with these ratings
+        temp_system = EloRatingSystem(
+            k_factor=self.rating_system.k_factor,
+            initial_rating=self.rating_system.initial_rating,
+            home_advantage=self.rating_system.home_advantage
+        )
+        
+        # Set the ratings manually
+        temp_system._ratings["home"] = home_rating
+        temp_system._ratings["away"] = away_rating
+        
+        elo_pred = temp_system.predict("home", "away")
+        
+        # Convert to score distribution
+        # Elo doesn't natively produce score distributions, so we derive from probabilities
+        # Use a simple approximation: distribute probabilities across common scorelines
+        score_dist = self._derive_score_distribution(
+            elo_pred.home_win_probability,
+            elo_pred.draw_probability,
+            elo_pred.away_win_probability
+        )
+        
+        # Estimate expected goals from Elo ratings
+        # Simple heuristic: higher rating difference = more goals
+        rating_diff = home_rating - away_rating + self.rating_system.home_advantage
+        home_xg = 1.5 + (rating_diff / 400.0)  # Rough approximation
+        away_xg = 1.5 - (rating_diff / 400.0)
+        home_xg = max(0.5, min(3.5, home_xg))
+        away_xg = max(0.5, min(3.5, away_xg))
+        
+        return ModelPrediction(
+            model_id=self.MODEL_ID,
+            home_score_mean=home_xg,
+            away_score_mean=away_xg,
+            score_distribution=score_dist,
+            home_win_prob=elo_pred.home_win_probability,
+            draw_prob=elo_pred.draw_probability,
+            away_win_prob=elo_pred.away_win_probability,
+            confidence_score=self._calculate_confidence(home_rating, away_rating),
+            data_quality_score=self._calculate_data_quality(features),
+            metadata={
+                "home_rating": home_rating,
+                "away_rating": away_rating,
+                "rating_difference": home_rating - away_rating,
+                "home_advantage": self.rating_system.home_advantage,
+                "k_factor": self.rating_system.k_factor
+            }
+        )
+    
+    def get_metadata(self) -> PredictionModelMetadata:
+        """Return model metadata."""
+        return PredictionModelMetadata(
+            model_id=self.MODEL_ID,
+            model_type=ModelType.ELO,
+            version=self.MODEL_VERSION,
+            description="Elo rating-based match outcome prediction",
+            required_features=["elo_home", "elo_away"],
+            optional_features=[],
+            min_samples_required=0  # Elo can work with initial ratings
+        )
+    
+    def check_requirements(
+        self, 
+        features: Dict[str, Optional[float]]
+    ) -> Tuple[bool, List[str]]:
+        """Check if required data is available."""
+        # Elo ratings can come from features or be looked up
+        # We'll be flexible here - if ratings aren't in features, we'll try match_context
+        has_ratings = (
+            features.get("elo_home") is not None and 
+            features.get("elo_away") is not None
+        )
+        
+        if not has_ratings:
+            return (False, ["elo_home", "elo_away"])
+        
+        return (True, [])
+    
+    def _derive_score_distribution(
+        self,
+        home_win_prob: float,
+        draw_prob: float,
+        away_win_prob: float
+    ) -> Dict[Tuple[int, int], float]:
+        """Derive approximate score distribution from 1X2 probabilities.
+        
+        This is a simplified approximation since Elo doesn't natively produce
+        score distributions.
+        """
+        dist = {}
+        
+        # Common draws
+        dist[(0, 0)] = draw_prob * 0.25
+        dist[(1, 1)] = draw_prob * 0.35
+        dist[(2, 2)] = draw_prob * 0.25
+        dist[(3, 3)] = draw_prob * 0.15
+        
+        # Common home wins
+        dist[(1, 0)] = home_win_prob * 0.20
+        dist[(2, 0)] = home_win_prob * 0.15
+        dist[(2, 1)] = home_win_prob * 0.25
+        dist[(3, 0)] = home_win_prob * 0.10
+        dist[(3, 1)] = home_win_prob * 0.15
+        dist[(3, 2)] = home_win_prob * 0.10
+        dist[(4, 1)] = home_win_prob * 0.05
+        
+        # Common away wins
+        dist[(0, 1)] = away_win_prob * 0.20
+        dist[(0, 2)] = away_win_prob * 0.15
+        dist[(1, 2)] = away_win_prob * 0.25
+        dist[(0, 3)] = away_win_prob * 0.10
+        dist[(1, 3)] = away_win_prob * 0.15
+        dist[(2, 3)] = away_win_prob * 0.10
+        dist[(1, 4)] = away_win_prob * 0.05
+        
+        return dist
+    
+    def _calculate_confidence(self, home_rating: float, away_rating: float) -> float:
+        """Calculate confidence based on rating quality."""
+        # Higher confidence if ratings are far from initial (more games played)
+        initial = self.rating_system.initial_rating
+        home_diff = abs(home_rating - initial)
+        away_diff = abs(away_rating - initial)
+        
+        # Normalize to 0-1 range (assume 300 rating points = high confidence)
+        home_conf = min(1.0, home_diff / 300.0)
+        away_conf = min(1.0, away_diff / 300.0)
+        
+        return (home_conf + away_conf) / 2.0
+    
+    def _calculate_data_quality(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate data quality score."""
+        if features.get("elo_home") is not None and features.get("elo_away") is not None:
+            return 1.0
+        return 0.0
+

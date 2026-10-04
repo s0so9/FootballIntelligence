@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Refactor existing prediction models (Poisson, Dixon-Coles, Elo, Negative Binomial) to implement the new PredictionModel interface while preserving their existing functionality and tests",
+  "status": "pending",
+  "steps": [
+    "Read c:\\FootballIntelligence\\backend\\app\\prediction\\poisson.py and refactor PoissonModel to implement PredictionModel interface from FEAT-001, keeping existing PoissonPrediction dataclass for internal use but returning ModelPrediction from predict()",
+    "Read c:\\FootballIntelligence\\backend\\app\\prediction\\dixon_coles.py and refactor to implement PredictionModel interface",
+    "Read c:\\FootballIntelligence\\backend\\app\\prediction\\elo.py and refactor to implement PredictionModel interface",
+    "Read c:\\FootballIntelligence\\backend\\app\\prediction\\negative_binomial.py and refactor to implement PredictionModel interface",
+    "Update c:\\FootballIntelligence\\backend\\tests\\test_poisson.py to test both legacy interface (for backward compat) and new PredictionModel interface",
+    "Update c:\\FootballIntelligence\\backend\\tests\\test_elo.py to test new interface",
+    "Update c:\\FootballIntelligence\\backend\\tests\\test_negative_binomial.py to test new interface",
+    "Create c:\\FootballIntelligence\\backend\\tests\\test_dixon_coles_interface.py for Dixon-Coles interface compliance",
+    "Run pytest tests/test_poisson.py tests/test_elo.py tests/test_negative_binomial.py tests/test_dixon_coles_interface.py -v"
+  ],
+  "acceptance_criteria": [
+    "All 4 models implement PredictionModel.predict() returning ModelPrediction or ModelAvailability",
+    "All 4 models implement get_metadata() returning ModelMetadata",
+    "All 4 models implement check_requirements() properly",
+    "Existing model tests still pass (backward compatibility maintained)",
+    "New interface tests pass for all 4 models",
+    "Models return ModelAvailability when requirements not met (no exceptions, no fake data)",
+    "All 651+ existing tests pass"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_poisson.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_elo.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_negative_binomial.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/test_dixon_coles_interface.py -v",
+    "cd c:\\FootballIntelligence\\backend && python -m pytest tests/ -k 'not slow' --tb=short (verify all tests pass)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

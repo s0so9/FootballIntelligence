@@ -34,7 +34,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
+
+from app.prediction.interfaces import (
+    PredictionModel,
+    ModelPrediction,
+    ModelAvailability,
+    PredictionModelMetadata,
+)
+from app.domain.enums import ModelType
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +96,7 @@ class NegativeBinomialPrediction:
 # Negative Binomial model
 # ---------------------------------------------------------------------------
 
-class NegativeBinomialModel:
+class NegativeBinomialModel(PredictionModel):
     """Negative Binomial goal prediction model.
 
     Drop-in complement to PoissonModel.  Uses the NB distribution for
@@ -106,6 +115,9 @@ class NegativeBinomialModel:
 
     DEFAULT_DISPERSION = 20.0
     """Default dispersion parameter (moderately overdispersed)."""
+    
+    MODEL_ID = "negative_binomial_v1"
+    MODEL_VERSION = "1.0.0"
 
     def __init__(
         self,
@@ -129,62 +141,6 @@ class NegativeBinomialModel:
 
         self.dispersion = dispersion
         self.max_goals = max_goals
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def predict(
-        self,
-        home_lambda: float,
-        away_lambda: float,
-    ) -> NegativeBinomialPrediction:
-        """Generate prediction using Negative Binomial distribution.
-
-        Goals for each team are modelled independently.
-
-        Args:
-            home_lambda: Expected goals (mean) for home team (>= 0).
-            away_lambda: Expected goals (mean) for away team (>= 0).
-
-        Returns:
-            NegativeBinomialPrediction with all market probabilities.
-
-        Raises:
-            ValueError: If lambda values are negative.
-        """
-        if home_lambda < 0:
-            raise ValueError(f"home_lambda must be >= 0, got {home_lambda}")
-        if away_lambda < 0:
-            raise ValueError(f"away_lambda must be >= 0, got {away_lambda}")
-
-        home_probs = self._goal_pmf(home_lambda)
-        away_probs = self._goal_pmf(away_lambda)
-
-        scorelines = self._scoreline_matrix(home_probs, away_probs)
-        home_win, draw, away_win = self._calc_1x2(scorelines)
-        btts_yes, btts_no = self._calc_btts(scorelines)
-        ou = self._calc_over_under(scorelines)
-        top = self._top_scorelines(scorelines)
-        mass = sum(scorelines.values())
-
-        return NegativeBinomialPrediction(
-            home_lambda=home_lambda,
-            away_lambda=away_lambda,
-            dispersion=self.dispersion,
-            max_goals=self.max_goals,
-            home_goal_probabilities=home_probs,
-            away_goal_probabilities=away_probs,
-            scoreline_probabilities=scorelines,
-            home_win_probability=home_win,
-            draw_probability=draw,
-            away_win_probability=away_win,
-            btts_yes_probability=btts_yes,
-            btts_no_probability=btts_no,
-            over_under_probabilities=ou,
-            top_scorelines=top,
-            probability_mass_captured=mass,
-        )
 
     # ------------------------------------------------------------------
     # PMF
@@ -302,3 +258,178 @@ class NegativeBinomialModel:
         When r → ∞ this → μ (Poisson).
         """
         return mu + (mu ** 2) / self.dispersion
+
+    # ------------------------------------------------------------------
+    # PredictionModel Interface Implementation
+    # ------------------------------------------------------------------
+
+    def predict(
+        self,
+        features: Dict[str, Optional[float]],
+        match_context: Optional[Dict[str, Any]] = None
+    ) -> ModelPrediction | ModelAvailability:
+        """Generate prediction using the PredictionModel interface.
+
+        Args:
+            features: Feature dictionary from MatchFeatureExtractor
+            match_context: Additional context (optional, not used)
+
+        Returns:
+            ModelPrediction if successful, ModelAvailability if unable to predict
+        """
+        # Check requirements
+        requirements_met, missing = self.check_requirements(features)
+        if not requirements_met:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="insufficient_data",
+                missing_features=missing
+            )
+
+        # Extract lambda values from features (same as Poisson)
+        home_lambda = features.get("home_goals_scored_avg", 0.0) or 0.0
+        away_lambda = features.get("away_goals_scored_avg", 0.0) or 0.0
+
+        # Adjust based on opponent defense if available
+        if features.get("away_goals_conceded_avg"):
+            home_lambda *= (features["away_goals_conceded_avg"] / 1.0)
+        if features.get("home_goals_conceded_avg"):
+            away_lambda *= (features["home_goals_conceded_avg"] / 1.0)
+
+        if home_lambda < 0 or away_lambda < 0:
+            return ModelAvailability(
+                model_id=self.MODEL_ID,
+                available=False,
+                reason="invalid_features",
+                missing_features=[]
+            )
+
+        # Generate prediction using legacy method
+        nb_pred = self.predict_from_lambda(home_lambda, away_lambda)
+
+        # Convert to ModelPrediction
+        score_dist = {
+            (h, a): prob
+            for (h, a), prob in nb_pred.scoreline_probabilities.items()
+        }
+
+        return ModelPrediction(
+            model_id=self.MODEL_ID,
+            home_score_mean=home_lambda,
+            away_score_mean=away_lambda,
+            score_distribution=score_dist,
+            home_win_prob=nb_pred.home_win_probability,
+            draw_prob=nb_pred.draw_probability,
+            away_win_prob=nb_pred.away_win_probability,
+            confidence_score=self._calculate_confidence(features),
+            data_quality_score=self._calculate_data_quality(features),
+            metadata={
+                "dispersion": self.dispersion,
+                "max_goals": self.max_goals,
+                "probability_mass_captured": nb_pred.probability_mass_captured,
+                "variance_home": self.variance(home_lambda),
+                "variance_away": self.variance(away_lambda)
+            }
+        )
+
+    def get_metadata(self) -> PredictionModelMetadata:
+        """Return model metadata."""
+        return PredictionModelMetadata(
+            model_id=self.MODEL_ID,
+            model_type=ModelType.NEGATIVE_BINOMIAL,
+            version=self.MODEL_VERSION,
+            description="Negative Binomial distribution with overdispersion for goal modeling",
+            required_features=["home_goals_scored_avg", "away_goals_scored_avg"],
+            optional_features=["home_goals_conceded_avg", "away_goals_conceded_avg"],
+            min_samples_required=5
+        )
+
+    def check_requirements(
+        self, 
+        features: Dict[str, Optional[float]]
+    ) -> Tuple[bool, List[str]]:
+        """Check if required data is available."""
+        required = ["home_goals_scored_avg", "away_goals_scored_avg"]
+        missing = [f for f in required if features.get(f) is None]
+        return (len(missing) == 0, missing)
+
+    def _calculate_confidence(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate confidence score."""
+        confidence = 0.7
+        if features.get("home_goals_conceded_avg") is not None:
+            confidence += 0.1
+        if features.get("away_goals_conceded_avg") is not None:
+            confidence += 0.1
+        if features.get("home_match_count", 0) >= 10:
+            confidence += 0.05
+        if features.get("away_match_count", 0) >= 10:
+            confidence += 0.05
+        return min(1.0, confidence)
+
+    def _calculate_data_quality(self, features: Dict[str, Optional[float]]) -> float:
+        """Calculate data quality score."""
+        total_features = 4
+        available = sum(
+            1 for f in [
+                "home_goals_scored_avg",
+                "away_goals_scored_avg",
+                "home_goals_conceded_avg",
+                "away_goals_conceded_avg"
+            ]
+            if features.get(f) is not None
+        )
+        return available / total_features
+
+    # Legacy interface for backward compatibility
+    def predict_from_lambda(
+        self,
+        home_lambda: float,
+        away_lambda: float,
+    ) -> NegativeBinomialPrediction:
+        """Generate prediction (legacy interface).
+        
+        This method preserves the original interface for backward compatibility.
+        
+        Args:
+            home_lambda: Expected goals for home team (>= 0).
+            away_lambda: Expected goals for away team (>= 0).
+
+        Returns:
+            NegativeBinomialPrediction with all market probabilities.
+
+        Raises:
+            ValueError: If lambda values are negative.
+        """
+        if home_lambda < 0:
+            raise ValueError(f"home_lambda must be >= 0, got {home_lambda}")
+        if away_lambda < 0:
+            raise ValueError(f"away_lambda must be >= 0, got {away_lambda}")
+
+        home_probs = self._goal_pmf(home_lambda)
+        away_probs = self._goal_pmf(away_lambda)
+
+        scorelines = self._scoreline_matrix(home_probs, away_probs)
+        home_win, draw, away_win = self._calc_1x2(scorelines)
+        btts_yes, btts_no = self._calc_btts(scorelines)
+        ou = self._calc_over_under(scorelines)
+        top = self._top_scorelines(scorelines)
+        mass = sum(scorelines.values())
+
+        return NegativeBinomialPrediction(
+            home_lambda=home_lambda,
+            away_lambda=away_lambda,
+            dispersion=self.dispersion,
+            max_goals=self.max_goals,
+            home_goal_probabilities=home_probs,
+            away_goal_probabilities=away_probs,
+            scoreline_probabilities=scorelines,
+            home_win_probability=home_win,
+            draw_probability=draw,
+            away_win_probability=away_win,
+            btts_yes_probability=btts_yes,
+            btts_no_probability=btts_no,
+            over_under_probabilities=ou,
+            top_scorelines=top,
+            probability_mass_captured=mass,
+        )

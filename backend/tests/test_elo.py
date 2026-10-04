@@ -493,47 +493,47 @@ class TestDixonColesPrediction:
         self.dc = DixonColesModel(rho=-0.13)
 
     def test_predict_basic(self):
-        result = self.dc.predict(home_lambda=1.5, away_lambda=1.1)
+        result = self.dc.predict_from_lambda(home_lambda=1.5, away_lambda=1.1)
         assert isinstance(result, DixonColesPrediction)
 
     def test_probabilities_sum_to_one(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         total = (result.home_win_probability +
                  result.draw_probability +
                  result.away_win_probability)
         assert abs(total - 1.0) < 1e-6
 
     def test_all_1x2_probabilities_valid(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         assert 0.0 <= result.home_win_probability <= 1.0
         assert 0.0 <= result.draw_probability <= 1.0
         assert 0.0 <= result.away_win_probability <= 1.0
 
     def test_btts_sums_to_one(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         total = result.btts_yes_probability + result.btts_no_probability
         assert abs(total - 1.0) < 1e-6
 
     def test_over_under_sums_to_one_per_line(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         for line, (over, under) in result.over_under_probabilities.items():
             assert abs(over + under - 1.0) < 1e-6, f"Line {line} fails"
 
     def test_top_scorelines_not_empty(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         assert len(result.top_scorelines) > 0
 
     def test_top_scorelines_sorted_descending(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         probs = [p for _, p in result.top_scorelines]
         assert probs == sorted(probs, reverse=True)
 
     def test_negative_lambda_raises(self):
         with pytest.raises(ValueError):
-            self.dc.predict(-0.1, 1.0)
+            self.dc.predict_from_lambda(-0.1, 1.0)
 
     def test_adjusted_scoreline_probs_sum_to_one(self):
-        result = self.dc.predict(1.5, 1.1)
+        result = self.dc.predict_from_lambda(1.5, 1.1)
         total = sum(result.adjusted_scoreline_probabilities.values())
         assert abs(total - 1.0) < 1e-6
 
@@ -550,8 +550,8 @@ class TestDixonColesLowScoreCorrection:
         dc = DixonColesModel(rho=0.0, poisson_model=poisson)
 
         h_lam, a_lam = 1.5, 1.1
-        poisson_pred = poisson.predict(h_lam, a_lam)
-        dc_pred = dc.predict(h_lam, a_lam)
+        poisson_pred = poisson.predict_from_lambda(h_lam, a_lam)
+        dc_pred = dc.predict_from_lambda(h_lam, a_lam)
 
         # Market probabilities should match closely (minor diff from normalisation)
         assert abs(dc_pred.home_win_probability - poisson_pred.home_win_probability) < 1e-6
@@ -565,8 +565,8 @@ class TestDixonColesLowScoreCorrection:
         dc = DixonColesModel(rho=-0.13, poisson_model=poisson)
 
         h_lam, a_lam = 1.5, 1.1
-        poisson_pred = poisson.predict(h_lam, a_lam)
-        dc_pred = dc.predict(h_lam, a_lam)
+        poisson_pred = poisson.predict_from_lambda(h_lam, a_lam)
+        dc_pred = dc.predict_from_lambda(h_lam, a_lam)
 
         # τ_00 > 1 so raw P(0,0) is amplified before normalisation
         # After normalisation the comparison should still hold if the effect is
@@ -582,7 +582,7 @@ class TestDixonColesLowScoreCorrection:
 
     def test_correction_factors_stored_in_adjustment(self):
         dc = DixonColesModel(rho=-0.13)
-        result = dc.predict(1.5, 1.1)
+        result = dc.predict_from_lambda(1.5, 1.1)
         adj = result.adjustment
 
         assert adj.rho == -0.13
@@ -598,8 +598,8 @@ class TestDixonColesLowScoreCorrection:
         poisson = PoissonModel(max_goals=10)
         h_lam, a_lam = 1.5, 1.1
 
-        poisson_pred = poisson.predict(h_lam, a_lam)
-        dc_result = dc.predict(h_lam, a_lam)
+        poisson_pred = poisson.predict_from_lambda(h_lam, a_lam)
+        dc_result = dc.predict_from_lambda(h_lam, a_lam)
 
         # For (2,2): τ=1 so raw ratio before normalisation should equal raw ratio
         # after normalisation might differ slightly due to renorm.
@@ -615,8 +615,8 @@ class TestDixonColesLowScoreCorrection:
         poisson = PoissonModel(max_goals=10)
         h_lam, a_lam = 1.5, 1.1
 
-        poisson_pred = poisson.predict(h_lam, a_lam)
-        result_a = dc.predict(h_lam, a_lam)
+        poisson_pred = poisson.predict_from_lambda(h_lam, a_lam)
+        result_a = dc.predict_from_lambda(h_lam, a_lam)
         result_b = dc.predict_from_poisson(poisson_pred)
 
         assert abs(result_a.home_win_probability - result_b.home_win_probability) < 1e-9
@@ -635,20 +635,20 @@ class TestDixonColesPoissionCompatibility:
         poisson = PoissonModel(max_goals=10)
         dc = DixonColesModel(rho=-0.13, poisson_model=poisson)
 
-        p_pred = poisson.predict(1.5, 1.1)
+        p_pred = poisson.predict_from_lambda(1.5, 1.1)
         dc_pred = dc.predict_from_poisson(p_pred)
 
         assert dc_pred.poisson_prediction is p_pred
 
     def test_lambda_accessors_delegate_to_poisson(self):
         dc = DixonColesModel()
-        result = dc.predict(1.5, 1.1)
+        result = dc.predict_from_lambda(1.5, 1.1)
         assert result.home_lambda == 1.5
         assert result.away_lambda == 1.1
 
     def test_probability_mass_near_one(self):
         dc = DixonColesModel()
-        result = dc.predict(1.5, 1.1)
+        result = dc.predict_from_lambda(1.5, 1.1)
         assert abs(result.probability_mass_captured - 1.0) < 1e-6
 
 
@@ -660,8 +660,8 @@ class TestDixonColesDeterminism:
 
     def test_same_inputs_same_outputs(self):
         dc = DixonColesModel(rho=-0.13)
-        r1 = dc.predict(1.5, 1.1)
-        r2 = dc.predict(1.5, 1.1)
+        r1 = dc.predict_from_lambda(1.5, 1.1)
+        r2 = dc.predict_from_lambda(1.5, 1.1)
 
         assert r1.home_win_probability == r2.home_win_probability
         assert r1.draw_probability == r2.draw_probability
