@@ -1,6 +1,7 @@
 """Prediction domain models."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any, Optional, Dict, List
 from pydantic import BaseModel, Field, field_validator
 
@@ -300,4 +301,73 @@ class ModelRun(BaseModel):
     class Config:
         """Pydantic configuration."""
 
+        from_attributes = True
+
+
+# Supporting structures for MENSIONE Prediction Engine Core
+
+class PlayerImpactResult(BaseModel):
+    """Result of player impact analysis."""
+    
+    player_id: str = Field(..., description="Player identifier")
+    team: str = Field(..., description="Team (home/away)")
+    impact_on_xg: float = Field(..., description="Impact on expected goals")
+    availability_confirmed: bool = Field(..., description="Whether availability is confirmed")
+    source: str = Field(..., description="Data source for this impact assessment")
+    
+    class Config:
+        """Pydantic configuration."""
+        from_attributes = True
+
+
+class TacticalAdvantage(Enum):
+    """Tactical matchup advantage types."""
+    
+    HOME_PRESSING = "home_pressing"
+    AWAY_PRESSING = "away_pressing"
+    HOME_COUNTER = "home_counter"
+    AWAY_COUNTER = "away_counter"
+    NEUTRAL = "neutral"
+
+
+class TacticalEffect(BaseModel):
+    """Single tactical matchup effect."""
+    
+    advantage: TacticalAdvantage = Field(..., description="Type of tactical advantage")
+    magnitude: float = Field(..., ge=0.0, le=1.0, description="Effect magnitude 0-1")
+    factors: List[str] = Field(..., description="Contributing factors")
+    
+    class Config:
+        """Pydantic configuration."""
+        from_attributes = True
+
+
+class ConfidenceAssessment(BaseModel):
+    """Overall prediction confidence assessment."""
+    
+    overall: float = Field(..., ge=0.0, le=1.0, description="Overall confidence score")
+    data_quality_component: float = Field(..., ge=0.0, le=1.0, description="Data quality contribution")
+    model_agreement_component: float = Field(..., ge=0.0, le=1.0, description="Model agreement contribution")
+    historical_accuracy_component: float = Field(..., ge=0.0, le=1.0, description="Historical accuracy contribution")
+    explanation: str = Field(..., description="Human-readable confidence explanation")
+    
+    class Config:
+        """Pydantic configuration."""
+        from_attributes = True
+
+
+class PredictionWithOutcome(BaseModel):
+    """Historical prediction with known outcome for calibration."""
+    
+    prediction_id: str = Field(..., description="Prediction identifier")
+    match_id: str = Field(..., description="Match identifier")
+    predicted_home_goals_mean: float = Field(..., ge=0.0, description="Predicted home goals")
+    predicted_away_goals_mean: float = Field(..., ge=0.0, description="Predicted away goals")
+    actual_home_goals: Optional[int] = Field(None, ge=0, description="Actual home goals scored")
+    actual_away_goals: Optional[int] = Field(None, ge=0, description="Actual away goals scored")
+    created_at: datetime = Field(..., description="Prediction creation timestamp")
+    outcome_recorded_at: Optional[datetime] = Field(None, description="When outcome was recorded")
+    
+    class Config:
+        """Pydantic configuration."""
         from_attributes = True
