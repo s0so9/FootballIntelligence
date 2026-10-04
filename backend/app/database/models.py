@@ -395,3 +395,88 @@ class LatencyLog(BaseModel, Base):
         Index("ix_latency_entity", "entity_type", "entity_id"),
         Index("ix_latency_created", "created_at"),
     )
+
+
+class PredictionVersionDB(BaseModel, Base):
+    """Prediction version snapshot (immutable history).
+    
+    Tracks prediction evolution through match lifecycle stages.
+    Once written, a version is NEVER modified.
+    """
+    
+    __tablename__ = "prediction_versions"
+    
+    # Match reference
+    match_id = Column(String(100), nullable=False, index=True)
+    
+    # Lifecycle stage
+    stage = Column(String(50), nullable=False, index=True)  # 7d_before, 24h_before, lineup_confirmed, kickoff, live
+    
+    # Prediction data (complete snapshot as JSON)
+    prediction_data = Column(JSON, nullable=False)
+    
+    # Model metadata
+    model_versions = Column(JSON, nullable=True)  # {model_id: version}
+    
+    # Quality scores
+    data_quality_score = Column(Float, nullable=False, default=0.0)
+    confidence_score = Column(Float, nullable=False, default=0.0)
+    
+    # Notes
+    notes = Column(JSON, nullable=True)  # List of strings
+    
+    # Indexes
+    __table_args__ = (
+        Index("ix_prediction_version_match", "match_id", "stage"),
+        Index("ix_prediction_version_created", "created_at"),
+    )
+
+
+class TrackRecordDB(BaseModel, Base):
+    """Track record of prediction outcomes.
+    
+    Stores ALL predictions with outcomes for transparent performance evaluation.
+    NO cherry-picking - includes successes and failures.
+    """
+    
+    __tablename__ = "track_record"
+    
+    # Prediction reference
+    prediction_version_id = Column(String(36), ForeignKey("prediction_versions.id"), nullable=False, index=True)
+    match_id = Column(String(100), nullable=False, index=True)
+    
+    # Predicted probabilities
+    predicted_home_win = Column(Float, nullable=False)
+    predicted_draw = Column(Float, nullable=False)
+    predicted_away_win = Column(Float, nullable=False)
+    
+    # Actual outcome
+    actual_outcome = Column(String(20), nullable=False)  # home_win, draw, away_win
+    actual_home_score = Column(Integer, nullable=False)
+    actual_away_score = Column(Integer, nullable=False)
+    
+    # Timestamps
+    prediction_timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    match_timestamp = Column(DateTime(timezone=True), nullable=False)
+    
+    # Market predictions (optional)
+    over_2_5_predicted = Column(Float, nullable=True)
+    over_2_5_actual = Column(Boolean, nullable=True)
+    btts_predicted = Column(Float, nullable=True)
+    btts_actual = Column(Boolean, nullable=True)
+    
+    # Betting odds (optional)
+    home_odds = Column(Float, nullable=True)
+    draw_odds = Column(Float, nullable=True)
+    away_odds = Column(Float, nullable=True)
+    
+    # Grouping metadata
+    league_id = Column(String(100), nullable=True, index=True)
+    model_id = Column(String(100), nullable=True, index=True)
+    stage = Column(String(50), nullable=True, index=True)
+    
+    # Indexes
+    __table_args__ = (
+        Index("ix_track_record_league", "league_id", "prediction_timestamp"),
+        Index("ix_track_record_model", "model_id", "prediction_timestamp"),
+    )
