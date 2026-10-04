@@ -13,8 +13,15 @@ from app.api.v1.schemas import (
     MatchDetailResponse,
     MatchResponse,
     ErrorResponse,
+    MatchPredictionResponse,
+    MarketAnalysisResponse,
+    MarketOutcomeResponse,
+    BookmakerComparisonResponse,
+    EasyMatchResponse,
+    EasyMatchSignalResponse,
 )
 from app.providers import FootballDataProvider
+from app.prediction.service import PredictionService
 
 
 router = APIRouter(prefix="/matches", tags=["matches"])
@@ -121,3 +128,149 @@ async def get_match(
         match=match_response,
         is_development_data=provider.is_development_data(),
     )
+
+
+@router.get(
+    "/{match_id}/prediction",
+    response_model=MatchPredictionResponse,
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "Match not found",
+        }
+    },
+    summary="Get match prediction",
+    description="Get prediction, market analysis, and easy match detection for a specific match.",
+)
+async def get_match_prediction(
+    match_id: str,
+    provider: FootballDataProvider = Depends(get_data_provider),
+) -> MatchPredictionResponse:
+    """
+    Get prediction for a specific match.
+    
+    Returns:
+    - Match outcome probabilities (1X2)
+    - Expected goals (xG)
+    - BTTS probability
+    - Market analysis with fair odds
+    - Bookmaker comparison (only if real odds provided)
+    - Easy Match detection result
+    
+    Path Parameters:
+    - match_id: Unique match identifier
+    
+    Returns:
+        MatchPredictionResponse containing prediction and analysis
+        
+    Raises:
+        HTTPException: 404 if match is not found
+    """
+    # Get match from provider
+    match = provider.get_match(match_id)
+    
+    # Return 404 if match doesn't exist
+    if match is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Match with ID '{match_id}' not found"
+        )
+    
+    # Initialize prediction service
+    prediction_service = PredictionService(provider=provider)
+    
+    # Generate prediction
+    prediction = prediction_service.generate_prediction(match)
+    
+    if prediction is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Insufficient data to generate prediction for this match"
+        )
+    
+    # Generate market analysis (without bookmaker odds for now)
+    market_analysis = prediction_service.generate_market_analysis(
+        match=match,
+        prediction=prediction,
+        bookmaker_odds=None,  # No real bookmaker odds available in development
+    )
+    
+    # Detect easy match
+    easy_match_result = prediction_service.detect_easy_match(
+        match=match,
+        prediction=prediction,
+    )
+    
+    # Convert market analysis to response schema
+    market_analysis_responses = None
+    if market_analysis and market_analysis.markets:
+        market_analysis_responses = [
+            MarketAnalysisResponse(
+                market_type=m.market_type,
+                line=m.line,
+                outcomes=[
+                    MarketOutcomeResponse(
+                        label=o.label,
+                        model_probability=o.model_probability,
+                        calibrated_probability=o.calibrated_probability,
+                        fair_odds=o.fair_odds,
+                    )
+                    for o in m.outcomes
+                ],
+                bookmaker_comparison=[
+                    BookmakerComparisonResponse(
+                        label=bc.label,
+                        fair_probability=bc.fair_probability,
+                        fair_odds=bc.fair_odds,
+                        bookmaker_odds=bc.bookmaker_odds,
+                        implied_probability=bc.implied_probability,
+                        edge_value=bc.edge_value,
+                        has_value_flag=bc.has_value_flag,
+                    )
+                    for bc in m.bookmaker_comparison
+                ] if m.bookmaker_comparison else None,
+                bookmaker_overround=m.bookmaker_overround,
+                has_bookmaker_odds=m.has_bookmaker_odds,
+            )
+            for m in market_analysis.markets
+        ]
+    
+    # Convert easy match result to response schema
+    easy_match_response = None
+    if easy_match_result:
+        easy_match_response = EasyMatchResponse(
+            match_id=easy_match_result.match_id,
+            is_easy_match=easy_match_result.is_easy_match,
+            confidence_score=easy_match_result.confidence_score,
+            threshold=easy_match_result.threshold,
+            signals=[
+                EasyMatchSignalResponse(
+                    name=s.name,
+                    value=s.value,
+                    weight=s.weight,
+                    available=s.available,
+                    description=s.description,
+                )
+                for s in easy_match_result.signals
+            ],
+            dominant_outcome=easy_match_result.dominant_outcome,
+            dominant_probability=easy_match_result.dominant_probability,
+            reasons=easy_match_result.reasons,
+            warnings=easy_match_result.warnings,
+            data_sufficient=easy_match_result.data_sufficient,
+        )
+    
+    # Build response
+    return MatchPredictionResponse(
+        match_id=match.id,
+        home_win_probability=prediction.home_win_probability,
+        draw_probability=prediction.draw_probability,
+        away_win_probability=prediction.away_win_probability,
+        home_xg=prediction.home_xg,
+        away_xg=prediction.away_xg,
+        btts_probability=prediction.btts_probability,
+        market_analysis=market_analysis_responses,
+        easy_match=easy_match_response,
+        is_development_data=provider.is_development_data(),
+    )
+

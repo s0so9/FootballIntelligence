@@ -23,6 +23,8 @@ from app.domain.enums import PredictionMarketType, ModelType
 from app.domain.analysis import AnalysisContext
 from app.features import MatchFeatureExtractor
 from app.prediction.poisson import PoissonModel
+from app.prediction.market_analysis import MarketAnalyser
+from app.prediction.easy_matches import EasyMatchDetector
 from app.providers.base import FootballDataProvider
 
 
@@ -44,6 +46,7 @@ class PredictionService:
         provider: FootballDataProvider,
         poisson_model: Optional[PoissonModel] = None,
         feature_extractor: Optional[MatchFeatureExtractor] = None,
+        market_analyser: Optional[MarketAnalyser] = None,
     ):
         """Initialize prediction service.
         
@@ -51,6 +54,7 @@ class PredictionService:
             provider: Data provider for fetching match/team data
             poisson_model: Poisson model instance (default: create new)
             feature_extractor: Feature extractor (default: create new)
+            market_analyser: Market analyser (default: create new)
         """
         self.provider = provider
         self.poisson_model = poisson_model or PoissonModel(max_goals=10)
@@ -59,6 +63,11 @@ class PredictionService:
             min_matches=3,
             recent_matches=5
         )
+        self.market_analyser = market_analyser or MarketAnalyser(
+            value_threshold=0.03,
+            is_development_data=True,
+        )
+        self.easy_match_detector = EasyMatchDetector()
         
         # Model metadata
         self.poisson_model_metadata = Model(
@@ -239,6 +248,148 @@ class PredictionService:
         ))
         
         return markets
+    
+    def generate_market_analysis(
+        self,
+        match: Match,
+        prediction: Prediction,
+        bookmaker_odds: Optional[Dict] = None,
+    ):
+        """Generate market analysis for a match prediction.
+        
+        Args:
+            match: Match being analyzed
+            prediction: Base prediction with probabilities
+            bookmaker_odds: Optional real bookmaker odds (never fabricated)
+                Format: {
+                    "1x2": {"home": 2.0, "draw": 3.5, "away": 3.8},
+                    "btts": {"yes": 1.75, "no": 2.05},
+                    "ou_2_5": {"over": 1.85, "under": 1.95},
+                    "ou_3_5": {"over": 2.3, "under": 1.6},
+                }
+        
+        Returns:
+            MatchMarketAnalysis or None if prediction unavailable
+        """
+        if prediction is None:
+            return None
+        
+        # Re-run Poisson for detailed probabilities
+        features = self.feature_extractor.extract_features(match)
+        home_attack = features.get("home_attack_strength")
+        away_attack = features.get("away_attack_strength")
+        home_defense = features.get("home_defense_strength")
+        away_defense = features.get("away_defense_strength")
+        
+        if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
+            return None
+        
+        home_lambda = self.poisson_model.estimate_lambda_from_features(
+            home_attack, away_defense, 1.0
+        )
+        away_lambda = self.poisson_model.estimate_lambda_from_features(
+            away_attack, home_defense, 1.0
+        )
+        
+        poisson_result = self.poisson_model.predict(home_lambda, away_lambda)
+        
+        # Extract bookmaker odds if provided
+        bookie_1x2 = None
+        bookie_btts = None
+        bookie_ou25 = None
+        bookie_ou35 = None
+        
+        if bookmaker_odds:
+            bookie_1x2 = bookmaker_odds.get("1x2")
+            bookie_btts = bookmaker_odds.get("btts")
+            bookie_ou25 = bookmaker_odds.get("ou_2_5")
+            bookie_ou35 = bookmaker_odds.get("ou_3_5")
+        
+        # Get over/under probabilities
+        over_under_2_5 = poisson_result.over_under_probabilities.get(2.5)
+        over_under_3_5 = poisson_result.over_under_probabilities.get(3.5)
+        
+        over_2_5_prob = over_under_2_5[0] if over_under_2_5 else None
+        over_3_5_prob = over_under_3_5[0] if over_under_3_5 else None
+        
+        # Generate correct score probabilities dict
+        correct_score_probs = {
+            f"{h}-{a}": prob
+            for (h, a), prob in poisson_result.top_scorelines
+        }
+        
+        # Use market analyser
+        market_analysis = self.market_analyser.analyse_match(
+            match_id=match.id,
+            home_win_prob=poisson_result.home_win_probability,
+            draw_prob=poisson_result.draw_probability,
+            away_win_prob=poisson_result.away_win_probability,
+            btts_prob=poisson_result.btts_yes_probability,
+            over_2_5_prob=over_2_5_prob,
+            over_3_5_prob=over_3_5_prob,
+            correct_score_probs=correct_score_probs,
+            bookmaker_1x2=bookie_1x2,
+            bookmaker_btts=bookie_btts,
+            bookmaker_ou25=bookie_ou25,
+            bookmaker_ou35=bookie_ou35,
+        )
+        
+        return market_analysis
+    
+    def detect_easy_match(
+        self,
+        match: Match,
+        prediction: Prediction,
+    ):
+        """Detect if a match qualifies as an Easy Match.
+        
+        Args:
+            match: Match being analyzed
+            prediction: Base prediction with probabilities
+        
+        Returns:
+            EasyMatchResult or None if prediction unavailable
+        """
+        if prediction is None:
+            return None
+        
+        # Re-run Poisson for detailed probabilities
+        features = self.feature_extractor.extract_features(match)
+        home_attack = features.get("home_attack_strength")
+        away_attack = features.get("away_attack_strength")
+        home_defense = features.get("home_defense_strength")
+        away_defense = features.get("away_defense_strength")
+        
+        if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
+            return None
+        
+        home_lambda = self.poisson_model.estimate_lambda_from_features(
+            home_attack, away_defense, 1.0
+        )
+        away_lambda = self.poisson_model.estimate_lambda_from_features(
+            away_attack, home_defense, 1.0
+        )
+        
+        poisson_result = self.poisson_model.predict(home_lambda, away_lambda)
+        
+        # Get over/under probabilities
+        over_under_2_5 = poisson_result.over_under_probabilities.get(2.5)
+        over_2_5_prob = over_under_2_5[0] if over_under_2_5 else None
+        
+        # Detect easy match
+        easy_match_result = self.easy_match_detector.detect(
+            match_id=match.id,
+            home_win_prob=poisson_result.home_win_probability,
+            draw_prob=poisson_result.draw_probability,
+            away_win_prob=poisson_result.away_win_probability,
+            btts_prob=poisson_result.btts_yes_probability,
+            over_2_5_prob=over_2_5_prob,
+            home_xg=home_lambda,
+            away_xg=away_lambda,
+            has_sufficient_historical_data=True,
+        )
+        
+        return easy_match_result
     
     def build_analysis_context(
         self,

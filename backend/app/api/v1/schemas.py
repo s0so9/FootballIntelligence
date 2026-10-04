@@ -12,6 +12,87 @@ from pydantic import BaseModel, Field
 from app.domain.enums import MatchStatus, MatchOutcome
 
 
+class MarketOutcomeResponse(BaseModel):
+    """Market outcome response schema."""
+    
+    label: str = Field(..., description="Outcome label")
+    model_probability: float = Field(..., description="Raw model probability")
+    calibrated_probability: Optional[float] = Field(None, description="Calibrated probability")
+    fair_odds: float = Field(..., description="Fair decimal odds")
+
+
+class BookmakerComparisonResponse(BaseModel):
+    """Bookmaker comparison response schema."""
+    
+    label: str = Field(..., description="Outcome label")
+    fair_probability: float = Field(..., description="Fair probability from model")
+    fair_odds: float = Field(..., description="Fair decimal odds")
+    bookmaker_odds: float = Field(..., description="Bookmaker decimal odds")
+    implied_probability: float = Field(..., description="Implied probability from bookmaker odds")
+    edge_value: float = Field(..., description="Edge (implied - fair probability)")
+    has_value_flag: bool = Field(..., description="Whether this outcome has betting value")
+
+
+class MarketAnalysisResponse(BaseModel):
+    """Market analysis response schema."""
+    
+    market_type: str = Field(..., description="Market type (e.g., match_result, btts)")
+    line: Optional[float] = Field(None, description="Over/Under line if applicable")
+    outcomes: List[MarketOutcomeResponse] = Field(..., description="Outcome probabilities and fair odds")
+    bookmaker_comparison: Optional[List[BookmakerComparisonResponse]] = Field(
+        None,
+        description="Bookmaker comparison (only when real odds provided)"
+    )
+    bookmaker_overround: Optional[float] = Field(None, description="Bookmaker overround/margin")
+    has_bookmaker_odds: bool = Field(..., description="Whether bookmaker odds were provided")
+
+
+class EasyMatchSignalResponse(BaseModel):
+    """Easy match signal response schema."""
+    
+    name: str = Field(..., description="Signal name")
+    value: float = Field(..., description="Signal value (0-1)")
+    weight: float = Field(..., description="Weight in overall score")
+    available: bool = Field(..., description="Whether signal was available")
+    description: Optional[str] = Field(None, description="Signal description")
+
+
+class EasyMatchResponse(BaseModel):
+    """Easy match detection response schema."""
+    
+    match_id: str = Field(..., description="Match identifier")
+    is_easy_match: bool = Field(..., description="Whether match qualifies as Easy Match")
+    confidence_score: float = Field(..., description="Confidence score (0-100)")
+    threshold: float = Field(..., description="Easy Match threshold")
+    signals: List[EasyMatchSignalResponse] = Field(..., description="Individual signals")
+    dominant_outcome: Optional[str] = Field(None, description="Dominant predicted outcome")
+    dominant_probability: Optional[float] = Field(None, description="Probability of dominant outcome")
+    reasons: List[str] = Field(..., description="Reasons for Easy Match determination")
+    warnings: List[str] = Field(..., description="Data quality warnings")
+    data_sufficient: bool = Field(..., description="Whether sufficient data was available")
+
+
+class MatchPredictionResponse(BaseModel):
+    """Match prediction response schema."""
+    
+    match_id: str = Field(..., description="Match identifier")
+    home_win_probability: float = Field(..., description="Home win probability")
+    draw_probability: float = Field(..., description="Draw probability")
+    away_win_probability: float = Field(..., description="Away win probability")
+    home_xg: float = Field(..., description="Home expected goals")
+    away_xg: float = Field(..., description="Away expected goals")
+    btts_probability: float = Field(..., description="Both teams to score probability")
+    market_analysis: Optional[List[MarketAnalysisResponse]] = Field(
+        None,
+        description="Market analysis across supported markets"
+    )
+    easy_match: Optional[EasyMatchResponse] = Field(
+        None,
+        description="Easy Match detection result"
+    )
+    is_development_data: bool = Field(..., description="Whether this is development/mock data")
+
+
 class MatchResponse(BaseModel):
     """Match response schema for API v1."""
 

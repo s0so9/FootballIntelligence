@@ -23,6 +23,20 @@ def dev_provider():
     return DevelopmentProvider()
 
 
+@pytest.fixture
+def predictable_match_id(client, dev_provider):
+    """Find a match that has sufficient data for predictions."""
+    matches = dev_provider.get_matches()
+    
+    for match in matches:
+        response = client.get(f"/api/v1/matches/{match.id}/prediction")
+        if response.status_code == 200:
+            return match.id
+    
+    # If no match has data, return None (tests will skip)
+    return None
+
+
 class TestHealthEndpoint:
     """Tests for the health check endpoint."""
 
@@ -308,3 +322,206 @@ class TestEndpointIntegration:
             assert detail_response.status_code == 200
             detail_data = detail_response.json()
             assert detail_data["match"]["id"] == match_id
+
+
+class TestMatchPredictionEndpoint:
+    """Tests for GET /api/v1/matches/{match_id}/prediction endpoint."""
+    
+    def test_get_prediction_returns_200(self, client, predictable_match_id):
+        """Verify getting prediction for existing match returns 200 OK."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        assert response.status_code == 200
+    
+    def test_get_prediction_response_structure(self, client, predictable_match_id):
+        """Verify prediction response has correct structure."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        # Required fields
+        assert "match_id" in data
+        assert "home_win_probability" in data
+        assert "draw_probability" in data
+        assert "away_win_probability" in data
+        assert "home_xg" in data
+        assert "away_xg" in data
+        assert "btts_probability" in data
+        assert "is_development_data" in data
+        
+        # Optional fields
+        assert "market_analysis" in data
+        assert "easy_match" in data
+    
+    def test_get_prediction_probabilities_valid(self, client, predictable_match_id):
+        """Verify prediction probabilities are valid (0-1 range)."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        # Check probabilities are in valid range
+        assert 0.0 <= data["home_win_probability"] <= 1.0
+        assert 0.0 <= data["draw_probability"] <= 1.0
+        assert 0.0 <= data["away_win_probability"] <= 1.0
+        assert 0.0 <= data["btts_probability"] <= 1.0
+    
+    def test_get_prediction_probabilities_sum_near_one(self, client, predictable_match_id):
+        """Verify 1X2 probabilities sum approximately to 1.0."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        total = (data["home_win_probability"] + 
+                data["draw_probability"] + 
+                data["away_win_probability"])
+        
+        # Should be very close to 1.0 (allow small floating point error)
+        assert 0.99 <= total <= 1.01
+    
+    def test_get_prediction_xg_non_negative(self, client, predictable_match_id):
+        """Verify expected goals are non-negative."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        assert data["home_xg"] >= 0.0
+        assert data["away_xg"] >= 0.0
+    
+    def test_get_prediction_market_analysis_structure(self, client, predictable_match_id):
+        """Verify market analysis structure when present."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        if data["market_analysis"] is not None:
+            assert isinstance(data["market_analysis"], list)
+            
+            for market in data["market_analysis"]:
+                assert "market_type" in market
+                assert "outcomes" in market
+                assert "has_bookmaker_odds" in market
+                assert isinstance(market["outcomes"], list)
+                
+                # Check outcome structure
+                for outcome in market["outcomes"]:
+                    assert "label" in outcome
+                    assert "model_probability" in outcome
+                    assert "fair_odds" in outcome
+                    assert outcome["fair_odds"] >= 1.0  # Odds must be >= 1.0
+    
+    def test_get_prediction_no_fabricated_bookmaker_odds(self, client, predictable_match_id):
+        """Verify bookmaker odds are not fabricated."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        if data["market_analysis"] is not None:
+            for market in data["market_analysis"]:
+                # Development data should not have bookmaker odds
+                assert market["has_bookmaker_odds"] is False
+                assert market["bookmaker_comparison"] is None
+                assert market["bookmaker_overround"] is None
+    
+    def test_get_prediction_easy_match_structure(self, client, predictable_match_id):
+        """Verify easy match structure when present."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        if data["easy_match"] is not None:
+            easy = data["easy_match"]
+            
+            assert "match_id" in easy
+            assert "is_easy_match" in easy
+            assert "confidence_score" in easy
+            assert "threshold" in easy
+            assert "signals" in easy
+            assert "reasons" in easy
+            assert "warnings" in easy
+            assert "data_sufficient" in easy
+            
+            # Check score range
+            assert 0.0 <= easy["confidence_score"] <= 100.0
+            
+            # Check signals structure
+            assert isinstance(easy["signals"], list)
+            for signal in easy["signals"]:
+                assert "name" in signal
+                assert "value" in signal
+                assert "weight" in signal
+                assert "available" in signal
+    
+    def test_get_prediction_deterministic(self, client, predictable_match_id):
+        """Verify predictions are deterministic (same input = same output)."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        # Get prediction twice
+        response1 = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        response2 = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        
+        data1 = response1.json()
+        data2 = response2.json()
+        
+        # Should produce identical results
+        assert data1["home_win_probability"] == data2["home_win_probability"]
+        assert data1["draw_probability"] == data2["draw_probability"]
+        assert data1["away_win_probability"] == data2["away_win_probability"]
+        assert data1["home_xg"] == data2["home_xg"]
+        assert data1["away_xg"] == data2["away_xg"]
+        assert data1["btts_probability"] == data2["btts_probability"]
+    
+    def test_get_prediction_404_for_invalid_match(self, client):
+        """Verify getting prediction for non-existent match returns 404."""
+        invalid_id = "nonexistent-match-id-12345"
+        response = client.get(f"/api/v1/matches/{invalid_id}/prediction")
+        
+        assert response.status_code == 404
+    
+    def test_get_prediction_development_data_flagged(self, client, predictable_match_id):
+        """Verify development data is clearly flagged."""
+        if predictable_match_id is None:
+            pytest.skip("No matches with sufficient historical data available")
+        
+        response = client.get(f"/api/v1/matches/{predictable_match_id}/prediction")
+        data = response.json()
+        
+        # Must be flagged as development data
+        assert data["is_development_data"] is True
+    
+    def test_get_prediction_insufficient_data_handling(self, client, dev_provider):
+        """Verify insufficient data is handled gracefully with 400."""
+        matches = dev_provider.get_matches()
+        
+        # Try to find a match that returns 400 (insufficient data)
+        found_insufficient = False
+        for match in matches:
+            response = client.get(f"/api/v1/matches/{match.id}/prediction")
+            if response.status_code == 400:
+                found_insufficient = True
+                data = response.json()
+                assert "detail" in data
+                assert "Insufficient data" in data["detail"]
+                break
+        
+        # Note: This test may not always find an insufficient data case
+        # depending on the development provider's data
+        if not found_insufficient:
+            pytest.skip("All matches have sufficient data for prediction")
+

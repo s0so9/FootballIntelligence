@@ -72,6 +72,24 @@ from app.prediction.comparison import (
     RankingMetric,
     snapshot_from_backtest_metrics,
 )
+from app.prediction.market_analysis import (
+    BookmakerComparison,
+    MarketAnalysis,
+    MarketAnalyser,
+    MarketOutcome,
+    MatchMarketAnalysis,
+    edge,
+    has_value,
+    implied_probability_from_odds,
+    overround,
+    probability_to_fair_odds,
+)
+from app.prediction.easy_matches import (
+    EasyMatchConfig,
+    EasyMatchDetector,
+    EasyMatchResult,
+    EasyMatchSignal,
+)
 from app.prediction.service import PredictionService
 
 __all__ = [
@@ -140,4 +158,20 @@ __all__ = [
     "ModelRanking",
     "RankingMetric",
     "snapshot_from_backtest_metrics",
+    # Market Analysis
+    "BookmakerComparison",
+    "MarketAnalysis",
+    "MarketAnalyser",
+    "MarketOutcome",
+    "MatchMarketAnalysis",
+    "edge",
+    "has_value",
+    "implied_probability_from_odds",
+    "overround",
+    "probability_to_fair_odds",
+    # Easy Matches
+    "EasyMatchConfig",
+    "EasyMatchDetector",
+    "EasyMatchResult",
+    "EasyMatchSignal",
 ]
