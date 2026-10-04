@@ -11,6 +11,8 @@ from typing import Dict, Optional, List
 from datetime import datetime
 import uuid
 
+from sqlalchemy.orm import Session
+
 from app.domain.match import Match
 from app.domain.entities import Team, Competition
 from app.domain.prediction import (
@@ -47,6 +49,7 @@ class PredictionService:
         poisson_model: Optional[PoissonModel] = None,
         feature_extractor: Optional[MatchFeatureExtractor] = None,
         market_analyser: Optional[MarketAnalyser] = None,
+        db_session: Optional[Session] = None,
     ):
         """Initialize prediction service.
         
@@ -55,8 +58,10 @@ class PredictionService:
             poisson_model: Poisson model instance (default: create new)
             feature_extractor: Feature extractor (default: create new)
             market_analyser: Market analyser (default: create new)
+            db_session: Optional database session for database-backed features
         """
         self.provider = provider
+        self.db_session = db_session
         self.poisson_model = poisson_model or PoissonModel(max_goals=10)
         self.feature_extractor = feature_extractor or MatchFeatureExtractor(
             provider=provider,
@@ -68,6 +73,20 @@ class PredictionService:
             is_development_data=True,
         )
         self.easy_match_detector = EasyMatchDetector()
+        
+        # Initialize database-backed feature aggregator if session available
+        self.feature_aggregator = None
+        if db_session:
+            try:
+                from app.features.aggregator import FeatureAggregator
+                self.feature_aggregator = FeatureAggregator(
+                    session=db_session,
+                    min_matches=3,
+                    form_window=5
+                )
+            except ImportError:
+                # Database features not available
+                pass
         
         # Model metadata
         self.poisson_model_metadata = Model(
@@ -396,6 +415,7 @@ class PredictionService:
         match: Match,
         prediction: Optional[Prediction] = None,
         prediction_markets: Optional[List[PredictionMarket]] = None,
+        match_db_id: Optional[str] = None,
     ) -> AnalysisContext:
         """Build AnalysisContext for AI Analyst.
         
@@ -406,6 +426,7 @@ class PredictionService:
             match: Match to analyze
             prediction: Generated prediction (if available)
             prediction_markets: Generated markets (if available)
+            match_db_id: Optional database match ID for database-backed features
             
         Returns:
             AnalysisContext with all available information
@@ -445,7 +466,18 @@ class PredictionService:
                 level=1,
             )
         
-        # Extract features
+        # Try to extract database-backed features if available
+        feature_set = None
+        db_features_available = False
+        if self.feature_aggregator and match_db_id:
+            try:
+                feature_set = self.feature_aggregator.extract_features_for_match(match_db_id)
+                db_features_available = feature_set.features_available
+            except Exception:
+                # Database features extraction failed, fall back to provider-based
+                pass
+        
+        # Extract provider-based features (always as fallback)
         features = self.feature_extractor.extract_features(match)
         
         # Filter features to exclude metadata fields (IDs and timestamps)
@@ -454,6 +486,16 @@ class PredictionService:
             k: v for k, v in features.items()
             if k not in ["match_id", "competition_id", "season_id", "home_team_id", "away_team_id", "scheduled_timestamp"]
         }
+        
+        # Merge database features if available
+        if feature_set and db_features_available:
+            # Add database feature quality metrics
+            if feature_set.data_quality:
+                statistical_features["db_sample_size_home"] = feature_set.data_quality.get("sample_size_home")
+                statistical_features["db_sample_size_away"] = feature_set.data_quality.get("sample_size_away")
+                statistical_features["db_xg_available_home"] = feature_set.data_quality.get("xg_available_home")
+                statistical_features["db_xg_available_away"] = feature_set.data_quality.get("xg_available_away")
+                statistical_features["db_feature_confidence"] = feature_set.data_quality.get("feature_confidence")
         
         # Only set statistical_features if we have any feature keys
         if not statistical_features:
@@ -529,6 +571,7 @@ class PredictionService:
             "teams": True,
             "competition": True,
             "features": any(v is not None for k, v in features.items() if k not in ["match_id", "home_team_id", "away_team_id", "competition_id", "season_id", "scheduled_timestamp"]),
+            "database_features": db_features_available,
             "prediction": prediction is not None,
             "markets": prediction_markets is not None and len(prediction_markets) > 0,
             "form": home_recent is not None and away_recent is not None,
@@ -543,6 +586,8 @@ class PredictionService:
             missing_notes.append("Prediction not generated due to insufficient data")
         if not data_completeness["standings"]:
             missing_notes.append("League standings not available")
+        if feature_set and feature_set.notes:
+            missing_notes.extend(feature_set.notes)
         
         # Build context
         context = AnalysisContext(

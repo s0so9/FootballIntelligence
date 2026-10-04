@@ -6,8 +6,10 @@ This module implements the match-related REST API endpoints.
 from typing import Optional
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_data_provider
+from app.database import get_db
 from app.api.v1.schemas import (
     MatchListResponse,
     MatchDetailResponse,
@@ -145,6 +147,7 @@ async def get_match(
 async def get_match_prediction(
     match_id: str,
     provider: FootballDataProvider = Depends(get_data_provider),
+    db: Optional[Session] = Depends(get_db),
 ) -> MatchPredictionResponse:
     """
     Get prediction for a specific match.
@@ -176,8 +179,11 @@ async def get_match_prediction(
             detail=f"Match with ID '{match_id}' not found"
         )
     
-    # Initialize prediction service
-    prediction_service = PredictionService(provider=provider)
+    # Initialize prediction service with optional database session
+    prediction_service = PredictionService(
+        provider=provider,
+        db_session=db
+    )
     
     # Generate prediction
     prediction = prediction_service.generate_prediction(match)
