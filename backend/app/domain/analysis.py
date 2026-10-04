@@ -118,12 +118,27 @@ class AnalysisContext(BaseModel):
         None, description="Market-specific predictions"
     )
     
+    # === Predicted Score ===
+    predicted_score: Optional[str] = Field(
+        None, description="Most likely scoreline (e.g., '3-1') - distinct from MENSIONE PICK"
+    )
+    
     # === Calibration Information ===
     model_calibration_info: Optional[Dict[str, float]] = Field(
         None, description="Model calibration metrics"
     )
     historical_accuracy: Optional[Dict[str, float]] = Field(
         None, description="Historical model accuracy"
+    )
+    
+    # === MENSIONE PICK ===
+    mensione_pick: Optional[Dict[str, Any]] = Field(
+        None, description="MENSIONE recommended pick (distinct from predicted_score)"
+    )
+    
+    # === Prediction Versioning ===
+    prediction_version_id: Optional[str] = Field(
+        None, description="Unique identifier for this prediction version"
     )
     
     # === Market Odds ===

@@ -5,6 +5,23 @@ This service coordinates:
 2. Running prediction models (Poisson, etc.)
 3. Generating structured predictions and markets
 4. Populating AnalysisContext for AI Analyst
+
+PHASED ROLLOUT APPROACH:
+- Phase 1 (Current): Poisson → Market Derivation → MENSIONE Pick → Versioning
+- Phase 2 (Future): Ensemble → Calibration → Confidence → Full Pipeline
+
+The current implementation delivers core MENSIONE differentiators:
+- Predicted Score vs MENSIONE PICK separation
+- Comprehensive market derivation from score distributions
+- Pick generation with EV/conviction ranking
+- Immutable prediction versioning
+
+Future phases will add:
+- Multi-model ensemble with reliability weighting
+- Probability calibration based on historical track record
+- Sophisticated confidence assessment
+- Player impact and tactical matchup analysis
+- League context adjustments
 """
 
 from typing import Dict, Optional, List
@@ -27,6 +44,10 @@ from app.features import MatchFeatureExtractor
 from app.prediction.poisson import PoissonModel
 from app.prediction.market_analysis import MarketAnalyser
 from app.prediction.easy_matches import EasyMatchDetector
+from app.prediction.market_derivation import MarketDerivationEngine
+from app.prediction.mensione_pick import MensionePickGenerator
+from app.prediction.prediction_version import PredictionVersionManager, PredictionStage
+from app.prediction.confidence_engine import ConfidenceEngine, ConfidenceComponents
 from app.providers.base import FootballDataProvider
 
 
@@ -73,6 +94,16 @@ class PredictionService:
             is_development_data=True,
         )
         self.easy_match_detector = EasyMatchDetector()
+        
+        # Initialize MENSIONE components
+        self.market_derivation_engine = MarketDerivationEngine(top_scorelines=20)
+        self.mensione_pick_generator = MensionePickGenerator(
+            min_confidence=0.4,
+            min_probability=0.55,
+            min_edge=0.0
+        )
+        self.confidence_engine = ConfidenceEngine()
+        self.version_manager = PredictionVersionManager(persistence_service=None)  # In-memory for now
         
         # Initialize database-backed feature aggregator if session available
         self.feature_aggregator = None
@@ -638,5 +669,160 @@ class PredictionService:
             prediction=prediction,
             prediction_markets=markets,
         )
+        
+        return context
+    
+    def generate_full_prediction(
+        self,
+        match: Match,
+        stage: PredictionStage = PredictionStage.KICKOFF,
+        odds_data: Optional[Dict[str, float]] = None
+    ) -> AnalysisContext:
+        """Generate complete MENSIONE prediction with versioning and picks.
+        
+        This method implements the simplified Phase 1 pipeline:
+        1. Run Poisson model → get score distribution
+        2. Derive all markets from score distribution
+        3. Assess confidence
+        4. Generate MENSIONE PICK
+        5. Version the prediction
+        6. Return enriched AnalysisContext
+        
+        Args:
+            match: Match to predict
+            stage: Prediction stage (default: KICKOFF)
+            odds_data: Optional market odds for EV calculation
+                Format: {"HOME": 2.1, "DRAW": 3.5, "AWAY": 3.8, "OVER_2_5": 1.85, ...}
+        
+        Returns:
+            AnalysisContext with predicted_score, mensione_pick, and version_id
+        """
+        # Step 1: Generate base prediction (Poisson)
+        prediction = self.generate_prediction(match)
+        
+        if prediction is None:
+            # Insufficient data - return context without prediction
+            return self.build_analysis_context(match=match)
+        
+        # Step 2: Convert score distribution to tuple format for MarketDerivationEngine
+        score_dist_tuples = {}
+        if prediction.score_distribution:
+            for score_str, prob in prediction.score_distribution.items():
+                try:
+                    h, a = score_str.split('-')
+                    score_dist_tuples[(int(h), int(a))] = prob
+                except (ValueError, AttributeError):
+                    continue
+        
+        # Step 3: Derive all markets
+        market_probs = None
+        if score_dist_tuples:
+            try:
+                market_probs = self.market_derivation_engine.derive(score_dist_tuples)
+            except Exception:
+                # Market derivation failed, continue without it
+                pass
+        
+        # Step 4: Assess confidence (simplified - only data quality and sample size)
+        # In Phase 1, we use simplified confidence without ensemble agreement
+        features = self.feature_extractor.extract_features(match)
+        n_matches = sum(1 for k, v in features.items() if v is not None and 'strength' in k)
+        
+        confidence_assessment = self.confidence_engine.assess(
+            model_agreement=1.0,  # Single model, perfect "agreement"
+            data_quality_score=0.7,  # Default moderate quality
+            n_matches=max(5, n_matches),  # Assume at least 5 matches
+            brier_score=None,  # No calibration yet
+            lineup_status="expected",
+            recent_predictions=None
+        )
+        
+        # Step 5: Generate MENSIONE PICK
+        mensione_pick = None
+        if market_probs:
+            try:
+                pick = self.mensione_pick_generator.generate(
+                    market_probs=market_probs,
+                    confidence_assessment=confidence_assessment,
+                    odds_data=odds_data
+                )
+                
+                if pick:
+                    # Convert to dict for AnalysisContext
+                    mensione_pick = {
+                        "pick_market": pick.pick_market,
+                        "pick_probability": pick.pick_probability,
+                        "confidence_label": pick.confidence_label,
+                        "confidence_score": pick.confidence_score,
+                        "expected_value": pick.expected_value,
+                        "market_odds": pick.market_odds,
+                        "fair_odds": pick.fair_odds,
+                        "edge": pick.edge,
+                        "reasoning_factors": pick.reasoning_factors,
+                        "predicted_score": pick.predicted_score,
+                        "score_distribution_top5": pick.score_distribution_top5
+                    }
+            except Exception:
+                # Pick generation failed, continue without it
+                pass
+        
+        # Step 6: Extract predicted score (most likely scoreline)
+        predicted_score = None
+        if market_probs and market_probs.exact_score_top:
+            predicted_score = market_probs.exact_score_top[0][0]
+        elif prediction.score_distribution:
+            # Fallback: find max probability scoreline
+            max_score = max(prediction.score_distribution.items(), key=lambda x: x[1], default=None)
+            if max_score:
+                predicted_score = max_score[0]
+        
+        # Step 7: Create versioned prediction
+        prediction_data = {
+            "home_win_prob": prediction.home_win_probability,
+            "draw_prob": prediction.draw_probability,
+            "away_win_prob": prediction.away_win_probability,
+            "home_xg": prediction.home_xg,
+            "away_xg": prediction.away_xg,
+            "predicted_score": predicted_score,
+            "btts_probability": prediction.btts_probability,
+            "score_distribution": prediction.score_distribution,
+            "markets": market_probs.__dict__ if market_probs else None,
+            "mensione_pick": mensione_pick,
+            "confidence": {
+                "overall": confidence_assessment.overall_confidence,
+                "label": confidence_assessment.confidence_label,
+                "components": confidence_assessment.components.__dict__
+            }
+        }
+        
+        version = None
+        try:
+            version = self.version_manager.create_version(
+                match_id=match.id,
+                stage=stage,
+                prediction_data=prediction_data,
+                model_versions={self.poisson_model_metadata.id: self.poisson_model_metadata.version},
+                data_quality_score=0.7,
+                confidence_score=confidence_assessment.overall_confidence,
+                notes=["Phase 1: Poisson model with market derivation and MENSIONE pick"]
+            )
+        except Exception:
+            # Versioning failed (e.g., duplicate stage), continue without version
+            pass
+        
+        # Step 8: Generate markets for AnalysisContext
+        markets = self.generate_prediction_markets(match, prediction)
+        
+        # Step 9: Build enriched AnalysisContext
+        context = self.build_analysis_context(
+            match=match,
+            prediction=prediction,
+            prediction_markets=markets
+        )
+        
+        # Add MENSIONE-specific fields
+        context.predicted_score = predicted_score
+        context.mensione_pick = mensione_pick
+        context.prediction_version_id = version.version_id if version else None
         
         return context

@@ -10,6 +10,7 @@ Tracks prediction evolution through match lifecycle stages:
 Once written, a prediction version is NEVER modified (immutable).
 """
 
+import copy
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -171,7 +172,7 @@ class PredictionVersionManager:
             match_id=match_id,
             stage=stage,
             created_at=datetime.utcnow(),
-            prediction_data=prediction_data.copy(),  # Deep copy to ensure immutability
+            prediction_data=copy.deepcopy(prediction_data),  # Deep copy to ensure immutability
             model_versions=model_versions or {},
             data_quality_score=data_quality_score,
             confidence_score=confidence_score,
