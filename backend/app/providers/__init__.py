@@ -3,6 +3,10 @@
 from app.providers.base import FootballDataProvider
 from app.providers.development import DevelopmentProvider
 from app.providers.ryzellx import RyzellxFootballProvider
+from app.providers.fotmob import FotMobFootballProvider
+from app.providers.openligadb import OpenLigaDBFootballProvider
+from app.providers.manager import ProviderManager
+from app.providers.adapter import ProviderManagerAdapter
 from app.providers.exceptions import (
     ProviderError,
     ProviderTimeoutError,
@@ -31,6 +35,10 @@ __all__ = [
     "DevelopmentProvider",
     # Multi-provider implementations
     "RyzellxFootballProvider",
+    "FotMobFootballProvider",
+    "OpenLigaDBFootballProvider",
+    "ProviderManager",
+    "ProviderManagerAdapter",
     # Exceptions
     "ProviderError",
     "ProviderTimeoutError",
