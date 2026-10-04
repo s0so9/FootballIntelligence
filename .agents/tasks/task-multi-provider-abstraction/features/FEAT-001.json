@@ -1,0 +1,25 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create foundation layer: provider-independent normalized models (ProviderMatch, ProviderTeam, ProviderPlayer, ProviderCompetition, ProviderStanding, ProviderMatchEvent, ProviderLineup, ProviderMatchStats, ProviderShot, ProviderLiveMatch), structured provider exceptions (ProviderError, ProviderTimeoutError, ProviderHTTPError, ProviderInvalidDataError, ProviderNotFoundError), and simple in-memory TTL cache abstraction. All models include source metadata fields (provider, source_id, fetched_at, source_updated_at, is_live, data_freshness_seconds). Use Optional fields for anything upstream may not provide — never invent values.",
+  "status": "completed",
+  "steps": [
+    "Create backend/app/providers/exceptions.py with base ProviderError(Exception) carrying provider_name, operation, and sanitized message (no secrets). Add subclasses: ProviderTimeoutError, ProviderHTTPError (add status_code), ProviderInvalidDataError, ProviderNotFoundError.",
+    "Create backend/app/providers/models.py with normalized Pydantic models. All models must include: provider: str, source_id: str, fetched_at: datetime, source_updated_at: Optional[datetime], is_live: bool, data_freshness_seconds: Optional[int]. Models: ProviderMatch (maps to Match domain model fields + metadata), ProviderTeam (maps to Team), ProviderPlayer (maps to Player), ProviderCompetition (maps to Competition), ProviderStanding (maps to Standing), ProviderMatchEvent (maps to MatchEvent), ProviderLineup (maps to Lineup), ProviderMatchStats (maps to TeamMatchStatistic with xG, shots, possession, passes, corners, cards), ProviderShot (id, match_id, team_id, player_id, minute, xg, result, coordinates), ProviderLiveMatch (match_id, status, minute, added_time, home_score, away_score, live_events, last_updated). Use Optional[T] for all fields that providers may not supply.",
+    "Create backend/app/providers/cache.py with ProviderCache class. Methods: get(key: str) -> Optional[Any], set(key: str, value: Any, ttl_seconds: int), delete(key: str), clear(). Implement using dict storage with expiry timestamps. Thread-safe using threading.Lock. TTL constants: LIVE_DATA_TTL=30, UPCOMING_FIXTURES_TTL=300, HISTORICAL_MATCH_TTL=3600, METADATA_TTL=3600.",
+    "Update backend/app/providers/__init__.py to export: ProviderError, ProviderTimeoutError, ProviderHTTPError, ProviderInvalidDataError, ProviderNotFoundError, ProviderCache, and all ProviderXxx models."
+  ],
+  "acceptance_criteria": [
+    "All exception classes exist in exceptions.py and carry provider_name, operation, message fields",
+    "All normalized models in models.py include source metadata fields and use Optional for unavailable data",
+    "ProviderCache implements get/set/delete/clear with TTL expiry and is thread-safe",
+    "No invented/placeholder values in model definitions — only Optional fields"
+  ],
+  "verification": [
+    "Run: pytest backend/tests/test_providers_multi.py::test_provider_exceptions -v",
+    "Run: pytest backend/tests/test_providers_multi.py::test_provider_models -v",
+    "Run: pytest backend/tests/test_providers_multi.py::test_provider_cache -v"
+  ],
+  "blocked_reason": null,
+  "findings": "Successfully implemented foundation layer for multi-provider abstraction. Created 4 new files: exceptions.py (5 exception classes with provider_name, operation, message fields), models.py (11 normalized Pydantic models with source metadata fields), cache.py (thread-safe in-memory TTL cache with 4 TTL constants), and updated __init__.py exports. All models use Optional[T] for unavailable data - no invented values. Cache is thread-safe using threading.Lock. Created comprehensive test suite (test_providers_multi.py) with 28 tests covering all components. All 573 backend tests pass (563 passed, 10 skipped). No regressions. Models include: ProviderMetadata, ProviderCompetition, ProviderTeam, ProviderPlayer, ProviderMatch, ProviderMatchEvent, ProviderLineup, ProviderMatchStats, ProviderShot, ProviderStanding, ProviderLiveMatch. Exception hierarchy: ProviderError (base) -> ProviderTimeoutError, ProviderHTTPError (adds status_code), ProviderInvalidDataError, ProviderNotFoundError. Cache implements get/set/delete/clear with TTL expiry. TTL constants: LIVE_DATA_TTL=30s, UPCOMING_FIXTURES_TTL=300s, HISTORICAL_MATCH_TTL=3600s, METADATA_TTL=3600s. Ready for next FEAT: provider implementations (Ryzellx, FotMob, OpenLigaDB)."
+}
