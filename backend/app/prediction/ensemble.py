@@ -23,9 +23,10 @@ Do NOT add neural networks or external ML frameworks here.
 from __future__ import annotations
 
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Protocol
 
 from app.domain.enums import ModelType
 
@@ -383,3 +384,208 @@ class EnsembleModel:
             btts_no /= total
 
         return btts_yes, btts_no
+
+
+# ---------------------------------------------------------------------------
+# Probability Calibration Interface (placeholder)
+# ---------------------------------------------------------------------------
+
+class ProbabilityCalibrator(ABC):
+    """Abstract interface for probability calibration.
+    
+    Calibration adjusts raw model probabilities to match observed frequencies.
+    This is essential for reliable confidence intervals and betting strategies.
+    
+    Usage:
+        calibrator = IsotonicCalibrator()  # Example implementation
+        calibrator.fit(predicted_probabilities, actual_outcomes)
+        calibrated = calibrator.calibrate([0.45, 0.30, 0.25])
+    
+    Note: This is a placeholder interface. Implementations require historical
+          match data with both predictions and outcomes.
+    """
+    
+    @abstractmethod
+    def fit(
+        self,
+        predicted_probabilities: List[List[float]],
+        actual_outcomes: List[int]
+    ) -> None:
+        """Train calibrator on historical predictions and outcomes.
+        
+        Args:
+            predicted_probabilities: List of [home_win, draw, away_win] predictions
+            actual_outcomes: List of actual outcomes (0=home, 1=draw, 2=away)
+        """
+        pass
+    
+    @abstractmethod
+    def calibrate(self, probabilities: List[float]) -> List[float]:
+        """Calibrate a set of probabilities.
+        
+        Args:
+            probabilities: Raw model probabilities [home_win, draw, away_win]
+            
+        Returns:
+            Calibrated probabilities summing to 1.0
+        """
+        pass
+    
+    @abstractmethod
+    def get_calibration_curve(self) -> Optional[Dict[str, List[float]]]:
+        """Get calibration curve data for visualization.
+        
+        Returns:
+            Dictionary with 'predicted' and 'observed' frequency lists, or None if not fitted
+        """
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Backtesting Interface (placeholder)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BacktestResult:
+    """Result of a model backtest.
+    
+    Contains performance metrics computed from historical data.
+    DO NOT fabricate these metrics without actual historical match outcomes.
+    """
+    
+    n_matches: int
+    """Number of matches in the backtest."""
+    
+    accuracy: Optional[float] = None
+    """Proportion of correct 1X2 predictions (0.0-1.0)."""
+    
+    brier_score: Optional[float] = None
+    """Brier score (lower is better, 0.0 = perfect)."""
+    
+    log_loss: Optional[float] = None
+    """Logarithmic loss (lower is better)."""
+    
+    roi: Optional[float] = None
+    """Return on investment if betting at market odds (can be negative)."""
+    
+    calibration_error: Optional[float] = None
+    """Mean absolute calibration error."""
+    
+    coverage_start: Optional[datetime] = None
+    """Start date of backtest period."""
+    
+    coverage_end: Optional[datetime] = None
+    """End date of backtest period."""
+    
+    note: str = "Requires historical match data and outcomes"
+    """Note about data requirements or limitations."""
+
+
+class BacktestRunner(ABC):
+    """Abstract interface for model backtesting.
+    
+    Backtesting evaluates model performance on historical data by:
+    1. Generating predictions for past matches using only information
+       available at the time
+    2. Comparing predictions to actual outcomes
+    3. Computing performance metrics
+    
+    Critical: Backtesting MUST prevent data leakage. Features for match M
+              can only use data from before M's scheduled time.
+    
+    Usage:
+        runner = RollingWindowBacktester(window_days=365)
+        result = runner.run_backtest(historical_matches, model)
+        print(f"Accuracy: {result.accuracy:.2%}")
+    
+    Note: This is a placeholder interface. Implementations require a database
+          of historical matches with outcomes.
+    """
+    
+    @abstractmethod
+    def run_backtest(
+        self,
+        matches: List[any],  # List of Match entities with outcomes
+        model: any,  # Model to test (must have predict method)
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> BacktestResult:
+        """Run backtest on historical matches.
+        
+        Args:
+            matches: Historical matches with known outcomes
+            model: Model to evaluate
+            start_date: Optional start of backtest period
+            end_date: Optional end of backtest period
+            
+        Returns:
+            BacktestResult with performance metrics
+            
+        Raises:
+            ValueError: If matches have no outcomes or insufficient data
+        """
+        pass
+    
+    @abstractmethod
+    def get_prediction_errors(self) -> Optional[List[Dict[str, any]]]:
+        """Get detailed prediction errors from last backtest.
+        
+        Returns:
+            List of per-match error details, or None if no backtest run yet
+        """
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Ensemble Aggregation Interface (placeholder for future multi-model support)
+# ---------------------------------------------------------------------------
+
+class EnsembleAggregator(ABC):
+    """Abstract interface for combining multiple model outputs.
+    
+    This interface supports more sophisticated ensemble strategies beyond
+    simple weighted averaging:
+    - Stacking (meta-model trained on base model outputs)
+    - Dynamic weighting based on match context
+    - Selective ensembling (use different models for different matches)
+    
+    The current EnsembleModel implements weighted averaging. Future
+    implementations can use this interface for advanced strategies.
+    
+    Usage:
+        aggregator = StackingAggregator(meta_model)
+        aggregator.fit(training_data)
+        result = aggregator.aggregate([model1_output, model2_output, ...])
+    
+    Note: This is a placeholder interface for future development.
+    """
+    
+    @abstractmethod
+    def aggregate(self, model_outputs: List[ModelPredictionInput]) -> EnsemblePrediction:
+        """Combine multiple model predictions into an ensemble prediction.
+        
+        Args:
+            model_outputs: Predictions from individual models
+            
+        Returns:
+            Combined ensemble prediction
+        """
+        pass
+    
+    @abstractmethod
+    def fit(self, training_data: List[Dict[str, any]]) -> None:
+        """Train the aggregator on historical data (for learning-based strategies).
+        
+        Args:
+            training_data: Historical matches with model predictions and outcomes
+        """
+        pass
+    
+    @abstractmethod
+    def get_model_importances(self) -> Optional[Dict[str, float]]:
+        """Get learned importance weights for each model.
+        
+        Returns:
+            Dictionary mapping model_id to importance score, or None if not applicable
+        """
+        pass

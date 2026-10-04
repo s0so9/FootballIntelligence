@@ -261,3 +261,65 @@ class TestMatchIngester:
         assert match1.id != match2.id
         assert match1.provider_source.name == "ryzellx"
         assert match2.provider_source.name == "fotmob"
+    
+    def test_ingest_match_preserves_all_fields_from_none_overwrite(self, db_session):
+        """Test that ALL fields are protected from None-overwrite, not just preserve_fields.
+        
+        This test verifies the fix for the critical bug where fields outside PRESERVE_MATCH_FIELDS
+        (like venue_name, round, season) were being overwritten with None.
+        """
+        ingester = MatchIngester(db_session)
+        
+        # First ingest with full data including venue_name, round, season
+        provider_match1 = ProviderMatch(
+            provider="ryzellx",
+            source_id="match_123",
+            fetched_at=datetime.now(timezone.utc),
+            home_team_id="team_home",
+            home_team_name="Arsenal",
+            away_team_id="team_away",
+            away_team_name="Chelsea",
+            scheduled_at=datetime(2024, 1, 15, 15, 0, tzinfo=timezone.utc),
+            status=MatchStatus.SCHEDULED,
+            venue_name="Emirates Stadium",
+            round=4,  # Matchweek 4
+            season="2023/24",
+            minute=None,
+        )
+        match1 = ingester.ingest_match(provider_match1)
+        db_session.commit()
+        
+        # Verify initial data
+        assert match1.venue_name == "Emirates Stadium"
+        assert match1.round == 4
+        assert match1.season == "2023/24"
+        
+        # Second ingest with these fields missing (None)
+        provider_match2 = ProviderMatch(
+            provider="ryzellx",
+            source_id="match_123",
+            fetched_at=datetime.now(timezone.utc),
+            home_team_id="team_home",
+            home_team_name="Arsenal",
+            away_team_id="team_away",
+            away_team_name="Chelsea",
+            scheduled_at=datetime(2024, 1, 15, 15, 0, tzinfo=timezone.utc),
+            status=MatchStatus.LIVE,  # Updated status
+            venue_name=None,  # Missing in this update
+            round=None,  # Missing in this update
+            season=None,  # Missing in this update
+            minute=45,  # New data
+        )
+        match2 = ingester.ingest_match(provider_match2)
+        db_session.commit()
+        
+        # Critical test: venue_name, round, season should be preserved (NOT overwritten with None)
+        db_session.refresh(match2)
+        assert match2.venue_name == "Emirates Stadium", "venue_name should not be overwritten with None"
+        assert match2.round == 4, "round should not be overwritten with None"
+        assert match2.season == "2023/24", "season should not be overwritten with None"
+        
+        # But new non-None values should be updated
+        assert match2.status == MatchStatus.LIVE, "status should be updated"
+        assert match2.minute == 45, "minute should be updated"
+

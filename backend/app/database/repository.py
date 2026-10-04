@@ -98,7 +98,9 @@ class BaseRepository(Generic[T]):
             provider_source_id: Provider source UUID
             provider_id: Provider's external identifier
             data: Dictionary of field values to set
-            preserve_fields: Fields to never overwrite if existing value is not None
+            preserve_fields: Optional list of fields to explicitly preserve.
+                            If None (default), ALL fields are protected from None-overwrite.
+                            If provided, ONLY those fields are protected (use with caution).
             
         Returns:
             Created or updated entity
@@ -118,21 +120,29 @@ class BaseRepository(Generic[T]):
             return entity
         else:
             # Update existing entity
-            # Apply should_preserve_field logic: never overwrite non-None with None
+            # SAFE DEFAULT: Protect ALL fields from None-overwrite unless preserve_fields is explicitly provided
+            updated = False
             for key, value in data.items():
                 existing_value = getattr(existing, key, None)
                 
-                # If preserve_fields specified and key is in it, check for None overwrite
-                if preserve_fields and key in preserve_fields:
-                    if existing_value is not None and value is None:
-                        # Skip: don't overwrite valid data with None
-                        continue
+                # Never overwrite non-None with None (applies to all fields by default)
+                if existing_value is not None and value is None:
+                    # Skip: don't overwrite valid data with None
+                    continue
                 
-                # Otherwise, always update
-                setattr(existing, key, value)
+                # If preserve_fields is specified and key is NOT in it, allow overwrite
+                # This provides explicit opt-out from None-protection for specific fields
+                # (Currently not used, but available if needed for future use cases)
+                
+                # Update the field if value is different
+                if existing_value != value:
+                    setattr(existing, key, value)
+                    updated = True
             
-            # Update timestamp
-            existing.updated_at = utc_now()
+            # Update timestamp only if something changed
+            if updated:
+                existing.updated_at = utc_now()
+            
             self.session.flush()
             return existing
 

@@ -1,7 +1,7 @@
 """Analysis context domain models."""
 
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from pydantic import BaseModel, Field
 
 from app.domain.match import Match, Lineup
@@ -151,6 +151,60 @@ class AnalysisContext(BaseModel):
     )
     missing_data_notes: Optional[List[str]] = Field(
         None, description="Explicit notes about missing information"
+    )
+    
+    # === Database-Backed Features ===
+    feature_set: Optional[Dict[str, Any]] = Field(
+        None, description="Complete feature set from database-backed feature engineering"
+    )
+    home_form_features: Optional[Dict[str, Any]] = Field(
+        None, description="Home team form features (W/D/L, goals, form string)"
+    )
+    away_form_features: Optional[Dict[str, Any]] = Field(
+        None, description="Away team form features (W/D/L, goals, form string)"
+    )
+    attack_defence_home: Optional[Dict[str, Any]] = Field(
+        None, description="Home team attack/defence features (goals/xG per match)"
+    )
+    attack_defence_away: Optional[Dict[str, Any]] = Field(
+        None, description="Away team attack/defence features (goals/xG per match)"
+    )
+    match_context_features: Optional[Dict[str, Any]] = Field(
+        None, description="Match context features (home advantage, rest days, form difference)"
+    )
+    data_quality_features: Optional[Dict[str, Any]] = Field(
+        None, description="Data quality metrics (sample size, confidence, freshness)"
+    )
+    
+    # === Provider Metadata ===
+    provider_metadata: Optional[Dict[str, Any]] = Field(
+        None, description="Metadata from the data provider (source, timestamps, IDs)"
+    )
+    selected_provider: Optional[str] = Field(
+        None, description="Name of the provider used for this match data"
+    )
+    provider_fetched_at: Optional[datetime] = Field(
+        None, description="When the provider data was fetched"
+    )
+    provider_updated_at: Optional[datetime] = Field(
+        None, description="When the provider last updated the data"
+    )
+    data_freshness_seconds: Optional[int] = Field(
+        None, description="Age of the data in seconds"
+    )
+    
+    # === Latency Tracking ===
+    latency_metrics: Optional[Dict[str, Any]] = Field(
+        None, description="Real-time data latency metrics"
+    )
+    provider_to_mensione_ms: Optional[float] = Field(
+        None, description="Latency from provider event to MENSIONE receipt (milliseconds)"
+    )
+    total_latency_ms: Optional[float] = Field(
+        None, description="Total end-to-end latency (milliseconds)"
+    )
+    has_clock_skew: Optional[bool] = Field(
+        None, description="Whether clock skew was detected in provider timestamps"
     )
     
     # === Warnings and Limitations ===
