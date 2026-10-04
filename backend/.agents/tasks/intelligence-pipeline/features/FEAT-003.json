@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement latency instrumentation layer that tracks real-time data freshness and processing latency throughout the pipeline. This feature creates LatencyTracker and LatencyMetrics models that capture authoritative timestamps from provider responses, calculate multi-stage latency metrics (provider-to-mensione, processing, storage, total), detect clock skew and future timestamps, and expose latency information through the API. All metrics are nullable when timestamps are unavailable, and the instrumentation is lightweight with minimal overhead.",
+  "status": "pending",
+  "steps": [
+    "1. Create latency/__init__.py: Empty module initializer.",
+    "2. Create latency/models.py: Define LatencyMetrics Pydantic model with fields: provider_event_timestamp (Optional[datetime]), provider_received_timestamp (Optional[datetime]), processing_timestamp (Optional[datetime]), stored_timestamp (Optional[datetime]), api_timestamp (Optional[datetime]), provider_to_mensione_ms (Optional[float]), processing_ms (Optional[float]), storage_ms (Optional[float]), backend_to_frontend_ms (Optional[float]), total_latency_ms (Optional[float]), has_clock_skew (bool), has_future_timestamp (bool), is_realtime (bool), data_age_seconds (Optional[float]), event_id (Optional[str]), notes (Optional[List[str]]). Include validation: detect future timestamps (> datetime.now(UTC) + 5 seconds grace), detect unreasonable skew (> 60 seconds between adjacent stages).",
+    "3. Create latency/tracker.py: Implement LatencyTracker class with track_provider_response(provider_model: ProviderMatch | ProviderLiveMatch | ProviderMatchEvent) that extracts timestamps: provider_event_timestamp from source_updated_at if authoritative, provider_received_timestamp from fetched_at, marks processing_timestamp as now(UTC). Calculate provider_to_mensione_ms if both timestamps exist. Detect future timestamps and clock skew. Return partial LatencyMetrics. Implement track_storage(latency_metrics: LatencyMetrics) that adds stored_timestamp=now(UTC), calculates storage_ms from processing_timestamp. Implement track_api_response(latency_metrics: LatencyMetrics) that adds api_timestamp=now(UTC), calculates backend_to_frontend_ms, calculates total_latency_ms from provider_event_timestamp to api_timestamp if available. Implement get_data_age_seconds(fetched_at: datetime, now: Optional[datetime]=None) that calculates seconds since fetched_at.",
+    "4. Update ingestion/service.py: Modify ingest_provider_matches and other ingest methods to call LatencyTracker.track_provider_response for each provider model, then track_storage after database commit. Store LatencyMetrics in a separate LatencyLog table (add to database/models.py) with fields: id, entity_type (enum: match, event, standing), entity_id (FK), latency_json (JSON blob storing LatencyMetrics.model_dump()), created_at. Use a separate repository LatencyLogRepository.create_log(session, entity_type, entity_id, latency_metrics).",
+    "5. Update database/models.py: Add LatencyLog model with id, entity_type (String enum), entity_id (String, indexed), latency_json (JSON), created_at. Add to migration.",
+    "6. Update app/api/v1/endpoints/matches.py: Modify get_match and get_match_prediction to: retrieve latest LatencyLog for the match, call LatencyTracker.track_api_response to finalize metrics, include latency_metrics: Optional[LatencyMetrics] in response schemas (add to app/api/v1/schemas.py). If no latency log exists (match not ingested), latency_metrics is None.",
+    "7. Update app/api/v1/schemas.py: Add LatencyMetricsResponse schema mirroring LatencyMetrics Pydantic model. Add latency_metrics: Optional[LatencyMetricsResponse] field to MatchDetailResponse and MatchPredictionResponse.",
+    "8. Create tests/test_latency.py: Test LatencyTracker.track_provider_response with valid timestamps (calculates provider_to_mensione_ms), with missing source_updated_at (provider_event_timestamp=None, cannot calculate latency), with future timestamp (has_future_timestamp=True, adds note), with clock skew (has_clock_skew=True). Test track_storage adds stored_timestamp and calculates storage_ms. Test track_api_response calculates total_latency_ms. Test get_data_age_seconds. Test LatencyLog creation in database. Test API endpoint includes latency_metrics in response. Verify with '.venv\\Scripts\\python.exe -m pytest tests/test_latency.py -v'."
+  ],
+  "acceptance_criteria": [
+    "latency/models.py defines LatencyMetrics Pydantic model with all timestamp and metric fields, validation for future timestamps and clock skew",
+    "latency/tracker.py implements LatencyTracker with track_provider_response, track_storage, track_api_response methods that calculate multi-stage latency metrics",
+    "database/models.py includes LatencyLog model for persisting latency metrics as JSON",
+    "ingestion/service.py tracks latency for all ingested entities and stores in LatencyLog table",
+    "app/api/v1/endpoints/matches.py retrieves latency metrics and includes in API responses",
+    "app/api/v1/schemas.py includes LatencyMetricsResponse in match detail and prediction responses",
+    "tests/test_latency.py verifies: latency calculation with valid timestamps, handling of missing timestamps (metrics are None), future timestamp detection, clock skew detection, storage and API tracking, LatencyLog persistence, API response includes metrics",
+    "Running '.venv\\Scripts\\python.exe -m pytest tests/test_latency.py -v' passes all tests"
+  ],
+  "verification": [
+    "Run: cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_latency.py -v",
+    "Verify: All tests pass, confirming latency metrics are calculated correctly, missing timestamps result in None values, future timestamps and clock skew are detected",
+    "Verify: No import errors when importing from app.latency",
+    "Verify: API responses for matches include latency_metrics field (or None if not available)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

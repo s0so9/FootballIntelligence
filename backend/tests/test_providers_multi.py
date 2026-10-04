@@ -1025,3 +1025,398 @@ class TestRyzellxProvider:
         assert match.competition_id is None
         # No invented values!
 
+
+class TestFotMobProvider:
+    """Tests for FotMobFootballProvider (LIVE/FAST provider, unofficial)."""
+    
+    @pytest.fixture
+    def provider(self):
+        """Create FotMobFootballProvider instance for testing."""
+        from app.providers.fotmob import FotMobFootballProvider
+        
+        cache = ProviderCache()
+        provider = FotMobFootballProvider(
+            base_url="https://test-fotmob.example.com",
+            timeout_seconds=10.0,
+            retry_count=1,  # Conservative
+            cache=cache
+        )
+        yield provider
+        # Cleanup
+        import asyncio
+        asyncio.run(provider.close())
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_provider_name(self, provider):
+        """Test FotMob provider identifies itself correctly."""
+        assert provider.PROVIDER_NAME == "fotmob"
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_get_matches_by_date(self, provider):
+        """Test get_matches_by_date returns normalized matches."""
+        from app.providers.fotmob import FotMobFootballProvider
+        
+        test_date = date(2024, 1, 15)
+        date_str = "20240115"
+        
+        # Mock FotMob API response structure
+        mock_response = {
+            "leagues": [
+                {
+                    "name": "Premier League",
+                    "id": "47",
+                    "matches": [
+                        {
+                            "id": "fotmob_match_1",
+                            "home": {
+                                "id": "team_1",
+                                "name": "Arsenal"
+                            },
+                            "away": {
+                                "id": "team_2",
+                                "name": "Liverpool"
+                            },
+                            "startTime": "2024-01-15T15:00:00Z",
+                            "status": {
+                                "type": "not_started"
+                            },
+                            "league": {
+                                "id": "47",
+                                "name": "Premier League"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        respx.get(f"{provider.base_url}/api/matches").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        matches = await provider.get_matches_by_date(test_date)
+        
+        # Assertions
+        assert len(matches) == 1
+        assert all(isinstance(m, ProviderMatch) for m in matches)
+        assert matches[0].provider == "fotmob"
+        assert matches[0].source_id == "fotmob_match_1"
+        assert matches[0].home_team_name == "Arsenal"
+        assert matches[0].away_team_name == "Liverpool"
+        assert matches[0].status == MatchStatus.SCHEDULED
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_get_match(self, provider):
+        """Test get_match returns detailed match info."""
+        match_id = "fotmob_456"
+        
+        # Mock FotMob match details response
+        mock_response = {
+            "id": "fotmob_456",
+            "home": {
+                "id": "team_10",
+                "name": "Real Madrid"
+            },
+            "away": {
+                "id": "team_11",
+                "name": "Barcelona"
+            },
+            "startTime": "2024-01-20T21:00:00Z",
+            "status": {
+                "type": "live",
+                "minute": 67
+            },
+            "score": {
+                "home": 2,
+                "away": 2
+            },
+            "venue": "Santiago Bernabéu",
+            "league": {
+                "id": "87",
+                "name": "La Liga"
+            }
+        }
+        
+        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        match = await provider.get_match(match_id)
+        
+        # Assertions
+        assert match is not None
+        assert match.provider == "fotmob"
+        assert match.source_id == "fotmob_456"
+        assert match.home_team_name == "Real Madrid"
+        assert match.away_team_name == "Barcelona"
+        assert match.status == MatchStatus.LIVE
+        assert match.minute == 67
+        assert match.home_score == 2
+        assert match.away_score == 2
+        assert match.is_live is True
+        assert match.venue_name == "Santiago Bernabéu"
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_get_match_not_found(self, provider):
+        """Test get_match returns None for 404."""
+        match_id = "nonexistent"
+        
+        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        
+        # Call method
+        match = await provider.get_match(match_id)
+        
+        # Assertions
+        assert match is None
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_get_live_matches(self, provider):
+        """Test get_live_matches returns live match data."""
+        # Mock FotMob live matches response
+        mock_response = {
+            "leagues": [
+                {
+                    "matches": [
+                        {
+                            "id": "live_1",
+                            "home": {"id": "team_x", "name": "Team X"},
+                            "away": {"id": "team_y", "name": "Team Y"},
+                            "status": {"type": "live", "minute": 34},
+                            "score": {"home": 1, "away": 0}
+                        },
+                        {
+                            "id": "live_2",
+                            "home": {"id": "team_z", "name": "Team Z"},
+                            "away": {"id": "team_w", "name": "Team W"},
+                            "status": {"type": "live", "minute": 78},
+                            "score": {"home": 2, "away": 2}
+                        },
+                        {
+                            "id": "finished_1",
+                            "home": {"id": "team_a", "name": "Team A"},
+                            "away": {"id": "team_b", "name": "Team B"},
+                            "status": {"type": "finished"},
+                            "score": {"home": 3, "away": 1}
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        respx.get(f"{provider.base_url}/api/matches/live").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        live_matches = await provider.get_live_matches()
+        
+        # Assertions - should only return live matches, not finished
+        assert len(live_matches) == 2
+        assert all(isinstance(m, ProviderLiveMatch) for m in live_matches)
+        assert live_matches[0].provider == "fotmob"
+        assert live_matches[0].match_id == "live_1"
+        assert live_matches[0].status == MatchStatus.LIVE
+        assert live_matches[0].minute == 34
+        assert live_matches[0].home_score == 1
+        assert live_matches[0].away_score == 0
+        assert live_matches[0].is_live is True
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_timeout_error(self, provider):
+        """Test that timeout raises ProviderTimeoutError."""
+        test_date = date(2024, 1, 15)
+        
+        respx.get(f"{provider.base_url}/api/matches").mock(
+            side_effect=httpx.TimeoutException("Timeout")
+        )
+        
+        with pytest.raises(ProviderTimeoutError) as exc_info:
+            await provider.get_matches_by_date(test_date)
+        
+        assert exc_info.value.provider_name == "fotmob"
+        assert "timed out" in exc_info.value.message.lower()
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_http_error(self, provider):
+        """Test that HTTP errors raise ProviderHTTPError."""
+        match_id = "bad_id"
+        
+        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+            return_value=httpx.Response(400, json={"error": "Bad request"})
+        )
+        
+        with pytest.raises(ProviderHTTPError) as exc_info:
+            await provider.get_match(match_id)
+        
+        assert exc_info.value.provider_name == "fotmob"
+        assert exc_info.value.status_code == 400
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_conservative_retry(self, provider):
+        """Test that FotMob uses conservative retry (retry_count=1)."""
+        team_id = "team_123"
+        
+        # Verify provider has conservative retry_count
+        assert provider.retry_count == 1
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_invalid_json_error(self, provider):
+        """Test that invalid JSON raises ProviderInvalidDataError."""
+        test_date = date(2024, 1, 15)
+        
+        respx.get(f"{provider.base_url}/api/matches").mock(
+            return_value=httpx.Response(200, text="This is not JSON")
+        )
+        
+        with pytest.raises(ProviderInvalidDataError) as exc_info:
+            await provider.get_matches_by_date(test_date)
+        
+        assert exc_info.value.provider_name == "fotmob"
+        assert "parse" in exc_info.value.message.lower()
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_normalization_none_values(self, provider):
+        """Test that missing fields are normalized to None, not invented."""
+        match_id = "match_minimal"
+        
+        # Mock API response with minimal fields
+        mock_response = {
+            "id": "match_minimal",
+            "home": {
+                "id": "home_1",
+                "name": "Home Team"
+            },
+            "away": {
+                "id": "away_1",
+                "name": "Away Team"
+            },
+            "startTime": "2024-01-20T15:00:00Z",
+            "status": {
+                "type": "not_started"
+            }
+            # No venue, no score, no minute, etc.
+        }
+        
+        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        match = await provider.get_match(match_id)
+        
+        # Assertions - all optional fields should be None
+        assert match is not None
+        assert match.venue_name is None
+        assert match.home_score is None
+        assert match.away_score is None
+        assert match.minute is None
+        # No invented values!
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_cache_integration(self, provider):
+        """Test that cache is used correctly."""
+        match_id = "match_cached"
+        
+        # Mock API response
+        mock_response = {
+            "id": "match_cached",
+            "home": {"id": "home_1", "name": "Home Team"},
+            "away": {"id": "away_1", "name": "Away Team"},
+            "startTime": "2024-01-20T15:00:00Z",
+            "status": {"type": "scheduled"}
+        }
+        
+        route = respx.get(f"{provider.base_url}/api/matchDetails").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # First call - should hit API
+        match1 = await provider.get_match(match_id)
+        assert match1 is not None
+        assert match1.home_team_name == "Home Team"
+        assert route.call_count == 1
+        
+        # Second call - should hit cache
+        match2 = await provider.get_match(match_id)
+        assert match2 is not None
+        assert match2.home_team_name == "Home Team"
+        assert route.call_count == 1  # Still 1, not called again
+        
+        # Verify both returns are the same
+        assert match1.source_id == match2.source_id
+    
+    @pytest.mark.asyncio
+    async def test_fotmob_stub_methods(self, provider):
+        """Test that stub methods return None/empty as documented."""
+        # get_league should return None
+        league = await provider.get_league("league_123")
+        assert league is None
+        
+        # get_team should return None
+        team = await provider.get_team("team_123")
+        assert team is None
+        
+        # get_player should return None
+        player = await provider.get_player("player_123")
+        assert player is None
+        
+        # get_standings should return empty list
+        standings = await provider.get_standings("league_123")
+        assert standings == []
+    
+    @pytest.mark.asyncio
+    @respx.mock
+    async def test_fotmob_live_matches_fallback(self, provider):
+        """Test that get_live_matches falls back to daily matches if live endpoint fails."""
+        # Mock primary live endpoint to fail
+        respx.get(f"{provider.base_url}/api/matches/live").mock(
+            return_value=httpx.Response(404, json={"error": "Not found"})
+        )
+        
+        # Mock fallback to daily matches
+        today = date.today()
+        date_str = today.strftime("%Y%m%d")
+        
+        mock_response = {
+            "leagues": [
+                {
+                    "matches": [
+                        {
+                            "id": "live_fallback",
+                            "home": {"id": "team_x", "name": "Team X"},
+                            "away": {"id": "team_y", "name": "Team Y"},
+                            "status": {"type": "live", "minute": 50},
+                            "score": {"home": 1, "away": 1}
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        respx.get(f"{provider.base_url}/api/matches").mock(
+            return_value=httpx.Response(200, json=mock_response)
+        )
+        
+        # Call method
+        live_matches = await provider.get_live_matches()
+        
+        # Assertions - should get live matches from fallback
+        assert len(live_matches) == 1
+        assert live_matches[0].match_id == "live_fallback"
+        assert live_matches[0].status == MatchStatus.LIVE
+

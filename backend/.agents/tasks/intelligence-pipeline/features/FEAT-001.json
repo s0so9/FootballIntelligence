@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Implement database persistence layer with SQLAlchemy ORM models, Alembic migrations, and idempotent ingestion support. This feature creates the foundational database architecture for storing competitions, teams, players, matches, match events, standings, match statistics, and provider source metadata. All models include stable internal IDs, external provider IDs, unique constraints, timestamps (UTC), and support for idempotent upserts. Alembic is configured for schema migrations.",
+  "status": "pending",
+  "steps": [
+    "1. Configure Alembic: Run 'cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m alembic init alembic' to initialize Alembic structure. Update alembic.ini with sqlalchemy.url pointing to settings.database_url. Update alembic/env.py to import app.config.settings and set target_metadata from Base.metadata.",
+    "2. Create database/base.py: Define declarative Base, stable ID generation utilities (UUID-based), UTC timestamp mixins (TimestampMixin with created_at/updated_at), and base model class (BaseModel) that all ORM models inherit from.",
+    "3. Create database/models.py with SQLAlchemy ORM models: ProviderSource (id, name, base_url, is_active, last_seen_at), Competition (id, provider_source_id FK, provider_id unique per source, name, country, level, type, season, logo_url, created_at, updated_at), Team (id, provider_source_id FK, provider_id unique per source, name, short_name, code, country, founded, venue_name, logo_url, created_at, updated_at), Player (id, provider_source_id FK, provider_id unique per source, name, date_of_birth, nationality, position, shirt_number, team_id FK nullable, height_cm, weight_kg, photo_url, created_at, updated_at), Match (id, provider_source_id FK, provider_id unique per source, competition_id FK, home_team_id FK, away_team_id FK, scheduled_at, status enum, home_score, away_score, home_score_ht, away_score_ht, minute, added_time, outcome enum, round, venue_name, created_at, updated_at, provider_fetched_at, provider_updated_at), MatchEvent (id, provider_source_id FK, provider_id unique per source, match_id FK, type enum, minute, added_time, team_id FK, player_id FK nullable, related_player_id FK nullable, description, created_at, provider_fetched_at), Standing (id, provider_source_id FK, provider_id unique per source, competition_id FK, team_id FK, season, position, played, won, drawn, lost, goals_for, goals_against, goal_difference, points, home_played, home_won, home_drawn, home_lost, away_played, away_won, away_drawn, away_lost, form, created_at, updated_at, provider_fetched_at), MatchStatistic (id, provider_source_id FK, provider_id unique per source, match_id FK, team_id FK, goals_scored, goals_conceded, xg, xg_against, shots_total, shots_on_target, shots_off_target, shots_blocked, possession_percentage, passes_completed, passes_attempted, pass_accuracy, corners, free_kicks, offsides, yellow_cards, red_cards, fouls_committed, tackles, interceptions, clearances, saves, created_at, provider_fetched_at). All models use relationships for FKs, composite unique constraints on (provider_source_id, provider_id) where applicable.",
+    "4. Create database/session.py: Implement get_engine() that creates SQLAlchemy engine from settings.database_url with appropriate pool settings for PostgreSQL (or SQLite fallback). Implement get_session_factory() returning sessionmaker. Implement get_db() dependency for FastAPI that yields sessions with proper cleanup.",
+    "5. Create database/repository.py: Implement BaseRepository with generic CRUD operations. Implement upsert_by_provider_id(session, model, provider_source_id, provider_id, data_dict) that performs idempotent upsert based on (provider_source_id, provider_id) unique constraint, updating updated_at on conflict. Implement get_by_provider_id(session, model, provider_source_id, provider_id). Implement specific repository classes: CompetitionRepository, TeamRepository, PlayerRepository, MatchRepository, MatchEventRepository, StandingRepository, MatchStatisticRepository with domain-specific query methods (e.g., get_team_matches_before_date, get_team_standing_in_competition).",
+    "6. Update database/__init__.py: Export Base, get_engine, get_session_factory, get_db, all repository classes.",
+    "7. Generate initial Alembic migration: Run '.venv\\Scripts\\python.exe -m alembic revision --autogenerate -m \"Initial schema: competitions, teams, players, matches, events, standings, statistics\"'. Review generated migration file for correctness. DO NOT run the migration yet (that happens in testing).",
+    "8. Add DATABASE_URL to .env.example with PostgreSQL template and SQLite fallback comment. Update app/config.py if database_url default needs adjustment.",
+    "9. Create tests/test_database.py: Test Base.metadata has all tables. Test TimestampMixin sets created_at/updated_at. Test upsert_by_provider_id with new record (creates), with existing record (updates, preserves created_at, updates updated_at), with different provider_source but same provider_id (creates separate record). Test get_by_provider_id returns correct record. Test repository-specific queries. Use in-memory SQLite for tests (\":memory:\"). Run migration in test setUp. Verify all tests pass with '.venv\\Scripts\\python.exe -m pytest tests/test_database.py -v'."
+  ],
+  "acceptance_criteria": [
+    "Alembic is configured with alembic.ini and alembic/env.py correctly referencing settings.database_url",
+    "database/base.py defines Base, TimestampMixin, BaseModel with UUID ID generation",
+    "database/models.py contains SQLAlchemy ORM models for ProviderSource, Competition, Team, Player, Match, MatchEvent, Standing, MatchStatistic with all specified fields, relationships, and composite unique constraints",
+    "database/session.py provides get_engine(), get_session_factory(), get_db() FastAPI dependency",
+    "database/repository.py implements BaseRepository with upsert_by_provider_id, get_by_provider_id, and domain-specific repository classes",
+    "Initial Alembic migration generated (not yet applied to any live database)",
+    ".env.example includes DATABASE_URL with PostgreSQL and SQLite examples",
+    "tests/test_database.py covers upsert idempotency, timestamp behavior, provider_id uniqueness per source, and repository queries",
+    "Running '.venv\\Scripts\\python.exe -m pytest tests/test_database.py -v' passes all tests"
+  ],
+  "verification": [
+    "Run: cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_database.py -v",
+    "Verify: All tests pass, confirming ORM models, upsert idempotency, timestamp behavior, and repository operations work correctly",
+    "Verify: No import errors when importing from app.database",
+    "Verify: Alembic migration file exists in alembic/versions/ and contains CREATE TABLE statements for all models"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

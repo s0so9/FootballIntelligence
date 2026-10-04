@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement FotMobFootballProvider (LIVE/FAST provider, unofficial) with async httpx client, configurable base URL, support for daily matches, match details, live match data endpoints, conservative request patterns (no bypasses, no scraping tricks), and normalization into ProviderMatch/ProviderLiveMatch. Primary for LIVE/FAST data where it provides fresher information. Include prominent comments: 'Unofficial FotMob integration — not an official FotMob API'. If request fails, raise ProviderError (never invent data).",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/providers/fotmob.py with FotMobFootballProvider class. Add module-level docstring: '# Unofficial FotMob Integration\\n\\n⚠️ This is NOT an official FotMob API integration.\\n\\nThis provider uses publicly accessible FotMob JSON endpoints for live/fast data.\\nRequest volume must be conservative. No bypasses, no anti-bot evasion, no scraping tricks.\\nIf a request fails, return structured provider failure — never invent data.' Constructor: __init__(base_url: str, timeout_seconds: float = 10.0, retry_count: int = 1, cache: Optional[ProviderCache] = None). Create httpx.AsyncClient with timeout.",
+    "Implement async _request(method: str, endpoint: str, params: Optional[dict] = None) -> dict helper with same error handling as Ryzellx: httpx.TimeoutException -> ProviderTimeoutError; HTTP 4xx -> ProviderHTTPError; HTTP 5xx -> retry once (retry_count=1), then ProviderHTTPError; connection error -> retry once, then ProviderError; JSON decode error -> ProviderInvalidDataError. Log requests conservatively.",
+    "Implement async get_matches_by_date(date: date) -> List[ProviderMatch]. Map to FotMob daily matches endpoint (typically /api/matches?date={date}). Normalize response to ProviderMatch with source metadata (provider='fotmob', fetched_at, is_live based on match status). Cache key: f'fotmob:matches:date:{date}', TTL: LIVE_DATA_TTL if date == today else UPCOMING_FIXTURES_TTL.",
+    "Implement async get_match(match_id: str) -> Optional[ProviderMatch]. Map to FotMob match details endpoint (typically /api/matchDetails?matchId={match_id}). Return None if 404. Normalize to ProviderMatch with all available live data (minute, score, events if present). Cache key: f'fotmob:match:{match_id}', TTL: LIVE_DATA_TTL.",
+    "Implement async get_live_matches() -> List[ProviderLiveMatch]. Map to FotMob live matches endpoint (check FotMob's actual endpoint structure during implementation). Normalize to ProviderLiveMatch. Cache key: 'fotmob:matches:live', TTL: LIVE_DATA_TTL.",
+    "Implement stub async get_league(league_id: str) -> Optional[ProviderCompetition] that returns None with comment: '# FotMob league lookup not implemented — use Ryzellx or OpenLigaDB for metadata.'",
+    "Implement stub async get_team(team_id: str), get_player(player_id: str), get_standings(league_id: str) that return None/empty list with comments explaining these are not priorities for FotMob (use Ryzellx instead).",
+    "Add docstrings explaining: 'FotMob is the LIVE/FAST provider for real-time match data where it provides fresher information than Ryzellx. Unofficial integration — conservative request patterns only.'"
+  ],
+  "acceptance_criteria": [
+    "FotMobFootballProvider implements get_matches_by_date, get_match, get_live_matches (primary methods for live data)",
+    "Module docstring clearly states: 'Unofficial FotMob integration — not an official FotMob API'",
+    "Conservative retry policy (retry_count=1 max)",
+    "HTTP timeout/error handling raises appropriate ProviderError subclasses",
+    "All responses normalized to ProviderMatch/ProviderLiveMatch with source metadata (provider='fotmob')",
+    "No invented values — None for unavailable fields",
+    "Stub methods (get_league, get_team, get_player, get_standings) return None/empty with explanatory comments"
+  ],
+  "verification": [
+    "Run: pytest backend/tests/test_providers_multi.py::test_fotmob_provider -v",
+    "Run: pytest backend/tests/test_providers_multi.py::test_fotmob_normalization -v",
+    "Run: pytest backend/tests/test_providers_multi.py::test_fotmob_error_handling -v"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -1,0 +1,14 @@
+{
+  "task_id": "task-multi-provider-abstraction",
+  "task_description": "Create production-oriented multi-provider football data abstraction with Ryzellx (primary), FotMob (live/fast), and OpenLigaDB (fallback) providers, normalized domain models, and ProviderManager routing",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004",
+    "FEAT-005",
+    "FEAT-006"
+  ],
+  "blocked_reason": null
+}

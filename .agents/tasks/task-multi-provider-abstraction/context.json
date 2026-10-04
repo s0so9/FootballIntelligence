@@ -1,0 +1,28 @@
+{
+  "project_type": "Python FastAPI backend with Pydantic domain models and SQLAlchemy",
+  "language": "Python 3.11+",
+  "build_system": "pip with requirements.txt",
+  "test_framework": "pytest with pytest-asyncio for async tests",
+  "build_command": "No explicit build step — Python is interpreted. Install dependencies: pip install -r backend/requirements.txt",
+  "test_command": "pytest backend/tests/ -v",
+  "verification_instructions": "1. Run specific test file: pytest backend/tests/test_providers_multi.py -v. 2. Run all tests to ensure no regressions: pytest backend/tests/ -v. 3. Fix all failures before marking complete.",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "httpx==0.26.0 already in requirements.txt. Use httpx.AsyncClient for all HTTP. Tests must use mocked HTTP (respx or httpx MockTransport) — never real internet. DevelopmentProvider must remain intact for existing tests.",
+  "contribution_requirements": "Per AGENTS.md rules 2, 3, 6, 7, 10, 14, 23, 25: Always inspect files before editing. Never delete working code. Verify after every step by running tests. Never invent football statistics — use None for unavailable data. Missing info must be explicitly represented as unavailable. Fix errors found during verification. Update docs/PROGRESS.md after completion.",
+  "key_patterns": "Existing providers follow abstract base class pattern (FootballDataProvider in base.py, DevelopmentProvider in development.py). Domain models are Pydantic BaseModel subclasses with Optional fields for unavailable data. API endpoints use dependency injection (get_data_provider) to get provider instance. All domain entities inherit from BaseEntity (has 'id' field). Tests use pytest fixtures and FastAPI TestClient.",
+  "relevant_files": [
+    "c:\\FootballIntelligence\\backend\\app\\providers\\base.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\development.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\__init__.py",
+    "c:\\FootballIntelligence\\backend\\app\\config.py",
+    "c:\\FootballIntelligence\\backend\\app\\api\\dependencies.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\entities.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\match.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\statistics.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\enums.py",
+    "c:\\FootballIntelligence\\backend\\requirements.txt",
+    "c:\\FootballIntelligence\\backend\\tests\\test_providers.py",
+    "c:\\FootballIntelligence\\backend\\tests\\test_api_matches.py"
+  ],
+  "directory_structure": "backend/app/providers/ for provider implementations; backend/app/domain/ for domain models; backend/app/api/ for FastAPI endpoints; backend/tests/ for all tests; backend/requirements.txt for dependencies; docs/PROGRESS.md for progress tracking"
+}

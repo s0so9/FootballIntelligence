@@ -1,0 +1,33 @@
+{
+  "project_type": "FastAPI + Pydantic + SQLAlchemy backend with existing multi-provider architecture",
+  "language": "Python 3.12",
+  "build_system": "pip with requirements.txt, virtual environment at backend/.venv",
+  "test_framework": "pytest 7.4.4 with pytest-asyncio for async tests",
+  "build_command": "No build step required for Python. Import verification: .venv\\Scripts\\python.exe -c \"import app.main\"",
+  "test_command": "cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/ -v",
+  "verification_instructions": "Run pytest suite after each feature. All tests must pass. Use .venv\\Scripts\\python.exe for all Python commands.",
+  "snapshot_or_generated_files": "None. Alembic migrations will be generated but not auto-committed.",
+  "environment_constraints": "Python virtual environment at backend/.venv MUST be activated for all operations. Use full path .venv\\Scripts\\python.exe or .venv\\Scripts\\pip.exe. Never use global python/pip. SQLAlchemy 2.0+ syntax required. Alembic not yet configured (will be set up in FEAT-001).",
+  "contribution_requirements": "Follow AGENTS.md rules: inspect files before editing (Rule 2), never delete working code (Rule 3), work in small steps (Rule 4), verify after implementation (Rule 6), never claim tested without running tests (Rule 7), mock data must be labeled (Rules 8-9), never invent statistics (Rule 10), numerical engine is source of truth (Rule 11), AI Analyst explains only (Rules 12-13), missing data must be explicit (Rule 14), use mandated technologies (Rules 15-19), update docs/PROGRESS.md after completion (Rule 25).",
+  "key_patterns": "Existing architecture: Frontend → FastAPI → ProviderManager → (Ryzellx/FotMob/OpenLigaDB) → ProviderMatch/ProviderTeam/etc (providers/models.py with metadata) → ProviderManagerAdapter (providers/adapter.py) → domain Match/Team/etc → PredictionService (prediction/service.py) → API responses. ProviderManager implements SOURCE-OF-TRUTH rule: one provider per response, no field-level failover. USE_REAL_PROVIDERS=false default (config.py). All provider models include: provider, source_id, fetched_at, source_updated_at, is_live, data_freshness_seconds. Feature engineering exists (features/base.py, features/form.py, features/team_strength.py, features/match_features.py). PredictionService uses MatchFeatureExtractor → PoissonModel → generates Prediction + AnalysisContext. AnalysisContext (domain/analysis.py) is structured context for AI Analyst. Ensemble architecture exists (prediction/ensemble.py). Tests use pytest with fixtures.",
+  "relevant_files": [
+    "c:\\FootballIntelligence\\backend\\app\\config.py",
+    "c:\\FootballIntelligence\\backend\\app\\main.py",
+    "c:\\FootballIntelligence\\backend\\app\\database\\__init__.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\models.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\manager.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\adapter.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\entities.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\match.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\analysis.py",
+    "c:\\FootballIntelligence\\backend\\app\\domain\\prediction.py",
+    "c:\\FootballIntelligence\\backend\\app\\features\\base.py",
+    "c:\\FootballIntelligence\\backend\\app\\features\\form.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\service.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\ensemble.py",
+    "c:\\FootballIntelligence\\backend\\app\\api\\v1\\endpoints\\matches.py",
+    "c:\\FootballIntelligence\\backend\\requirements.txt",
+    "c:\\FootballIntelligence\\backend\\.env.example"
+  ],
+  "directory_structure": "backend/app/: main.py (FastAPI entry), config.py (Pydantic Settings with database_url, use_real_providers=False, provider URLs), api/v1/endpoints/ (matches.py with GET /matches, /matches/{id}, /matches/{id}/prediction), domain/ (entities.py=Team/Competition/Player/Venue, match.py=Match/MatchEvent/Lineup, analysis.py=AnalysisContext, prediction.py=Prediction/PredictionMarket/Model, enums.py, statistics.py, availability.py, odds.py, live.py), providers/ (base.py=FootballDataProvider ABC, models.py=ProviderMatch/ProviderTeam/ProviderMatchEvent/ProviderMatchStats/ProviderStanding/ProviderLiveMatch with metadata, manager.py=ProviderManager with routing, adapter.py=ProviderManagerAdapter, exceptions.py, ryzellx/fotmob/openligadb implementations), database/ (empty __init__.py - needs implementation), features/ (base.py=FeatureCalculator/MatchContext/TeamHistoricalData, form.py, team_strength.py, match_features.py with MatchFeatureExtractor), prediction/ (service.py=PredictionService, poisson.py=PoissonModel, ensemble.py=EnsembleModel, market_analysis.py, easy_matches.py), analysis/ (if exists), ai/ (if exists for Ollama), utils/. backend/tests/: test_*.py files for domain, providers, features, prediction, api, ensemble, backtest, calibration."
+}

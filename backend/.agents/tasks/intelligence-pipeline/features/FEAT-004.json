@@ -1,0 +1,39 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Extend feature engineering layer to consume database-persisted data and calculate comprehensive features with strict no-leakage guarantees. This feature enhances existing features/ module with database-backed feature extractors (team form, attack/defence, match context, data quality) that only use historical data available before match kickoff. Features include sample size tracking, data freshness metrics, missing-field ratios, and confidence scores. Never fabricate xG or other unavailable metrics—return None explicitly. FeatureAggregator produces FeatureSet with availability flags.",
+  "status": "pending",
+  "steps": [
+    "1. Inspect existing features/base.py, features/form.py, features/team_strength.py, features/match_features.py. These modules already exist and implement feature calculation logic. Preserve all working code. The goal is to extend them to use database queries instead of in-memory provider data.",
+    "2. Create features/database_extractor.py: Implement DatabaseFeatureExtractor(session_factory) that wraps existing MatchFeatureExtractor but uses database queries via repositories. Provide get_team_historical_matches(team_id, before_datetime, limit) using MatchRepository. Provide get_team_standing(team_id, competition_id) using StandingRepository. Convert database Match/Standing models to domain Match/Standing for compatibility with existing FeatureCalculator classes.",
+    "3. Update features/team_strength.py: Modify TeamStrengthFeatureCalculator to accept DatabaseFeatureExtractor. Ensure get_matches_before(team_id, scheduled_at) uses database query. Calculate attack_strength (goals_scored per match in last N), defense_strength (goals_conceded per match in last N), home_venue_strength (home win rate, home goals), away_venue_strength (away win rate, away goals). Return None if insufficient data (< min_matches threshold from config).",
+    "4. Update features/form.py: Modify TeamFormFeatureCalculator to accept DatabaseFeatureExtractor. Calculate last_n_results (W/D/L in last N), last_n_points, win_rate, recent_goals_per_match, recent_goals_conceded_per_match, home_form, away_form, form_string (e.g., 'WWDLW'). Return None if insufficient data.",
+    "5. Create features/attack_defence.py: Implement AttackDefenceFeatureCalculator(min_matches=5) that calculates: goals_per_match (all, home, away), goals_conceded_per_match (all, home, away), xg_per_match (if available in MatchStatistic, else None), xga_per_match (if available, else None), shot_metrics (shots per match, shots on target, conversion rate) if available. Never invent xG—if MatchStatistic.xg is None, feature is None. Include sample_size (number of matches used).",
+    "6. Create features/match_context.py: Implement MatchContextFeatureCalculator that calculates: home_advantage (historical home win rate vs overall win rate), rest_days (days between last match and current match scheduled_at for both teams, if dates available), form_difference (home_form_points - away_form_points), strength_difference (home_attack_strength + home_defense_strength - away_attack_strength - away_defense_strength), competition_level (from Competition.level if available), is_derby (both teams from same country/city, heuristic based on team names or competition).",
+    "7. Create features/data_quality.py: Implement DataQualityFeatureCalculator that calculates: sample_size (matches used for home team, away team), data_freshness_seconds (time since last match for each team), missing_field_ratio (count of None values in MatchStatistic / total fields), provider_availability (count of unique provider_sources for team's matches), feature_confidence (0.0-1.0 score based on sample_size >= 10: 1.0, 5-9: 0.7, 3-4: 0.5, < 3: 0.3, and data_freshness < 7 days: +0.1).",
+    "8. Create features/aggregator.py: Implement FeatureAggregator(session_factory, min_matches=5) that orchestrates all calculators. Provide extract_features_for_match(match_id: str) -> FeatureSet. FeatureSet is a Pydantic model with fields: match_id, home_team_features: Dict[str, Optional[float]], away_team_features: Dict[str, Optional[float]], match_context_features: Dict[str, Optional[float]], data_quality_features: Dict[str, float], features_available: bool (True if sufficient data, False otherwise), calculated_at: datetime, notes: Optional[List[str]] (e.g., 'Insufficient historical data for away team', 'xG not available from provider').",
+    "9. Update app/config.py: Add TEAM_FORM_WINDOW: int = 5 (default), MIN_SAMPLE_SIZE: int = 3 (default), FEATURE_CONFIDENCE_THRESHOLD: float = 0.5 (default) to Settings. Expose in .env.example.",
+    "10. Update prediction/service.py: Modify PredictionService to use DatabaseFeatureExtractor and FeatureAggregator instead of in-memory MatchFeatureExtractor when database is available. Preserve existing behavior when using DevelopmentProvider. Add feature_set: Optional[FeatureSet] to AnalysisContext.",
+    "11. Create tests/test_features_database.py: Test DatabaseFeatureExtractor queries return correct historical matches (only before scheduled_at, never after). Test TeamStrengthFeatureCalculator with 10 matches (calculates features), with 2 matches (returns None, insufficient data). Test AttackDefenceFeatureCalculator with xG available (calculates xg_per_match), with xG=None (feature is None, not 0.0). Test DataQualityFeatureCalculator calculates sample_size, freshness, missing_field_ratio, confidence. Test FeatureAggregator produces FeatureSet with features_available=True when sufficient data, features_available=False when insufficient. Test no future data leakage: create match with scheduled_at=T, create historical match at T-1 (included), create future match at T+1 (excluded), verify feature calculation only uses T-1. Verify with '.venv\\Scripts\\python.exe -m pytest tests/test_features_database.py -v'."
+  ],
+  "acceptance_criteria": [
+    "features/database_extractor.py implements DatabaseFeatureExtractor that queries database via repositories for historical data",
+    "features/team_strength.py, features/form.py updated to use DatabaseFeatureExtractor and handle insufficient data (return None)",
+    "features/attack_defence.py implements AttackDefenceFeatureCalculator with xG handling (None if unavailable, never fabricated)",
+    "features/match_context.py implements MatchContextFeatureCalculator for home advantage, rest days, form/strength differences",
+    "features/data_quality.py implements DataQualityFeatureCalculator for sample size, freshness, missing fields, confidence",
+    "features/aggregator.py implements FeatureAggregator coordinating all calculators and producing FeatureSet",
+    "app/config.py includes TEAM_FORM_WINDOW, MIN_SAMPLE_SIZE, FEATURE_CONFIDENCE_THRESHOLD settings",
+    "prediction/service.py uses DatabaseFeatureExtractor/FeatureAggregator when database available",
+    "tests/test_features_database.py verifies: database queries for historical data only (no leakage), insufficient data returns None, xG=None preserved (not replaced with 0), confidence calculation, FeatureSet structure, features_available flag",
+    "Running '.venv\\Scripts\\python.exe -m pytest tests/test_features_database.py -v' passes all tests"
+  ],
+  "verification": [
+    "Run: cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_features_database.py -v",
+    "Verify: All tests pass, confirming no future data leakage, xG=None preserved, insufficient data returns None, FeatureSet structure correct",
+    "Verify: No import errors when importing from app.features",
+    "Verify: Existing tests in tests/test_features.py still pass (no regressions)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

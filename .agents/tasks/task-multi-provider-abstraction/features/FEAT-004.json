@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Implement OpenLigaDBFootballProvider (INDEPENDENT FALLBACK provider) with async httpx client, configurable base URL, documented endpoints (/getavailableleagues, /getavailableleagues/{season}, /getmatchdata/{matchId}, /getmatchdata/{leagueShortcut}/{leagueSeason}/{groupOrderId}), normalization to ProviderMatch/ProviderCompetition/ProviderStanding, and explicit handling of unavailable advanced metrics (xG, detailed stats) by setting them to None. Do NOT invent xG or advanced metrics OpenLigaDB does not provide.",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/providers/openligadb.py with OpenLigaDBFootballProvider class. Add docstring: 'OpenLigaDB is the INDEPENDENT FALLBACK provider. Provides leagues, matches, match details, standings where supported. Does NOT provide advanced metrics (xG, detailed stats) — these fields will be None.' Constructor: __init__(base_url: str, timeout_seconds: float = 10.0, retry_count: int = 2, cache: Optional[ProviderCache] = None). Create httpx.AsyncClient with timeout.",
+    "Implement async _request(method: str, endpoint: str, params: Optional[dict] = None) -> Union[dict, list] helper with same error handling as Ryzellx: httpx.TimeoutException -> ProviderTimeoutError; HTTP 4xx -> ProviderNotFoundError or ProviderHTTPError; HTTP 5xx -> retry up to retry_count, then ProviderHTTPError; connection error -> retry, then ProviderError; JSON decode error -> ProviderInvalidDataError.",
+    "Implement async get_league(league_id: str) -> Optional[ProviderCompetition]. Map league_id to OpenLigaDB leagueShortcut (e.g., 'bl1' for Bundesliga). Call GET /getavailableleagues. Find matching league, normalize to ProviderCompetition. Return None if not found. Cache key: f'openligadb:league:{league_id}', TTL: METADATA_TTL.",
+    "Implement async get_matches_by_date(date: date) -> List[ProviderMatch]. OpenLigaDB does not have a direct date endpoint — map to closest available API (getmatchdata with leagueShortcut and groupOrderId). For simplicity, return empty list with comment: '# OpenLigaDB does not support direct date-based queries. Use get_match or league-based queries.' This is acceptable because OpenLigaDB is a fallback.",
+    "Implement async get_match(match_id: str) -> Optional[ProviderMatch]. Call GET /getmatchdata/{match_id}. Normalize to ProviderMatch. Explicitly set xg=None, xg_against=None, detailed stats to None because OpenLigaDB does not provide them. Add comment in normalization: '# OpenLigaDB does not provide xG or detailed stats — set to None.' Cache key: f'openligadb:match:{match_id}', TTL: HISTORICAL_MATCH_TTL.",
+    "Implement async get_matches_by_range(start_date: date, end_date: date) -> List[ProviderMatch]. Similar to get_matches_by_date, OpenLigaDB lacks this endpoint. Return empty list with explanatory comment.",
+    "Implement async get_standings(league_id: str) -> List[ProviderStanding]. OpenLigaDB may expose standings via its data model — if available, normalize to ProviderStanding. If not, return empty list with comment. Cache key: f'openligadb:standings:{league_id}', TTL: UPCOMING_FIXTURES_TTL.",
+    "Implement stub methods async get_team, get_player, get_live_matches that return None/empty list with comments explaining OpenLigaDB limitations.",
+    "Add docstrings explaining: 'OpenLigaDB is the independent fallback provider for German leagues primarily. Provides match data and standings where supported. Does NOT provide xG or advanced metrics — these will always be None.'"
+  ],
+  "acceptance_criteria": [
+    "OpenLigaDBFootballProvider implements get_league, get_match, get_standings (core fallback methods)",
+    "Normalization explicitly sets xG and advanced stats to None with comments explaining OpenLigaDB does not provide them",
+    "HTTP timeout/error handling raises appropriate ProviderError subclasses",
+    "All responses normalized to ProviderMatch/ProviderCompetition/ProviderStanding with source metadata (provider='openligadb')",
+    "No invented values — especially no fake xG or stats",
+    "Methods unsupported by OpenLigaDB API return None/empty with explanatory comments"
+  ],
+  "verification": [
+    "Run: pytest backend/tests/test_providers_multi.py::test_openligadb_provider -v",
+    "Run: pytest backend/tests/test_providers_multi.py::test_openligadb_normalization -v",
+    "Run: pytest backend/tests/test_providers_multi.py::test_openligadb_no_xg -v"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

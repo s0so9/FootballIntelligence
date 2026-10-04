@@ -35,7 +35,11 @@ class Settings(BaseSettings):
     # Provider behavior
     provider_timeout_seconds: float = 10.0
     provider_retry_count: int = 2
-    use_real_providers: bool = False  # False = DevelopmentProvider (default)
+    use_real_providers: bool = False  # False = DevelopmentProvider (default, safe)
+
+    # Feature Engineering
+    team_form_window: int = 5  # Number of recent matches to consider for form
+    min_sample_size: int = 3  # Minimum matches needed for reliable features
 
     # Logging
     log_level: str = "INFO"

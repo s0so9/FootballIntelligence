@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Implement ingestion layer that consumes normalized ProviderManager output and persists it to the database. This feature creates IngestionService and specialized ingesters (match, metadata, live, events) that handle deduplication, preserve provider metadata and timestamps, never overwrite valid data with None, never merge different providers, and handle out-of-order events safely. The ingestion layer is the bridge between the existing multi-provider architecture and the new persistence layer.",
+  "status": "pending",
+  "steps": [
+    "1. Create ingestion/__init__.py: Empty module initializer.",
+    "2. Create ingestion/deduplication.py: Implement DeduplicationKey dataclass (provider, source_id). Implement DeduplicationChecker with methods: is_duplicate(session, model, key) checks if (provider_source_id, provider_id) exists, should_update(existing_record, new_fetched_at, new_updated_at) returns True if new_fetched_at > existing.provider_fetched_at OR new_updated_at > existing.provider_updated_at, should_preserve_field(existing_value, new_value) returns True if existing_value is not None and new_value is None (NEVER overwrite valid data with None).",
+    "3. Create ingestion/match_ingestion.py: Implement MatchIngester class with ingest_match(session, provider_match: ProviderMatch) that: resolves provider_source_id from ProviderSource table (or creates if missing), checks deduplication, creates/updates Competition and Team records if they don't exist (from provider_match competition_id/name, team_id/name), upserts Match using MatchRepository.upsert_by_provider_id, preserves all provider metadata (provider_fetched_at=fetched_at, provider_updated_at=source_updated_at), uses should_preserve_field for optional fields (never overwrites valid xg with None). Implement ingest_matches(session, provider_matches: List[ProviderMatch]) for batch ingestion.",
+    "4. Create ingestion/metadata_ingestion.py: Implement MetadataIngester class with ingest_competition(session, provider_competition: ProviderCompetition), ingest_team(session, provider_team: ProviderTeam), ingest_player(session, provider_player: ProviderPlayer). Each resolves provider_source_id, uses upsert_by_provider_id, preserves metadata, applies should_preserve_field logic.",
+    "5. Create ingestion/live_ingestion.py: Implement LiveIngester class with ingest_live_match(session, provider_live_match: ProviderLiveMatch) that updates Match record with current score/minute/status, marks is_live flag appropriately. Implement ingest_match_event(session, provider_event: ProviderMatchEvent) that upserts MatchEvent, handles out-of-order events by checking event.provider_fetched_at, never creates duplicate events with same (provider_source_id, provider_id).",
+    "6. Create ingestion/statistics_ingestion.py: Implement StatisticsIngester class with ingest_match_statistics(session, provider_stats: ProviderMatchStats) that upserts MatchStatistic, ingest_standing(session, provider_standing: ProviderStanding) that upserts Standing. Both use should_preserve_field for xG and other optional metrics.",
+    "7. Create ingestion/service.py: Implement IngestionService(session_factory) that coordinates all ingesters. Provide high-level methods: ingest_provider_matches(provider_matches: List[ProviderMatch]), ingest_provider_competitions(provider_competitions: List[ProviderCompetition]), ingest_provider_teams(provider_teams: List[ProviderTeam]), ingest_provider_standings(provider_standings: List[ProviderStanding]), ingest_provider_match_stats(provider_stats: List[ProviderMatchStats]), ingest_provider_live_match(provider_live_match: ProviderLiveMatch), ingest_provider_events(provider_events: List[ProviderMatchEvent]). Each method opens a session, calls appropriate ingester, commits, handles exceptions with rollback.",
+    "8. Update app/main.py: Add startup event that initializes IngestionService and stores it in app.state.ingestion_service for dependency injection.",
+    "9. Create tests/test_ingestion.py: Test MatchIngester with new match (creates all entities), with duplicate match (updates, preserves created_at), with None overwriting existing valid xG (xG preserved), with different provider for same match (creates separate Match record with different provider_source). Test LiveIngester with out-of-order events (event with older fetched_at doesn't overwrite newer event). Test StatisticsIngester with partial data (only updates provided fields). Test IngestionService end-to-end: create mock ProviderMatch objects, call ingest_provider_matches, query database, verify all entities created correctly. Use in-memory SQLite, run migrations. Verify with '.venv\\Scripts\\python.exe -m pytest tests/test_ingestion.py -v'."
+  ],
+  "acceptance_criteria": [
+    "ingestion/deduplication.py implements DeduplicationChecker with is_duplicate, should_update, should_preserve_field logic",
+    "ingestion/match_ingestion.py implements MatchIngester that preserves provider metadata, never overwrites valid data with None, creates related entities (Competition, Team) if missing",
+    "ingestion/metadata_ingestion.py implements MetadataIngester for competitions, teams, players",
+    "ingestion/live_ingestion.py implements LiveIngester for live matches and events, handles out-of-order events",
+    "ingestion/statistics_ingestion.py implements StatisticsIngester for match statistics and standings",
+    "ingestion/service.py implements IngestionService coordinating all ingesters with session management and error handling",
+    "app/main.py initializes IngestionService on startup",
+    "tests/test_ingestion.py verifies: match ingestion creates entities, deduplication works, None doesn't overwrite valid data, different providers create separate records, out-of-order events handled correctly, statistics ingestion preserves optional fields",
+    "Running '.venv\\Scripts\\python.exe -m pytest tests/test_ingestion.py -v' passes all tests"
+  ],
+  "verification": [
+    "Run: cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_ingestion.py -v",
+    "Verify: All tests pass, confirming ingestion preserves metadata, handles deduplication, never overwrites valid data with None, handles out-of-order events",
+    "Verify: No import errors when importing from app.ingestion",
+    "Verify: IngestionService initialized in app.main startup"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

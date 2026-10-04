@@ -1,30 +1,30 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AppLayout } from './components/layout/AppLayout';
+import { Dashboard } from './pages/Dashboard';
+import { Matches } from './pages/Matches';
+import { MatchDetail } from './pages/MatchDetail';
+import { Predictions } from './pages/Predictions';
+import { EasyMatches } from './pages/EasyMatches';
+import { Analytics } from './pages/Analytics';
+import { Settings } from './pages/Settings';
+import './pages/pages.css';
 
 function App() {
   return (
     <Router>
-      <div className="app">
-        <header className="app-header">
-          <h1>Football Intelligence</h1>
-        </header>
-        <main className="app-main">
-          <Routes>
-            <Route path="/" element={<Home />} />
-          </Routes>
-        </main>
-      </div>
+      <AppLayout>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/matches" element={<Matches />} />
+          <Route path="/matches/:id" element={<MatchDetail />} />
+          <Route path="/predictions" element={<Predictions />} />
+          <Route path="/easy-matches" element={<EasyMatches />} />
+          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </AppLayout>
     </Router>
-  )
+  );
 }
 
-function Home() {
-  return (
-    <div className="home">
-      <h2>Football Intelligence Platform</h2>
-      <p>Professional football analytics and prediction system</p>
-      <p className="dev-notice">🚧 Under Development</p>
-    </div>
-  )
-}
-
-export default App
+export default App;

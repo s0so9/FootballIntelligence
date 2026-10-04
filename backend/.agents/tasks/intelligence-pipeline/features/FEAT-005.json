@@ -1,0 +1,42 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Integrate database-backed feature engineering into PredictionService and enhance API responses with provider metadata, data freshness, latency metrics, and enriched AnalysisContext. This feature completes the intelligence pipeline by connecting ingestion → database → features → prediction → API. It enhances prediction responses with selected_provider, data_freshness_seconds, confidence (from FeatureSet), most_likely_score (from score_distribution), and latency_metrics. It enriches AnalysisContext with FeatureSet and data quality information. All existing API contracts are preserved (additive changes only). USE_REAL_PROVIDERS config is respected. Comprehensive integration tests verify the full pipeline end-to-end.",
+  "status": "pending",
+  "steps": [
+    "1. Update prediction/service.py: Modify PredictionService.__init__ to accept session_factory and feature_aggregator parameters. If database available (session_factory not None), use DatabaseFeatureExtractor and FeatureAggregator. Otherwise, fall back to existing in-memory MatchFeatureExtractor for DevelopmentProvider compatibility. Preserve all existing methods and signatures.",
+    "2. Modify PredictionService.generate_prediction to: use FeatureAggregator.extract_features_for_match if available, extract confidence from FeatureSet.data_quality_features['feature_confidence'], add selected_provider from match.provider_source.name if database match, calculate most_likely_score from score_distribution (max probability scoreline), include in Prediction object (add most_likely_score: Optional[str], confidence: Optional[float], selected_provider: Optional[str] to domain/prediction.py Prediction model).",
+    "3. Modify PredictionService.build_analysis_context to: include feature_set: Optional[FeatureSet] from FeatureAggregator, include data_freshness_seconds from LatencyLog if available, include provider_metadata: Optional[Dict] with selected_provider, fetched_at, source_updated_at from Match record, update data_completeness dict with 'database_features': feature_set is not None and feature_set.features_available, add missing_data_notes for unavailable xG, insufficient sample size, etc.",
+    "4. Update domain/prediction.py: Add most_likely_score: Optional[str], confidence: Optional[float], selected_provider: Optional[str], data_freshness_seconds: Optional[int] to Prediction model.",
+    "5. Update domain/analysis.py: Add feature_set: Optional[FeatureSet], data_freshness_seconds: Optional[int], provider_metadata: Optional[Dict[str, Any]] to AnalysisContext model.",
+    "6. Update app/api/v1/schemas.py: Add most_likely_score: Optional[str], confidence: Optional[float], selected_provider: Optional[str], data_freshness_seconds: Optional[int] to MatchPredictionResponse schema (all optional for backward compatibility).",
+    "7. Update app/api/v1/endpoints/matches.py: Modify get_match to include provider metadata in response (add selected_provider, fetched_at, data_freshness_seconds to MatchDetailResponse schema). Modify get_match_prediction to include new fields in response. If match is from database (not DevelopmentProvider), retrieve LatencyLog and include latency_metrics.",
+    "8. Update app/api/v1/schemas.py: Add selected_provider: Optional[str], fetched_at: Optional[datetime], data_freshness_seconds: Optional[int] to MatchDetailResponse schema.",
+    "9. Update app/config.py: Ensure USE_REAL_PROVIDERS default remains False. Document in comments that setting USE_REAL_PROVIDERS=true in .env enables real provider data and database ingestion.",
+    "10. Update .env.example: Add USE_REAL_PROVIDERS=false (commented out: 'Set to true to enable real provider data and database persistence. Requires DATABASE_URL configured.').",
+    "11. Create tests/test_integration_pipeline.py: End-to-end integration test. Setup: in-memory SQLite database, run migrations, create ProviderSource, ingest mock ProviderMatch with full metadata (including source_updated_at for latency). Test pipeline: call IngestionService.ingest_provider_matches → verify Match, Competition, Team, LatencyLog in database → call PredictionService.generate_prediction → verify Prediction includes confidence, most_likely_score, selected_provider → call PredictionService.build_analysis_context → verify AnalysisContext includes feature_set, provider_metadata, data_quality_features, latency info → simulate API call to get_match_prediction → verify response includes all new fields. Test with insufficient data (< MIN_SAMPLE_SIZE matches): verify confidence is low, features_available=False, prediction still generated but with warnings. Test with xG=None in MatchStatistic: verify Prediction.home_xg/away_xg derived from features (not from missing xG), AnalysisContext notes 'xG not available from provider'. Verify with '.venv\\Scripts\\python.exe -m pytest tests/test_integration_pipeline.py -v'.",
+    "12. Run full test suite: '.venv\\Scripts\\python.exe -m pytest tests/ -v'. Fix any regressions in existing tests caused by API schema changes (all changes are additive, so existing tests should pass with new optional fields ignored)."
+  ],
+  "acceptance_criteria": [
+    "prediction/service.py uses DatabaseFeatureExtractor and FeatureAggregator when database available, falls back to in-memory extractor for DevelopmentProvider",
+    "PredictionService.generate_prediction includes confidence (from FeatureSet), most_likely_score (from score distribution), selected_provider (from database Match)",
+    "PredictionService.build_analysis_context includes feature_set, data_freshness_seconds, provider_metadata, enriched data_completeness and missing_data_notes",
+    "domain/prediction.py Prediction model includes most_likely_score, confidence, selected_provider, data_freshness_seconds",
+    "domain/analysis.py AnalysisContext model includes feature_set, data_freshness_seconds, provider_metadata",
+    "app/api/v1/schemas.py includes new fields in MatchDetailResponse and MatchPredictionResponse (all optional)",
+    "app/api/v1/endpoints/matches.py returns enriched responses with provider metadata, latency metrics, confidence",
+    "USE_REAL_PROVIDERS default remains False; documented in .env.example",
+    "tests/test_integration_pipeline.py verifies full pipeline: ingestion → database → features → prediction → API response, with latency tracking, confidence calculation, provider metadata preservation, handling of insufficient data and missing xG",
+    "Running '.venv\\Scripts\\python.exe -m pytest tests/ -v' passes all tests (no regressions, all existing + new tests pass)"
+  ],
+  "verification": [
+    "Run: cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_integration_pipeline.py -v",
+    "Verify: Integration test passes, confirming full pipeline works end-to-end",
+    "Run: cd c:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/ -v",
+    "Verify: All tests pass (existing tests + new tests), no regressions",
+    "Verify: API responses include new fields (confidence, most_likely_score, selected_provider, data_freshness_seconds, latency_metrics) when calling GET /api/v1/matches/{id}/prediction",
+    "Verify: USE_REAL_PROVIDERS=false in .env.example and config.py default"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
