@@ -1,0 +1,122 @@
+/**
+ * HeadToHead Styles
+ */
+
+.head-to-head {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.head-to-head__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-6) 0;
+}
+
+/* H2H Matches List */
+.h2h-matches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.h2h-match {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--spacing-4);
+  align-items: center;
+  padding: var(--spacing-4);
+  background: var(--color-background-darker);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.h2h-match:hover {
+  background: var(--color-surface-elevated);
+}
+
+.h2h-match__date {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.h2h-match__teams {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-sm);
+}
+
+.h2h-match__team {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.h2h-match__separator {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.h2h-match__score {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-accent-green);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.h2h-match__competition {
+  grid-column: 2 / 3;
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  margin-top: var(--spacing-1);
+}
+
+/* Empty State */
+.head-to-head--empty {
+  opacity: 0.6;
+}
+
+.head-to-head__empty-state {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  background: var(--color-background-darker);
+  border-radius: var(--radius-md);
+}
+
+.empty-state-icon {
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+
+.empty-state-text {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .h2h-match {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-2);
+  }
+  
+  .h2h-match__date {
+    order: -1;
+  }
+  
+  .h2h-match__score {
+    justify-self: start;
+  }
+  
+  .h2h-match__competition {
+    grid-column: 1;
+  }
+}

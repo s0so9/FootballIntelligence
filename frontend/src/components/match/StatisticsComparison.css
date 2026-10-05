@@ -1,0 +1,114 @@
+/**
+ * StatisticsComparison Styles
+ */
+
+.statistics-comparison {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.statistics-comparison__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-6) 0;
+}
+
+/* Stats Table */
+.stats-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.stats-table__header {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: var(--spacing-4);
+  padding: var(--spacing-3);
+  background: var(--color-background-darker);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.stats-table__row {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr;
+  gap: var(--spacing-4);
+  padding: var(--spacing-3);
+  border-bottom: 1px solid var(--color-border);
+  transition: background var(--transition-fast);
+}
+
+.stats-table__row:last-child {
+  border-bottom: none;
+}
+
+.stats-table__row:hover {
+  background: var(--color-surface-elevated);
+  border-radius: var(--radius-md);
+}
+
+.stats-table__team-col {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table__team-col--home {
+  color: var(--color-accent-green);
+}
+
+.stats-table__team-col--away {
+  color: var(--color-info);
+}
+
+.stats-table__stat-col {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* Note about unavailable data */
+.statistics-comparison__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-6);
+  padding: var(--spacing-4);
+  background: var(--color-background-darker);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-info);
+}
+
+.note-icon {
+  font-size: var(--text-lg);
+  flex-shrink: 0;
+}
+
+.note-text {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .stats-table__header,
+  .stats-table__row {
+    grid-template-columns: 1fr 1.5fr 1fr;
+    gap: var(--spacing-2);
+  }
+  
+  .stats-table__team-col,
+  .stats-table__stat-col {
+    font-size: var(--text-sm);
+  }
+}

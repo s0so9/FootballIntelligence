@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getMatch, getMatchPrediction } from '../api';
-import type { MatchResponse, MatchPredictionResponse, MarketAnalysisResponse } from '../api/types';
+import type { MatchResponse, MatchPredictionResponse } from '../api/types';
 import { 
   formatTeamName, 
   formatCompetitionName, 
   formatMatchDateTime,
   formatMatchStatus 
 } from '../utils/formatters';
-import ProbabilityDisplay from '../components/common/ProbabilityDisplay';
-import ConfidenceIndicator from '../components/common/ConfidenceIndicator';
-import ValueIndicator from '../components/common/ValueIndicator';
+import { useFavorites } from '../hooks/useFavorites';
+import { useCombine } from '../hooks/useCombine';
+import GeneralAnalysis from '../components/match/GeneralAnalysis';
+import FirstHalfAnalysis from '../components/match/FirstHalfAnalysis';
+import FullMatchAnalysis from '../components/match/FullMatchAnalysis';
+import StatisticsComparison from '../components/match/StatisticsComparison';
+import FormDisplay from '../components/match/FormDisplay';
+import HeadToHead from '../components/match/HeadToHead';
+import CombineDrawer from '../components/combine/CombineDrawer';
 import './MatchDetail.css';
+
+type TabType = 'general' | 'first-half' | 'full-match';
 
 export function MatchDetail() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +28,11 @@ export function MatchDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDevelopmentData, setIsDevelopmentData] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('general');
+  
+  // Favorites and combine state
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const { combineItems, isInCombine, toggleCombine, removeFromCombine, clearCombine } = useCombine();
 
   useEffect(() => {
     async function fetchMatchData() {
@@ -90,19 +103,27 @@ export function MatchDetail() {
   const awayTeam = formatTeamName(match.away_team_id);
   const competition = formatCompetitionName(match.competition_id);
 
-  // Find market analysis for different market types
-  const findMarket = (marketType: string, line?: number): MarketAnalysisResponse | undefined => {
-    if (!prediction?.market_analysis) return undefined;
-    return prediction.market_analysis.find(m => 
-      m.market_type === marketType && 
-      (line === undefined || m.line === line)
-    );
+  // Handle favorite toggle
+  const handleToggleFavorite = () => {
+    if (match) {
+      toggleFavorite(match.id);
+    }
   };
 
-  const matchResultMarket = findMarket('match_result');
-  const bttsMarket = findMarket('btts');
-  const over25Market = findMarket('over_under', 2.5);
-  const over35Market = findMarket('over_under', 3.5);
+  // Handle combine toggle
+  const handleToggleCombine = (matchId: string, marketName: string, confidence: number, odds: number) => {
+    if (!match) return;
+    
+    toggleCombine({
+      matchId,
+      marketName,
+      outcome: '', // Will be parsed from market name
+      odds,
+      confidence,
+      homeTeam,
+      awayTeam
+    });
+  };
 
   return (
     <div className="page-container">
@@ -110,12 +131,12 @@ export function MatchDetail() {
       <div className="breadcrumb">
         <Link to="/matches" className="breadcrumb-link">Maçlar</Link>
         <span className="breadcrumb-separator">›</span>
-        <span className="breadcrumb-current">Maç Detayı</span>
+        <span className="breadcrumb-current">Maç İstihbaratı</span>
       </div>
 
       {/* Match Header */}
-      <div className="match-detail-header">
-        <div className="match-detail-header__info">
+      <div className="match-intelligence-header">
+        <div className="match-header-info">
           <div className="match-competition">
             {competition}
             {match.round && ` - ${match.round}. Hafta`}
@@ -157,212 +178,126 @@ export function MatchDetail() {
         </div>
       </div>
 
-      {/* Prediction Section */}
-      {match.status === 'scheduled' && (
-        <div className="prediction-section">
-          <h2 className="section-title">Tahmin Analizi</h2>
+      {/* Tabs Navigation - Only for scheduled matches */}
+      {match.status === 'scheduled' && prediction && (
+        <>
+          <nav className="tabs-navigation" role="tablist">
+            <button
+              role="tab"
+              aria-selected={activeTab === 'general'}
+              aria-controls="general-panel"
+              className={`tab-button ${activeTab === 'general' ? 'tab-button--active' : ''}`}
+              onClick={() => setActiveTab('general')}
+            >
+              Genel
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === 'first-half'}
+              aria-controls="first-half-panel"
+              className={`tab-button ${activeTab === 'first-half' ? 'tab-button--active' : ''}`}
+              onClick={() => setActiveTab('first-half')}
+            >
+              İlk Yarı
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === 'full-match'}
+              aria-controls="full-match-panel"
+              className={`tab-button ${activeTab === 'full-match' ? 'tab-button--active' : ''}`}
+              onClick={() => setActiveTab('full-match')}
+            >
+              Maç
+            </button>
+          </nav>
 
-          {!prediction ? (
-            <div className="info-state">
-              <div className="info-icon">ℹ️</div>
-              <p className="info-title">Tahmin mevcut değil</p>
-              <p className="info-description">
-                Bu maç için tahmin verisi henüz oluşturulmadı veya yeterli veri bulunmamaktadır.
-              </p>
-            </div>
-          ) : !prediction.easy_match?.data_sufficient ? (
-            <div className="warning-state">
-              <div className="warning-icon">⚠️</div>
-              <p className="warning-title">Yetersiz veri</p>
-              <p className="warning-description">
-                Tahmin oluşturuldu ancak veri kalitesi optimal değil. Sonuçlar daha az güvenilir olabilir.
-              </p>
-            </div>
-          ) : null}
-
-          {prediction && (
-            <>
-              {/* 1X2 Probabilities */}
-              <div className="prediction-card">
-                <h3 className="prediction-card__title">Maç Sonucu (1X2)</h3>
-                <div className="prediction-grid prediction-grid--three">
-                  <div className="prediction-outcome">
-                    <div className="prediction-outcome__label">{homeTeam} Kazanır</div>
-                    <ProbabilityDisplay probability={prediction.home_win_probability} />
-                    {matchResultMarket?.outcomes[0] && (
-                      <div className="prediction-outcome__odds">
-                        Adil Oran: {matchResultMarket.outcomes[0].fair_odds.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="prediction-outcome">
-                    <div className="prediction-outcome__label">Beraberlik</div>
-                    <ProbabilityDisplay probability={prediction.draw_probability} />
-                    {matchResultMarket?.outcomes[1] && (
-                      <div className="prediction-outcome__odds">
-                        Adil Oran: {matchResultMarket.outcomes[1].fair_odds.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="prediction-outcome">
-                    <div className="prediction-outcome__label">{awayTeam} Kazanır</div>
-                    <ProbabilityDisplay probability={prediction.away_win_probability} />
-                    {matchResultMarket?.outcomes[2] && (
-                      <div className="prediction-outcome__odds">
-                        Adil Oran: {matchResultMarket.outcomes[2].fair_odds.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
+          {/* Tab Panels */}
+          <div className="tab-content">
+            {/* General Tab */}
+            {activeTab === 'general' && (
+              <div
+                role="tabpanel"
+                id="general-panel"
+                aria-labelledby="general-tab"
+                className="tab-panel"
+              >
+                <GeneralAnalysis
+                  prediction={prediction}
+                  match={match}
+                  homeTeam={homeTeam}
+                  awayTeam={awayTeam}
+                  isFavorite={isFavorite(match.id)}
+                  onToggleFavorite={handleToggleFavorite}
+                  inCombine={isInCombine(match.id)}
+                  onToggleCombine={handleToggleFavorite}
+                />
+                
+                {/* Statistics Comparison */}
+                <StatisticsComparison
+                  homeTeam={homeTeam}
+                  awayTeam={awayTeam}
+                  prediction={prediction}
+                />
+                
+                {/* Form Display - No data yet, shows empty state */}
+                <div className="form-displays">
+                  <FormDisplay teamName={homeTeam} />
+                  <FormDisplay teamName={awayTeam} />
                 </div>
+                
+                {/* Head to Head - No data yet, shows empty state */}
+                <HeadToHead
+                  homeTeam={homeTeam}
+                  awayTeam={awayTeam}
+                />
               </div>
+            )}
 
-              {/* Expected Goals */}
-              <div className="prediction-card">
-                <h3 className="prediction-card__title">Beklenen Goller (xG)</h3>
-                <div className="xg-display">
-                  <div className="xg-team">
-                    <div className="xg-team__name">{homeTeam}</div>
-                    <div className="xg-team__value">{prediction.home_xg.toFixed(2)}</div>
-                  </div>
-                  <div className="xg-separator">-</div>
-                  <div className="xg-team">
-                    <div className="xg-team__value">{prediction.away_xg.toFixed(2)}</div>
-                    <div className="xg-team__name">{awayTeam}</div>
-                  </div>
-                </div>
+            {/* First Half Tab */}
+            {activeTab === 'first-half' && (
+              <div
+                role="tabpanel"
+                id="first-half-panel"
+                aria-labelledby="first-half-tab"
+                className="tab-panel"
+              >
+                <FirstHalfAnalysis
+                  prediction={prediction}
+                  match={match}
+                  isInCombine={isInCombine}
+                  onToggleCombine={handleToggleCombine}
+                />
               </div>
+            )}
 
-              {/* BTTS */}
-              {bttsMarket && (
-                <div className="prediction-card">
-                  <h3 className="prediction-card__title">Karşılıklı Gol (BTTS)</h3>
-                  <div className="prediction-grid prediction-grid--two">
-                    {bttsMarket.outcomes.map((outcome) => (
-                      <div key={outcome.label} className="prediction-outcome">
-                        <div className="prediction-outcome__label">
-                          {outcome.label === 'Yes' ? 'Evet' : 'Hayır'}
-                        </div>
-                        <ProbabilityDisplay probability={outcome.model_probability} />
-                        <div className="prediction-outcome__odds">
-                          Adil Oran: {outcome.fair_odds.toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Over/Under */}
-              <div className="prediction-card">
-                <h3 className="prediction-card__title">Toplam Gol</h3>
-                <div className="ou-markets">
-                  {over25Market && (
-                    <div className="ou-market">
-                      <div className="ou-market__title">Üst/Alt 2.5</div>
-                      <div className="prediction-grid prediction-grid--two">
-                        {over25Market.outcomes.map((outcome) => (
-                          <div key={outcome.label} className="prediction-outcome">
-                            <div className="prediction-outcome__label">{outcome.label}</div>
-                            <ProbabilityDisplay probability={outcome.model_probability} />
-                            <div className="prediction-outcome__odds">
-                              Adil Oran: {outcome.fair_odds.toFixed(2)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {over35Market && (
-                    <div className="ou-market">
-                      <div className="ou-market__title">Üst/Alt 3.5</div>
-                      <div className="prediction-grid prediction-grid--two">
-                        {over35Market.outcomes.map((outcome) => (
-                          <div key={outcome.label} className="prediction-outcome">
-                            <div className="prediction-outcome__label">{outcome.label}</div>
-                            <ProbabilityDisplay probability={outcome.model_probability} />
-                            <div className="prediction-outcome__odds">
-                              Adil Oran: {outcome.fair_odds.toFixed(2)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {!over25Market && !over35Market && (
-                  <div className="unavailable-data">
-                    Toplam gol tahminleri mevcut değil
-                  </div>
-                )}
+            {/* Full Match Tab */}
+            {activeTab === 'full-match' && (
+              <div
+                role="tabpanel"
+                id="full-match-panel"
+                aria-labelledby="full-match-tab"
+                className="tab-panel"
+              >
+                <FullMatchAnalysis
+                  prediction={prediction}
+                  match={match}
+                  isInCombine={isInCombine}
+                  onToggleCombine={handleToggleCombine}
+                />
               </div>
+            )}
+          </div>
+        </>
+      )}
 
-              {/* Easy Match Info */}
-              {prediction.easy_match && prediction.easy_match.is_easy_match && (
-                <div className="prediction-card prediction-card--highlight">
-                  <h3 className="prediction-card__title">
-                    ✅ Kolay Maç Tespit Edildi
-                  </h3>
-                  <div className="easy-match-info">
-                    <div className="easy-match-score">
-                      <div className="easy-match-score__label">Güven Skoru</div>
-                      <div className="easy-match-score__value">
-                        <ConfidenceIndicator 
-                          confidence={prediction.easy_match.confidence_score} 
-                        />
-                      </div>
-                    </div>
-
-                    {prediction.easy_match.dominant_outcome && (
-                      <div className="easy-match-dominant">
-                        <div className="easy-match-dominant__label">Öne Çıkan Sonuç</div>
-                        <div className="easy-match-dominant__outcome">
-                          {prediction.easy_match.dominant_outcome}
-                        </div>
-                        <div className="easy-match-dominant__probability">
-                          <ProbabilityDisplay 
-                            probability={prediction.easy_match.dominant_probability || 0} 
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {prediction.easy_match.reasons.length > 0 && (
-                      <div className="easy-match-reasons">
-                        <div className="easy-match-reasons__label">Nedenler</div>
-                        <ul className="easy-match-reasons__list">
-                          {prediction.easy_match.reasons.map((reason, idx) => (
-                            <li key={idx}>{reason}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Bookmaker Comparison - Only if available */}
-              {matchResultMarket?.bookmaker_comparison && (
-                <div className="prediction-card">
-                  <h3 className="prediction-card__title">Bahis Değer Analizi</h3>
-                  <div className="bookmaker-comparison">
-                    {matchResultMarket.bookmaker_comparison.map((comparison) => (
-                      <div key={comparison.label} className="bookmaker-item">
-                        <div className="bookmaker-item__label">{comparison.label}</div>
-                        <div className="bookmaker-item__odds">
-                          Bahisçi Oranı: {comparison.bookmaker_odds.toFixed(2)}
-                        </div>
-                        <div className="bookmaker-item__value">
-                          <ValueIndicator value={comparison.edge_value} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+      {/* No prediction available */}
+      {match.status === 'scheduled' && !prediction && (
+        <div className="info-state">
+          <div className="info-icon">ℹ️</div>
+          <p className="info-title">Tahmin mevcut değil</p>
+          <p className="info-description">
+            Bu maç için tahmin verisi henüz oluşturulmadı veya yeterli veri bulunmamaktadır.
+          </p>
         </div>
       )}
 
@@ -388,6 +323,13 @@ export function MatchDetail() {
           )}
         </div>
       )}
+
+      {/* Combine Drawer */}
+      <CombineDrawer
+        items={combineItems}
+        onRemove={removeFromCombine}
+        onClear={clearCombine}
+      />
     </div>
   );
 }

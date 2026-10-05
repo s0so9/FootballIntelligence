@@ -1,0 +1,214 @@
+/**
+ * GeneralAnalysis Styles
+ */
+
+.general-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+/* Primary MENSIONE PICK section - Extra prominence */
+.general-analysis__primary-pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.general-analysis__section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-4) 0;
+}
+
+/* Predicted Score Display */
+.general-analysis__predicted-score {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.predicted-score-display {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--color-accent-green);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 1X2 Probabilities Grid */
+.general-analysis__probabilities {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.probabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-6);
+}
+
+.probability-outcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-3);
+  text-align: center;
+}
+
+.probability-outcome__label {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* Expected Goals (xG) Display */
+.general-analysis__xg {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.xg-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+
+.xg-team {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.xg-team--home {
+  align-items: flex-start;
+}
+
+.xg-team--away {
+  align-items: flex-end;
+}
+
+.xg-team__name {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.xg-team__value {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--color-accent-green);
+  font-variant-numeric: tabular-nums;
+}
+
+.xg-separator {
+  font-size: var(--text-2xl);
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+}
+
+/* BTTS Display */
+.general-analysis__btts {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.btts-display {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-6);
+}
+
+.btts-outcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-3);
+  text-align: center;
+}
+
+.btts-outcome__label {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* Key Indicators */
+.general-analysis__key-indicators {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+}
+
+.key-indicators-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.key-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3);
+  background: var(--color-background-darker);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.key-indicator:hover {
+  background: var(--color-surface-elevated);
+}
+
+.key-indicator__icon {
+  color: var(--color-accent-green);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.key-indicator__text {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .probabilities-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-4);
+  }
+  
+  .xg-display {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .xg-team--home,
+  .xg-team--away {
+    align-items: center;
+  }
+  
+  .xg-separator {
+    transform: rotate(90deg);
+  }
+  
+  .btts-display {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-4);
+  }
+}
