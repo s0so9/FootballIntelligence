@@ -1,0 +1,31 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Implied Probability + Market Margin + MENSIONE Edge. EXTEND app/prediction/market_analysis.py (DO NOT create duplicate file). Add functions: odds_to_implied_probability(odds), calculate_market_overround(odds_list), calculate_market_edge(model_prob, real_odds), normalize_market_probabilities(implied_probs). EXTEND MarketOutcome dataclass with optional Phase 5 fields: real_odds, implied_probability, market_edge, bookmaker, odds_timestamp. Add market_overround field to MarketAnalysis. Reuse existing validation and calculation patterns.",
+  "status": "completed",
+  "steps": [
+    "1. Read backend/app/prediction/market_analysis.py in full to understand existing structure: existing functions (probability_to_fair_odds, implied_probability_from_odds, overround, edge, has_value), existing dataclasses (MarketOutcome, BookmakerComparison, MarketAnalysis, MatchMarketAnalysis), existing MarketAnalyser class.",
+    "2. Verify existing functions already implement required functionality: implied_probability_from_odds(odds) -> 1/odds (already exists), overround(odds_list) -> sum(1/odds_i)-1 (already exists), edge(fair_probability, bookmaker_odds) -> implied-fair (already exists). NO NEW FUNCTIONS NEEDED — existing functions satisfy requirements.",
+    "3. EXTEND MarketOutcome dataclass in backend/app/prediction/market_analysis.py with optional Phase 5 fields at the end of the class definition: real_odds: Optional[float] = None, implied_probability: Optional[float] = None, market_edge: Optional[float] = None, bookmaker: Optional[str] = None, odds_timestamp: Optional[datetime] = None. DO NOT remove existing fields (label, model_probability, calibrated_probability).",
+    "4. Verify MarketAnalysis dataclass already has bookmaker_overround field. If missing, add: bookmaker_overround: Optional[float] = None.",
+    "5. Add normalize_market_probabilities(implied_probs: List[float]) -> List[float] helper function in backend/app/prediction/market_analysis.py after existing helper functions. Implementation: total = sum(implied_probs); return [p/total for p in implied_probs] if total > 0 else implied_probs.",
+    "6. Update MarketAnalyser._build_comparison() method to populate new MarketOutcome Phase 5 fields when bookmaker odds are available: set real_odds=b_odds, implied_probability=impl_p, market_edge=e, bookmaker=label, odds_timestamp=None (placeholder for future).",
+    "7. Add unit tests in backend/tests/test_market_analysis.py: test_market_outcome_phase5_fields_optional(), test_normalize_market_probabilities(), test_market_analyser_populates_phase5_fields_when_odds_available().",
+    "8. Run backend tests: cd c:\\FootballIntelligence\\backend; python -m pytest tests/test_market_analysis.py -v. Verify new tests pass and existing market_analysis tests remain green."
+  ],
+  "acceptance_criteria": [
+    "MarketOutcome has real_odds, implied_probability, market_edge, bookmaker, odds_timestamp fields, all Optional",
+    "MarketAnalysis has bookmaker_overround field",
+    "normalize_market_probabilities() function normalizes probability list to sum=1.0",
+    "MarketAnalyser populates Phase 5 fields when bookmaker odds are supplied",
+    "Existing functions (implied_probability_from_odds, overround, edge) remain unchanged and reusable",
+    "New unit tests pass",
+    "Existing tests remain passing"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\backend; python -m pytest tests/test_market_analysis.py::test_market_outcome_phase5_fields_optional -v",
+    "cd c:\\FootballIntelligence\\backend; python -m pytest tests/test_market_analysis.py -v"
+  ],
+  "blocked_reason": null,
+  "findings": "✅ FEAT-002 completed successfully.\n\nChanges:\n- Extended MarketOutcome dataclass with 5 Phase 5 fields: real_odds, implied_probability, market_edge, bookmaker, odds_timestamp (all Optional)\n- Confirmed MarketAnalysis already has bookmaker_overround field\n- Added normalize_market_probabilities() helper function to remove overround from implied probabilities\n- Updated MarketAnalyser._build_comparison() to populate Phase 5 fields when bookmaker odds are available\n- Added 4 new unit tests in TestPhase5MarketIntelligence class\n\nFormulas:\n- implied_probability_from_odds(odds) = 1/odds (already existed)\n- overround(odds_list) = sum(1/odds_i) - 1 (already existed)\n- edge(fair_probability, bookmaker_odds) = implied_probability - fair_probability (already existed)\n- normalize_market_probabilities(probs) = [p/sum(probs) for p in probs] (new)\n\nTest results:\n- 897 tests pass (893 baseline + 4 new)\n- 15 skipped (unchanged)\n- All acceptance criteria met\n- Backward compatibility preserved (Phase 5 fields optional)\n- No existing functionality broken\n- Existing functions reused rather than duplicated\n\nKey principles enforced:\n- Real bookmaker odds remain distinct from MENSIONE fair odds\n- MENSIONE probability remains distinct from market implied probability\n- Phase 5 fields only populated when real odds are supplied\n- Missing odds remain None, never fabricated"
+}

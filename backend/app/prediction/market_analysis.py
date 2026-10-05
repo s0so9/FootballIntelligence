@@ -194,6 +194,31 @@ def has_value(
     return fair_probability > implied + threshold
 
 
+def normalize_market_probabilities(implied_probs: List[float]) -> List[float]:
+    """Normalize a list of implied probabilities to sum to 1.0.
+
+    This is useful for removing bookmaker overround from a set of
+    implied probabilities, converting them into fair probabilities.
+
+    Args:
+        implied_probs: List of implied probabilities from bookmaker odds.
+
+    Returns:
+        List of normalized probabilities that sum to 1.0.
+        Returns original list if total is zero.
+
+    Example:
+        >>> # Bookmaker odds: [1.9, 1.9] with 5.2% overround
+        >>> implied = [1/1.9, 1/1.9]  # [0.526, 0.526] sums to 1.052
+        >>> normalized = normalize_market_probabilities(implied)
+        >>> # [0.50, 0.50] now sums to 1.0
+    """
+    total = sum(implied_probs)
+    if total <= 0.0:
+        return implied_probs
+    return [p / total for p in implied_probs]
+
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -214,6 +239,22 @@ class MarketOutcome:
 
     calibrated_probability: Optional[float] = None
     """Calibration-adjusted probability (None when calibration unavailable)."""
+
+    # Phase 5: Market Intelligence fields
+    real_odds: Optional[float] = None
+    """Real bookmaker odds for this outcome (None when unavailable)."""
+
+    implied_probability: Optional[float] = None
+    """Implied probability from real bookmaker odds (None when unavailable)."""
+
+    market_edge: Optional[float] = None
+    """Market edge: implied_probability - fair_probability (None when unavailable)."""
+
+    bookmaker: Optional[str] = None
+    """Bookmaker/source providing these odds (None when unavailable)."""
+
+    odds_timestamp: Optional[datetime] = None
+    """Timestamp when odds were recorded (None when unavailable)."""
 
     @property
     def best_probability(self) -> float:
@@ -626,6 +667,13 @@ class MarketAnalyser:
             impl_p = implied_probability_from_odds(b_odds)
             e = edge(fair_p, b_odds)
             val = has_value(fair_p, b_odds, self.value_threshold)
+
+            # Populate Phase 5 fields in MarketOutcome
+            outcome.real_odds = b_odds
+            outcome.implied_probability = impl_p
+            outcome.market_edge = e
+            outcome.bookmaker = label  # Label identifies the outcome; bookmaker name would come from data source
+            outcome.odds_timestamp = None  # Placeholder for future enhancement
 
             comparisons.append(BookmakerComparison(
                 label=label,

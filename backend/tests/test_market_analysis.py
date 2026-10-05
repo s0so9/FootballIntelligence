@@ -299,3 +299,114 @@ class TestMarketAnalyser:
         # Should not claim any value found
         assert result.any_value_found is False
         assert result.bookmaker_odds_available is False
+
+
+class TestPhase5MarketIntelligence:
+    """Test Phase 5 market intelligence enhancements."""
+    
+    def test_market_outcome_phase5_fields_optional(self):
+        """Test that Phase 5 fields on MarketOutcome are optional."""
+        from app.prediction.market_analysis import MarketOutcome
+        
+        # Should create outcome without Phase 5 fields
+        outcome = MarketOutcome(
+            label="home",
+            model_probability=0.50,
+            calibrated_probability=None,
+        )
+        
+        assert outcome.label == "home"
+        assert outcome.model_probability == 0.50
+        assert outcome.real_odds is None
+        assert outcome.implied_probability is None
+        assert outcome.market_edge is None
+        assert outcome.bookmaker is None
+        assert outcome.odds_timestamp is None
+    
+    def test_normalize_market_probabilities(self):
+        """Test normalize_market_probabilities helper function."""
+        from app.prediction.market_analysis import normalize_market_probabilities
+        
+        # Standard case: probabilities with overround
+        implied = [0.526, 0.526]  # Sum = 1.052 (5.2% overround)
+        normalized = normalize_market_probabilities(implied)
+        
+        assert len(normalized) == 2
+        assert normalized[0] == pytest.approx(0.50, abs=0.01)
+        assert normalized[1] == pytest.approx(0.50, abs=0.01)
+        assert sum(normalized) == pytest.approx(1.0)
+        
+        # Three-way market
+        implied_3way = [0.45, 0.30, 0.25]  # Already sums to 1.0
+        normalized_3way = normalize_market_probabilities(implied_3way)
+        
+        assert sum(normalized_3way) == pytest.approx(1.0)
+        assert normalized_3way[0] == pytest.approx(0.45)
+        assert normalized_3way[1] == pytest.approx(0.30)
+        assert normalized_3way[2] == pytest.approx(0.25)
+        
+        # Edge case: zero total
+        zero_probs = [0.0, 0.0]
+        normalized_zero = normalize_market_probabilities(zero_probs)
+        assert normalized_zero == [0.0, 0.0]
+    
+    def test_market_analyser_populates_phase5_fields_when_odds_available(self):
+        """Test that MarketAnalyser populates Phase 5 fields when bookmaker odds are supplied."""
+        from app.prediction.market_analysis import MarketAnalyser
+        
+        analyser = MarketAnalyser(value_threshold=0.03, is_development_data=True)
+        
+        result = analyser.analyse_match(
+            match_id="test_phase5_1",
+            home_win_prob=0.60,
+            draw_prob=0.25,
+            away_win_prob=0.15,
+            bookmaker_1x2={
+                "home": 2.2,
+                "draw": 3.5,
+                "away": 5.0,
+            },
+        )
+        
+        market_1x2 = result.markets[0]
+        
+        # Find home outcome
+        home_outcome = next(o for o in market_1x2.outcomes if o.label == "home")
+        
+        # Phase 5 fields should be populated
+        assert home_outcome.real_odds == 2.2
+        assert home_outcome.implied_probability == pytest.approx(1/2.2)
+        assert home_outcome.market_edge is not None
+        assert home_outcome.bookmaker == "home"
+        assert home_outcome.odds_timestamp is None  # Placeholder
+        
+        # Verify edge calculation is correct
+        # Edge = implied_probability - fair_probability
+        # Fair prob = 0.60, Implied = 1/2.2 = 0.4545
+        # Edge = 0.4545 - 0.60 = -0.1455 (negative = value)
+        expected_edge = (1/2.2) - 0.60
+        assert home_outcome.market_edge == pytest.approx(expected_edge)
+    
+    def test_phase5_fields_remain_none_when_no_odds(self):
+        """Test that Phase 5 fields remain None when no bookmaker odds supplied."""
+        from app.prediction.market_analysis import MarketAnalyser
+        
+        analyser = MarketAnalyser(is_development_data=True)
+        
+        result = analyser.analyse_match(
+            match_id="test_phase5_2",
+            home_win_prob=0.50,
+            draw_prob=0.28,
+            away_win_prob=0.22,
+            # No bookmaker odds
+        )
+        
+        market_1x2 = result.markets[0]
+        
+        # All outcomes should have None for Phase 5 fields
+        for outcome in market_1x2.outcomes:
+            assert outcome.real_odds is None
+            assert outcome.implied_probability is None
+            assert outcome.market_edge is None
+            assert outcome.bookmaker is None
+            assert outcome.odds_timestamp is None
