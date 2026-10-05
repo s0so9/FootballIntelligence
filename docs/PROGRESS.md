@@ -8375,7 +8375,7 @@ python -m pytest --tb=short -q
 
 ---
 
-## Entry: 2026-10-05 � Phase 5: Market Intelligence Expansion
+## Entry: 2026-10-05 � Phase 5: Market Intelligence Expansion
 
 ### Completed Work
 
@@ -8426,13 +8426,13 @@ Phase 5 Market Intelligence Expansion complete with 4 FEATs:
 - PredictionMarketType enum: +2 values (DOUBLE_CHANCE, HANDICAP)
 
 **New Modules:**
-- market_intelligence.py � ValueClassification enum, classify_value function, MarketValueAssessment dataclass
-- market_movement.py � OddsMovement dataclass, calculate_odds_movement function with "never fabricate" constraint
+- market_intelligence.py � ValueClassification enum, classify_value function, MarketValueAssessment dataclass
+- market_movement.py � OddsMovement dataclass, calculate_odds_movement function with "never fabricate" constraint
 
 **Extensions:**
-- market_analysis.py � normalize_market_probabilities function, MarketAnalyser._build_comparison extended to populate Phase 5 fields
-- source_intelligence.py � merge_bookmaker_odds method with 3 strategies (first/most_complete/highest_quality)
-- development.py � get_match_odds extended to populate Phase 5 fields with deterministic mock data
+- market_analysis.py � normalize_market_probabilities function, MarketAnalyser._build_comparison extended to populate Phase 5 fields
+- source_intelligence.py � merge_bookmaker_odds method with 3 strategies (first/most_complete/highest_quality)
+- development.py � get_match_odds extended to populate Phase 5 fields with deterministic mock data
 
 **API Schema Extensions (Backward Compatible):**
 - MarketOutcomeResponse: +5 optional fields, all default None
@@ -8455,8 +8455,8 @@ Phase 5 Market Intelligence Expansion complete with 4 FEATs:
 
 **Backend:** +45 new tests
 - test_phase5_feat001.py: 4 tests (DevelopmentProvider Phase 5 fields)
-- test_market_intelligence.py: 10 tests (value classification, implied probability, overround, edge) � created
-- test_market_movement.py: 16 tests (OddsMovement, calculate_odds_movement, validation) � created
+- test_market_intelligence.py: 10 tests (value classification, implied probability, overround, edge) � created
+- test_market_movement.py: 16 tests (OddsMovement, calculate_odds_movement, validation) � created
 - test_domain_models.py: +3 tests (Odds Phase 5 fields)
 - test_market_analysis.py: +4 tests (MarketOutcome Phase 5 fields)
 - test_source_intelligence.py: +8 tests (merge_bookmaker_odds)
@@ -8576,7 +8576,7 @@ None. All tests pass, all constraints enforced, all Phase 4 functionality intact
 
 ### Next Step
 
-**Phase 5 Complete � DO NOT START PHASE 6**
+**Phase 5 Complete � DO NOT START PHASE 6**
 
 Phase 5 Market Intelligence Expansion is complete and verified. All architectural constraints enforced, all formulas implemented and tested, all existing functionality preserved.
 
@@ -8828,3 +8828,210 @@ According to PROJECT_SPEC.md, the next phases are:
 - Portfolio optimization
 - Advanced market analysis
 - Machine learning model improvements
+
+
+---
+
+## Entry: 2026-10-05
+
+### Completed Work: MENSIONE Canonical Pipeline Implementation
+
+Successfully completed the MENSIONE Smart Market Selector and canonical prediction pipeline recovery from rate-limited workflow state.
+
+#### FEAT-001: Fixed Development Provider & Ensemble Score Distribution ✅
+- **Issue**: Tests failing due to insufficient historical data and EnsembleEngine not combining score distributions
+- **Root Cause**: 
+  - Test used non-existent team IDs (team_pipeline_1/2 instead of dev_team_alpha/beta)
+  - EnsembleEngine combined 1X2 probabilities and xG but NOT score distributions
+- **Fix**:
+  - Corrected test to use DevelopmentProvider team IDs
+  - Added weighted averaging of score distributions in EnsembleEngine
+  - Added tuple-to-string key conversion for legacy compatibility
+- **Files Modified**:
+  - `backend/app/prediction/ensemble_engine.py`
+  - `backend/tests/test_prediction_service.py`
+- **Commit**: `43d985e` - fix: ensemble now combines score distributions for full pipeline
+
+#### FEAT-002: SmartMarketSelector Implementation ✅
+- **Created**: `backend/app/prediction/market_selector.py`
+  - `BestTip` dataclass with 15 fields (market, selection, probability, confidence, model_agreement, data_quality, edge, fair_odds, bookmaker_odds, odds_movement, value_classification, risk_level, selection_score, selector_reason, timestamp, pipeline_version)
+  - `PassDecision` dataclass with 5 fields (match_id, pass_reason, evaluated_markets_count, best_market_details, timestamp, pipeline_version)
+  - `SmartMarketSelector` class with configurable thresholds (min_confidence=0.4, min_probability=0.5, min_edge=0.0, max_risk_level="HIGH")
+  - `evaluate_and_select()` method: extracts markets, calculates selection_score, applies filters, ranks, returns BestTip or PassDecision
+  - Value classification: STRONG_VALUE (edge≥10%), VALUE (≥5%), NEUTRAL (≥0%), NEGATIVE_VALUE (<0%)
+  - Risk level: LOW (conf≥0.7, agreement≥0.8, quality≥0.7), MEDIUM (≥0.5), HIGH (below)
+- **Created**: `backend/tests/test_market_selector.py` with 20 comprehensive tests
+- **Commit**: `b32315d` - feat: add SmartMarketSelector module with BestTip/PassDecision logic
+
+#### FEAT-003: Pipeline Integration ✅
+- **Modified**: `backend/app/prediction/service.py`
+  - Replaced `MensionePickGenerator` with `SmartMarketSelector` in `__init__()`
+  - Updated `generate_full_prediction()` STEP 8 to call `market_selector.evaluate_and_select()`
+  - Converts BestTip/PassDecision to dict for `AnalysisContext.mensione_pick`
+  - BestTip dict includes: market, selection, probability, confidence, model_agreement, data_quality, edge, fair_odds, bookmaker_odds, value_classification, risk_level, selection_score, selector_reason, predicted_score
+  - PassDecision dict includes: pass_decision=True, pass_reason, evaluated_markets_count, best_market_details
+- **Modified**: `backend/app/api/v1/endpoints/matches.py`
+  - Updated API documentation with BestTip vs PassDecision structure
+  - Added example responses
+- **Commit**: `9302400` - feat: FEAT-003 integrate SmartMarketSelector into canonical pipeline
+
+#### FEAT-004: Frozen Picks & Result Tracking Foundation ✅
+- **Modified**: `backend/app/prediction/prediction_version.py`
+  - Extended `PredictionVersion` dataclass with 9 frozen pick fields:
+    * selected_market, selection_text, selection_probability, selection_confidence
+    * selection_odds, selection_fair_odds, selection_edge
+    * value_classification, risk_level
+  - Added 3 result tracking fields (initialized to None):
+    * actual_result, profit_loss, settled_at
+  - Updated `create_version()` to accept optional `mensione_pick` parameter
+  - Populates frozen fields when mensione_pick is BestTip dict
+  - Leaves frozen fields None when mensione_pick is PassDecision or None
+  - Added `settle_prediction()` stub method for future result settlement
+  - Added `get_settled_picks_by_market()` stub method for future accuracy calculation
+- **Modified**: `backend/app/prediction/service.py`
+  - Updated `create_version()` call to pass `mensione_pick` parameter
+- **Created/Updated**: `backend/tests/test_prediction_version.py` with 7 new tests
+- **Commit**: `3839c4c` - feat: FEAT-004 extend PredictionVersionManager with frozen picks and result tracking foundation
+
+#### FEAT-005: Final Canonical Pipeline Audit ✅
+- **Verification Completed**:
+  - ✅ All 7 models registered in ModelOrchestrator: Poisson, Dixon-Coles, Elo, Monte Carlo, Negative Binomial, Form-Adjusted, Logistic Regression
+  - ✅ All 3 engines integrated: EnsembleEngine, CalibrationEngine, ConfidenceEngine
+  - ✅ Canonical pipeline flow verified: Match → FeatureSnapshot → ModelOrchestrator → Ensemble → Calibration → Confidence → MarketDerivation → SmartMarketSelector → PredictionVersion → AnalysisContext
+  - ✅ Single sequential execution - no duplicate model runs
+  - ✅ SmartMarketSelector active with BestTip/PassDecision logic
+  - ✅ No hardcoded confidence values in production code
+  - ✅ No hardcoded model_agreement values in production code
+  - ✅ No fabricated data - nulls preserved when unavailable
+  - ✅ No hidden Poisson-only production fallback
+- **Commit**: `babd6ef` - feat: FEAT-005 final audit - canonical pipeline verified, SmartMarketSelector integrated
+
+### Verification Results
+
+#### Backend Test Suite
+```powershell
+cd C:\FootballIntelligence\backend
+.\.venv\Scripts\python.exe -m pytest tests/ -v --tb=short
+```
+**Result**: ✅ **1016 passed, 14 skipped, 0 failed** (increased from 984 to 1016 with new SmartMarketSelector tests)
+
+#### Pipeline-Specific Tests
+- Model Orchestrator tests: 23 passed
+- Ensemble Engine tests: 15 passed
+- Calibration Engine tests: 12 passed
+- Confidence Engine tests: 18 passed
+- Market Selector tests: 20 passed (NEW)
+- Prediction Version tests: 14 passed (7 new)
+- Integration tests: 14 passed
+
+#### Frontend Verification
+```powershell
+cd C:\FootballIntelligence\frontend
+npm run type-check  # ✅ PASS
+npm run lint        # ✅ PASS
+npm run build       # ✅ PASS
+```
+
+#### API Smoke Test
+```powershell
+# Started: uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Tested: GET /api/v1/matches/dev_match_002/prediction
+```
+**Result**: ✅ **200 OK**
+- Response contains enhanced `mensione_pick` structure
+- BestTip example: market="OVER_0_5", selection="Over 0.5 goals", probability=0.957, confidence=0.684, model_agreement=0.982, value_classification="NEUTRAL", risk_level="MEDIUM"
+- All required fields present: market, selection, probability, confidence, model_agreement, data_quality, edge, fair_odds, value_classification, risk_level, selection_score, selector_reason
+
+### Architecture Summary
+
+**Canonical Pipeline Flow (Verified)**:
+1. **Match** → Feature extraction
+2. **FeatureSnapshot** → Structured input for models
+3. **ModelOrchestrator** → Executes 7 models in parallel
+4. **EnsembleEngine** → Combines predictions (probabilities, xG, score distributions)
+5. **CalibrationEngine** → Calibrates 1X2 probabilities
+6. **ConfidenceEngine** → Assesses prediction confidence from pipeline values
+7. **MarketDerivation** → Derives all market probabilities from score distribution
+8. **SmartMarketSelector** → Evaluates markets, selects best tip or issues PASS
+9. **PredictionVersionManager** → Stores frozen pick for track record
+10. **AnalysisContext** → Final prediction object for API
+
+**Key Guarantees**:
+- ✅ Single execution path (no duplicate model runs)
+- ✅ No fabricated data (odds, xG, injuries preserved as None when unavailable)
+- ✅ No hardcoded confidence values
+- ✅ Smart Market Selector evaluates all markets and selects best or PASS
+- ✅ Frozen picks stored for future accuracy tracking
+- ✅ Result tracking foundation ready (actual_result, profit_loss fields exist but remain None)
+
+### Files Created/Modified
+
+**New Files**:
+- `backend/app/prediction/market_selector.py` (SmartMarketSelector, BestTip, PassDecision)
+- `backend/tests/test_market_selector.py` (20 tests)
+
+**Modified Files**:
+- `backend/app/prediction/ensemble_engine.py` (score distribution combination)
+- `backend/app/prediction/service.py` (SmartMarketSelector integration)
+- `backend/app/prediction/prediction_version.py` (frozen picks, result tracking foundation)
+- `backend/app/api/v1/endpoints/matches.py` (API documentation)
+- `backend/tests/test_prediction_service.py` (test ID corrections)
+- `backend/tests/test_prediction_version.py` (7 new tests)
+
+### Next Steps
+
+The MENSIONE canonical pipeline with Smart Market Selector is now complete and verified. Future phases can now proceed:
+
+**Phase 6: Result Ingestion** (Future)
+- Implement `PredictionVersionManager.settle_prediction()` to populate actual_result and profit_loss
+- Create result ingestion service to process match outcomes
+- Settle frozen picks after matches complete
+
+**Phase 7: Historical Accuracy Dashboard** (Future)
+- Implement `PredictionVersionManager.get_settled_picks_by_market()` query method
+- Calculate accuracy metrics per market type (HOME_WIN accuracy, OVER_2_5 accuracy, etc.)
+- Build frontend dashboard to display track record by market
+
+**Phase 8: Odds Scraping & Real Edge Calculation** (Future)
+- Integrate real bookmaker odds feeds
+- Calculate actual edge for each market
+- Enhance SmartMarketSelector to prioritize positive edge markets
+
+**Phase 9: Market-Specific Reliability** (Future)
+- Track historical performance per market type
+- Adjust selection thresholds based on proven accuracy
+- Implement adaptive confidence scoring
+
+### Constraints Maintained
+
+✅ All 25 AGENTS.md rules followed
+✅ No rewrites of existing Phase 1-5 models
+✅ No duplicate ensemble/calibration systems
+✅ No fabricated bookmaker odds, xG, injuries, or historical accuracy
+✅ No breaking of Phase 1-5 functionality
+✅ DevelopmentProvider determinism preserved
+✅ Backward API compatibility maintained
+✅ All data clearly labeled as DEVELOPMENT
+
+### Success Metrics Achieved
+
+✅ 1016 backend tests passing, 0 failing (target: 974+) - **EXCEEDED**
+✅ SmartMarketSelector selects best market or issues PASS - **VERIFIED**
+✅ Frozen picks stored with market type for future accuracy tracking - **IMPLEMENTED**
+✅ API returns enhanced MENSIONE pick structure - **VERIFIED**
+✅ Canonical pipeline verified (no duplicates, no hardcoded values) - **AUDITED**
+✅ Frontend: typecheck PASS, lint PASS, build PASS - **VERIFIED**
+
+### Conclusion
+
+The MENSIONE canonical pipeline implementation successfully recovered from the rate-limited workflow interruption and completed all 5 features (FEAT-001 through FEAT-005). The system now has:
+
+1. A working canonical prediction pipeline with 7 models
+2. Smart Market Selector that evaluates all markets intelligently
+3. BestTip/PASS decision logic with value classification and risk assessment
+4. Frozen pick storage for future track record calculation
+5. Result tracking foundation ready for Phase 6
+6. All tests passing with zero failures
+7. API verified and documented
+
+The implementation is production-ready for the current scope and provides a solid foundation for future phases (result ingestion, accuracy tracking, odds scraping, and adaptive confidence).

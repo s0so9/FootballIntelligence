@@ -1,0 +1,13 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "issue": "match_id=None in mensione_pick",
+      "severity": "minor",
+      "description": "MarketDerivationEngine.derive() does not set match_id on the returned MarketProbabilities object, and service.py does not set market_probs.match_id before calling evaluate_and_select(). SmartMarketSelector reads market_probs.match_id when building BestTip/PassDecision, so the mensione_pick dict will contain match_id=None.",
+      "action": "Add `market_probs.match_id = match.id` after line 872 (after derive() call) and before line 880 (evaluate_and_select() call).",
+      "blocking": false
+    }
+  ],
+  "reviewDoc": ".agents/tasks/mensione-canonical-pipeline/2025-01-22-210000-feat003-review.md"
+}

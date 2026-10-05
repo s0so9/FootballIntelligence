@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "fix",
   "description": "Fix failing test test_full_prediction_pipeline_with_development_fallback by correcting team IDs to match existing DevelopmentProvider data, then verify canonical pipeline execution produces predicted_score. Test uses non-existent team_pipeline_1/2 but DevelopmentProvider has dev_team_alpha/beta/gamma/delta with 20 matches (19 completed). Simple ID fix should make test pass.",
-  "status": "pending",
+  "status": "completed",
   "steps": [
     "Read backend/tests/test_prediction_service.py lines 550-605 to locate TestDevelopmentDataFallback.test_full_prediction_pipeline_with_development_fallback",
     "Replace team_pipeline_1 with dev_team_alpha (home_team_id)",
@@ -32,5 +32,5 @@
     "Verify output shows 2 passed for TestDevelopmentDataFallback"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Root cause: EnsembleEngine.combine() was not combining score_distribution from individual models. Fixed by adding weighted averaging of score distributions. Also fixed conversion of tuple keys (2,0) to string keys '2-0' for legacy Prediction compatibility. Test IDs corrected to use dev_team_alpha/beta, dev_comp_league_a, dev_season_2023_2024."
 }

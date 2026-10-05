@@ -1,0 +1,9 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    "Confidence component access assumes nested structure — evaluate_and_select accesses confidence_assessment.components.model_agreement and .data_quality without defensive getattr. If ConfidenceAssessment lacks the .components attribute or uses a different structure, AttributeError will surface. Add getattr guards or verify ConfidenceAssessment structure matches test mocks.",
+    "Value classification thresholds hardcoded — Edge thresholds (0.10, 0.05, 0.0) are embedded in _build_candidate with no exposure to SmartMarketSelector constructor or config. If domain experts want to tune 'strong value' to 0.08 or 0.12, code modification is required. Consider exposing as constructor params or config constants.",
+    "Pass reason may obscure risk level mismatch — _determine_pass_reason returns 'no_qualifying_market' as the catch-all when no specific reason applies, but doesn't distinguish 'all markets exceeded max_risk_level' from 'markets failed multiple thresholds'. A reviewer or operator seeing 'no_qualifying_market' won't know if the issue is risk level or some other filter. Add a check for risk level mismatch before returning generic reason."
+  ],
+  "reviewDoc": "c:\\FootballIntelligence\\.agents\\tasks\\mensione-canonical-pipeline\\feat002-review.md"
+}
