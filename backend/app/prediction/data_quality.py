@@ -213,13 +213,13 @@ class DataQualityGate:
 
         # Check for negative values where they shouldn't exist
         for key, value in features.items():
-            if value is not None and value < 0:
+            if value is not None and isinstance(value, (int, float)) and value < 0:
                 if any(keyword in key.lower() for keyword in ["goals", "points", "xg", "matches"]):
                     issues.append(f"{key} has negative value: {value}")
 
         # Check for unrealistic values
         for key, value in features.items():
-            if value is not None:
+            if value is not None and isinstance(value, (int, float)):
                 if "goals" in key.lower() and value > 20:
                     issues.append(f"{key} has unrealistic value: {value}")
 

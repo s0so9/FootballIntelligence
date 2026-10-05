@@ -1,0 +1,14 @@
+{
+  "task_id": "task-mensione-canonical-pipeline",
+  "task_description": "Wire existing prediction models, ensemble, calibration, confidence, and market engines into one coherent MENSIONE pipeline without rewriting or duplicating implementations",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004",
+    "FEAT-005",
+    "FEAT-006"
+  ],
+  "blocked_reason": null
+}

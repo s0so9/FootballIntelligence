@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Canonical Ensemble Selection and Integration - determine whether ensemble.py or ensemble_engine.py is canonical, make the other a compatibility wrapper, wire into pipeline. DECISION: ensemble_engine.py is canonical (has ReliabilityWeights, DynamicWeights, model_agreement calculation). ensemble.py becomes a compatibility wrapper.",
+  "status": "pending",
+  "steps": [
+    "1. AUDIT DECISION RATIONALE: ensemble_engine.py is canonical because: (a) implements WeightingStrategy abstraction (StaticWeights, ReliabilityWeights, DynamicWeights), (b) calculates model_agreement from standard deviation of predictions, (c) handles ModelPrediction (from interfaces.py) and ModelAvailability, (d) returns ensemble with metadata (model_weights, weighting_strategy, model_agreement, contributing_models). ensemble.py implements weighted averaging but lacks strategy abstraction and agreement calculation - it is simpler but less extensible.",
+    "2. VERIFY ensemble_engine.py interface: EnsembleEngine.__init__(strategy: WeightingStrategy), EnsembleEngine.combine(predictions: List[ModelPrediction], context: Optional[Dict]) -> ModelPrediction | ModelAvailability. Confirm it returns ModelPrediction (not EnsemblePrediction from ensemble.py) with metadata field containing ensemble-specific info.",
+    "3. CREATE COMPATIBILITY WRAPPER: Refactor backend/app/prediction/ensemble.py so EnsembleModel becomes a thin wrapper around EnsembleEngine. EnsembleModel.predict(model_inputs: List[ModelPredictionInput]) -> EnsemblePrediction: (a) convert ModelPredictionInput list to ModelPrediction list, (b) create StaticWeights strategy from self.weights, (c) call EnsembleEngine(strategy).combine(predictions), (d) convert ModelPrediction result back to EnsemblePrediction for backward compatibility. Add deprecation docstring noting ensemble_engine.py is canonical.",
+    "4. Integration with ModelOrchestrator: Add EnsembleIntegration class in model_orchestrator.py that converts ModelOrchestrationResult.successful_predictions to ensemble input and calls EnsembleEngine. Method: combine_predictions(orchestration_result: ModelOrchestrationResult, strategy: WeightingStrategy = ReliabilityWeights()) -> ModelPrediction | ModelAvailability.",
+    "5. PRESERVE EXISTING TESTS: Ensure all existing tests in backend/tests/test_ensemble.py still pass (they use EnsembleModel API). Ensure all existing tests in backend/tests/test_ensemble_engine.py still pass (they use EnsembleEngine API).",
+    "6. Add integration tests in backend/tests/test_ensemble_integration.py covering: EnsembleModel wrapper calls EnsembleEngine underneath, ensemble with StaticWeights, ensemble with ReliabilityWeights (uses confidence_score * data_quality_score), ensemble with DynamicWeights + league context, model_agreement calculation (std dev of home_win_prob), ensemble fails gracefully with < 2 models."
+  ],
+  "acceptance_criteria": [
+    "ensemble_engine.py remains unchanged (canonical implementation)",
+    "ensemble.py EnsembleModel becomes compatibility wrapper calling EnsembleEngine internally",
+    "EnsembleIntegration.combine_predictions() wires ModelOrchestrationResult -> EnsembleEngine",
+    "Model agreement score calculated from prediction variance (existing logic in ensemble_engine.py)",
+    "All existing tests pass: pytest backend/tests/test_ensemble.py backend/tests/test_ensemble_engine.py -v",
+    "New integration tests pass: pytest backend/tests/test_ensemble_integration.py -v (5+ tests)",
+    "No regressions: pytest backend/tests/ --tb=short (931 baseline)"
+  ],
+  "verification": [
+    "Run: cd backend && python -m pytest tests/test_ensemble.py tests/test_ensemble_engine.py -v",
+    "Expected: All existing ensemble tests pass (backward compatibility preserved)",
+    "Run: cd backend && python -m pytest tests/test_ensemble_integration.py -v",
+    "Expected: 5+ integration tests pass showing wrapper works and agreement calculated",
+    "Run: cd backend && python -m pytest tests/ -k 'not (test_ensemble or test_model_orchestrator or test_feature_snapshot)' --tb=short",
+    "Expected: All other tests still pass"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

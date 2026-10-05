@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Create ModelOrchestrator - runs all compatible models from MatchFeatureSnapshot, collects outputs as ModelPrediction|ModelAvailability, tracks which models ran vs failed vs unavailable. Does NOT create new models or duplicate existing ones.",
+  "status": "pending",
+  "steps": [
+    "1. Create backend/app/prediction/model_orchestrator.py with ModelOrchestrator class. Constructor accepts: list of PredictionModel instances (poisson, dixon_coles, elo, monte_carlo, negative_binomial, form_adjusted, contextual_adjuster, logistic_regression), optional MatchFeatureSnapshot for context.",
+    "2. Add ModelOrchestrator.register_model(model: PredictionModel) to dynamically add models to the orchestrator.",
+    "3. Add ModelOrchestrator.run_all(snapshot: MatchFeatureSnapshot, match_context: Optional[Dict] = None) -> ModelOrchestrationResult. For each registered model: (a) call model.check_requirements(snapshot.to_features_dict()), (b) if requirements met: call model.predict(), (c) if requirements not met: create ModelAvailability with reason, (d) catch exceptions and convert to ModelAvailability with 'failed' reason.",
+    "4. Define ModelOrchestrationResult dataclass containing: successful_predictions: List[ModelPrediction], unavailable_models: List[ModelAvailability], failed_models: List[ModelAvailability], participating_model_ids: List[str], unavailable_model_ids: List[str], failed_model_ids: List[str], execution_metadata: Dict (timing, counts).",
+    "5. Add ModelOrchestrationResult.has_sufficient_models(min_models: int = 2) -> bool to check if enough models ran for ensemble.",
+    "6. Add helper method ModelOrchestrator.create_default_registry() -> List[PredictionModel] that instantiates all existing models with default configs (Poisson, DixonColes, Elo, MonteCarlo, etc.) - this is a convenience factory, NOT new implementations.",
+    "7. Integration: Adapt existing models if needed to implement PredictionModel interface. PoissonModel, DixonColesModel, EloRatingSystem must expose predict(features, context) -> ModelPrediction|ModelAvailability. Check existing interfaces.py to see current signatures.",
+    "8. Add unit tests in backend/tests/test_model_orchestrator.py covering: orchestrator with 3 mock models (2 succeed, 1 unavailable), orchestrator with all models failing, orchestrator with insufficient models (< 2), execution_metadata contains timing and counts, default_registry creates all 8+ models."
+  ],
+  "acceptance_criteria": [
+    "ModelOrchestrator.run_all() executes all registered models without stopping on first failure",
+    "ModelOrchestrationResult clearly distinguishes successful/unavailable/failed models",
+    "Partial model failure does not kill entire orchestration - remaining models still run",
+    "Default registry instantiates Poisson, DixonColes, Elo, MonteCarlo, NegativeBinomial, FormAdjusted, ContextualAdjuster, LogisticRegression (8 models)",
+    "Unit tests pass: pytest backend/tests/test_model_orchestrator.py -v (5+ tests)",
+    "No existing tests broken: pytest backend/tests/ --tb=short (931 baseline)"
+  ],
+  "verification": [
+    "Run: cd backend && python -m pytest tests/test_model_orchestrator.py -v",
+    "Expected: 5+ new tests pass, orchestrator handles partial failures gracefully",
+    "Run: cd backend && python -m pytest tests/test_poisson.py tests/test_dixon_coles.py tests/test_elo.py -v",
+    "Expected: All existing model tests still pass (models unchanged)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

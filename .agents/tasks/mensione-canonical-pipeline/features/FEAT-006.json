@@ -1,0 +1,38 @@
+{
+  "id": "FEAT-006",
+  "type": "feat",
+  "description": "Unified MensionePipeline + PredictionService Refactor + Market/Pick/AnalysisContext Wiring + API Extension. Create single pipeline execution that wires: MatchFeatureSnapshot → ModelOrchestrator → Ensemble → Calibration → Confidence → Markets → MensionePick → AnalysisContext → API. Eliminate redundant feature extraction and model execution. Preserve backward compatibility.",
+  "status": "pending",
+  "steps": [
+    "1. CREATE MensionePipeline: Create backend/app/prediction/pipeline.py with MensionePipeline class. Constructor accepts: orchestrator: ModelOrchestrator, ensemble_strategy: WeightingStrategy, calibrator: Optional[Calibrator1X2], confidence_engine: ConfidenceEngine, market_derivation: MarketDerivationEngine, market_analyser: MarketAnalyser, easy_match_detector: EasyMatchDetector, mensione_pick_generator: MensionePickGenerator, version_manager: PredictionVersionManager.",
+    "2. MensionePipeline.execute(snapshot: MatchFeatureSnapshot, match: Match, bookmaker_odds: Optional[Odds] = None) -> PipelineResult. Pipeline stages: (a) orchestration_result = orchestrator.run_all(snapshot), (b) ensemble_prediction = EnsembleIntegration.combine(orchestration_result, strategy), (c) calibrated_prediction = CalibrationIntegration.calibrate(ensemble_prediction, calibrator), (d) confidence_assessment = ConfidenceIntegration.assess(snapshot, orchestration_result, calibrated_prediction, calibrator.metrics), (e) market_probabilities = market_derivation.derive_from_distribution(calibrated_prediction.score_distribution), (f) market_analysis = market_analyser.analyze(market_probabilities, bookmaker_odds) if bookmaker_odds else None, (g) easy_match = easy_match_detector.detect(calibrated_prediction, confidence_assessment), (h) mensione_pick = mensione_pick_generator.generate(market_probabilities, confidence_assessment, market_analysis), (i) prediction_version = version_manager.create_version(calibrated_prediction, metadata), (j) analysis_context = build_analysis_context(match, snapshot, orchestration_result, ensemble_prediction, calibrated_prediction, confidence_assessment, market_probabilities, mensione_pick, prediction_version).",
+    "3. Define PipelineResult dataclass containing: snapshot, orchestration_result, ensemble_prediction, calibrated_prediction, confidence_assessment, market_probabilities, market_analysis, easy_match, mensione_pick, prediction_version, analysis_context, execution_time, pipeline_metadata.",
+    "4. REFACTOR PredictionService: Modify backend/app/prediction/service.py PredictionService.generate_prediction(match) to: (a) extract snapshot = feature_extractor.extract_snapshot(match), (b) call pipeline_result = mensione_pipeline.execute(snapshot, match), (c) convert PipelineResult to legacy Prediction domain object for backward compatibility, (d) return Prediction. Add new method PredictionService.generate_prediction_with_context(match) -> Tuple[Prediction, AnalysisContext] that returns both.",
+    "5. WIRE MARKETS/PICK/ANALYSISCONTEXT: Use existing MarketDerivationEngine, MarketAnalyser, MensionePickGenerator, EasyMatchDetector without modification. Populate AnalysisContext from PipelineResult: analysis_context.model_predictions = [convert ModelPrediction to domain.Prediction], analysis_context.ensemble_prediction = ensemble_prediction converted, analysis_context.mensione_pick = mensione_pick dict, analysis_context.statistical_features = snapshot.to_dict(), analysis_context.model_calibration_info = calibrator.metrics if available, analysis_context.prediction_version_id = prediction_version.id.",
+    "6. EXTEND PredictionVersionManager: Add fields to PredictionVersionMetadata: models_used: List[str], ensemble_strategy: str, calibration_status: str, confidence_score: float, data_quality_score: float, feature_snapshot_version: str, pipeline_version: str. Preserve existing versioning logic.",
+    "7. API COMPATIBILITY: Modify backend/app/api/v1/endpoints/matches.py GET /matches/{match_id}/prediction to: (a) call PredictionService.generate_prediction_with_context(match), (b) return extended response with prediction, markets, mensione_pick, confidence, analysis_context_summary (not full context - save for AI Analyst endpoint). Preserve existing response structure for backward compatibility (add new fields, don't remove old ones).",
+    "8. Add integration tests in backend/tests/test_pipeline_integration.py covering: full pipeline execution from snapshot to AnalysisContext, pipeline with insufficient models (<2) fails gracefully at ensemble stage, pipeline with uncalibrated predictions still produces result, pipeline with missing bookmaker_odds skips market_analysis, backward compatibility: PredictionService.generate_prediction() still returns Prediction object with all fields populated."
+  ],
+  "acceptance_criteria": [
+    "MensionePipeline.execute() runs full pipeline in correct order: orchestrator → ensemble → calibration → confidence → markets → pick → analysis_context",
+    "PipelineResult contains all intermediate and final outputs for inspection and debugging",
+    "PredictionService.generate_prediction() refactored to use MensionePipeline internally, eliminating redundant feature extraction and model execution",
+    "API endpoint GET /matches/{match_id}/prediction returns extended response with confidence, mensione_pick, market_probabilities while preserving backward compatibility",
+    "AnalysisContext populated from single pipeline execution (not separate prediction run)",
+    "PredictionVersionManager metadata extended to track models_used, ensemble, calibration, confidence, data_quality",
+    "All existing tests pass: pytest backend/tests/test_prediction_service.py backend/tests/test_api_matches.py -v",
+    "New pipeline tests pass: pytest backend/tests/test_pipeline_integration.py -v (8+ tests)",
+    "No regressions: pytest backend/tests/ --tb=short (931+ baseline - may add tests)"
+  ],
+  "verification": [
+    "Run: cd backend && python -m pytest tests/test_pipeline_integration.py -v",
+    "Expected: 8+ tests pass showing full pipeline execution and backward compatibility",
+    "Run: cd backend && python -m pytest tests/test_prediction_service.py tests/test_api_matches.py -v",
+    "Expected: All existing service and API tests pass (backward compatibility preserved)",
+    "Run: cd backend && python -m pytest tests/ --tb=short",
+    "Expected: All tests pass (931+ baseline, may increase with new tests)",
+    "Manual verification: Start uvicorn, call GET /api/v1/matches/{dev_match_id}/prediction, confirm response has prediction, confidence_assessment, mensione_pick, markets fields"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

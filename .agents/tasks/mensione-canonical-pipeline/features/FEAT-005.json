@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Real Confidence Integration - wire ConfidenceEngine to actual pipeline outputs, replace all hardcoded assumptions (data_quality_score=0.7, model_agreement=1.0) with real values from DataQualityGate, ensemble, calibration, and feature completeness.",
+  "status": "pending",
+  "steps": [
+    "1. AUDIT existing ConfidenceEngine (backend/app/prediction/confidence_engine.py): ConfidenceEngine.assess(model_agreement, data_quality_score, n_matches, brier_score, lineup_status, recent_predictions) -> ConfidenceAssessment. Components: model_agreement (from ensemble), data_quality (from DataQualityGate), sample_size_score (from n_matches), calibration_reliability (from brier_score), lineup_certainty (from lineup_status), feature_stability (from recent_predictions variance).",
+    "2. Integration with Pipeline: Add ConfidenceIntegration class in model_orchestrator.py. Method: assess_confidence(snapshot: MatchFeatureSnapshot, orchestration_result: ModelOrchestrationResult, ensemble_prediction: ModelPrediction, calibration_metrics: Optional[CalibrationMetrics]) -> ConfidenceAssessment. Extract: (a) model_agreement from ensemble_prediction.metadata['model_agreement'], (b) data_quality_score from snapshot.data_quality_metadata.overall_score, (c) n_matches from snapshot metadata or features dict, (d) brier_score from calibration_metrics if available, (e) lineup_status from snapshot.player_availability.lineup_status ('confirmed'/'expected'/'unknown'), (f) recent_predictions = None for now (future: track prediction history).",
+    "3. REMOVE HARDCODED VALUES: Search backend/app/prediction/ for hardcoded values like 'data_quality_score = 0.7', 'model_agreement = 1.0', 'confidence = 0.8', etc. Replace with actual ConfidenceAssessment.overall_confidence from ConfidenceIntegration. Update PredictionService.generate_prediction() to use real confidence instead of None.",
+    "4. Add confidence to ModelPrediction: Ensure ModelPrediction.confidence_score is populated from ConfidenceAssessment.overall_confidence (already exists in interfaces.py ModelPrediction, just needs wiring).",
+    "5. Handle Missing Data Gracefully: When DataQualityGate returns low score (< 0.4), ConfidenceEngine should reflect that in low overall_confidence. When ensemble has low model_agreement (high variance), confidence decreases. When calibration unavailable (brier_score=None), use calibration_reliability=0.7 (neutral default from ConfidenceEngine._calculate_calibration_reliability).",
+    "6. Add unit tests in backend/tests/test_confidence_integration.py covering: ConfidenceIntegration with high-quality inputs produces HIGH confidence (>0.7), ConfidenceIntegration with low data_quality (<0.4) produces LOW confidence (<0.4), ConfidenceIntegration with low model_agreement (<0.5) reduces confidence, ConfidenceIntegration with no calibration uses neutral reliability (0.7), ConfidenceAssessment.component_breakdown shows weighted contributions summing to overall_confidence."
+  ],
+  "acceptance_criteria": [
+    "ConfidenceEngine receives real values from snapshot.data_quality_metadata, ensemble.metadata['model_agreement'], calibration_metrics.brier_score",
+    "No hardcoded confidence values remain in prediction pipeline (confidence=0.7, model_agreement=1.0, etc.)",
+    "Confidence correctly degrades with low data quality, low model agreement, or missing calibration",
+    "ConfidenceAssessment.component_breakdown provides transparency (model_agreement=0.25*X, data_quality=0.25*Y, ...)",
+    "All existing tests pass: pytest backend/tests/test_confidence_engine.py -v",
+    "New integration tests pass: pytest backend/tests/test_confidence_integration.py -v (5+ tests)",
+    "No regressions: pytest backend/tests/ --tb=short (931 baseline)"
+  ],
+  "verification": [
+    "Run: cd backend && python -m pytest tests/test_confidence_engine.py -v",
+    "Expected: All existing ConfidenceEngine tests pass (no changes to core logic)",
+    "Run: cd backend && python -m pytest tests/test_confidence_integration.py -v",
+    "Expected: 5+ tests pass showing real confidence calculation from pipeline components",
+    "Run: cd backend && python -m pytest tests/ -k 'not (confidence or calibration or ensemble or orchestrator or snapshot)' --tb=short",
+    "Expected: All other tests still pass"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

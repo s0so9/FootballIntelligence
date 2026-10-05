@@ -1,31 +1,26 @@
 """Prediction service for generating match predictions.
 
-This service coordinates:
-1. Feature extraction from historical data
-2. Running prediction models (Poisson, etc.)
-3. Generating structured predictions and markets
-4. Populating AnalysisContext for AI Analyst
+This service coordinates the canonical MENSIONE Intelligence Pipeline:
+1. Feature extraction → MatchFeatureSnapshot
+2. ModelOrchestrator → runs all compatible models
+3. Ensemble → combines model outputs with reliability weighting
+4. Calibration → calibrates ensemble probabilities
+5. Confidence → assesses confidence from real pipeline values
+6. Market Derivation → derives all markets from score distributions
+7. MENSIONE Pick → generates recommended pick from markets
+8. AnalysisContext → populates context for AI Analyst
 
-PHASED ROLLOUT APPROACH:
-- Phase 1 (Current): Poisson → Market Derivation → MENSIONE Pick → Versioning
-- Phase 2 (Future): Ensemble → Calibration → Confidence → Full Pipeline
-
-The current implementation delivers core MENSIONE differentiators:
+The pipeline implements:
 - Predicted Score vs MENSIONE PICK separation
-- Comprehensive market derivation from score distributions
-- Pick generation with EV/conviction ranking
-- Immutable prediction versioning
-
-Future phases will add:
-- Multi-model ensemble with reliability weighting
-- Probability calibration based on historical track record
-- Sophisticated confidence assessment
-- Player impact and tactical matchup analysis
-- League context adjustments
+- Multi-model ensemble with computed agreement (NOT hardcoded)
+- Real confidence assessment from data quality, model agreement, calibration
+- Comprehensive market derivation
+- Immutable prediction versioning with full pipeline metadata
 """
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 from datetime import datetime
+from dataclasses import dataclass, field
 import uuid
 
 from sqlalchemy.orm import Session
@@ -47,8 +42,45 @@ from app.prediction.easy_matches import EasyMatchDetector
 from app.prediction.market_derivation import MarketDerivationEngine
 from app.prediction.mensione_pick import MensionePickGenerator
 from app.prediction.prediction_version import PredictionVersionManager, PredictionStage
-from app.prediction.confidence_engine import ConfidenceEngine, ConfidenceComponents
+from app.prediction.confidence_engine import ConfidenceEngine, ConfidenceComponents, ConfidenceAssessment
+from app.prediction.model_orchestrator import (
+    ModelOrchestrator,
+    EnsembleIntegration,
+    CalibrationIntegration,
+    ConfidenceIntegration,
+    ModelOrchestrationResult,
+)
+from app.prediction.feature_snapshot import extract_feature_snapshot, MatchFeatureSnapshot
+from app.prediction.data_quality import DataQualityGate, DataQualityReport
+from app.prediction.interfaces import ModelPrediction
 from app.providers.base import FootballDataProvider
+
+
+@dataclass
+class PipelineResult:
+    """Result of complete MENSIONE pipeline execution.
+    
+    Single execution produces all outputs - no redundant feature extraction or model runs.
+    """
+    # Core inputs (required)
+    snapshot: MatchFeatureSnapshot
+    match: Match
+    orchestration_result: ModelOrchestrationResult
+    ensemble_prediction: ModelPrediction
+    calibrated_prediction: ModelPrediction
+    confidence_assessment: ConfidenceAssessment
+    
+    # Optional fields with defaults
+    calibration_metadata: Dict[str, Any] = field(default_factory=dict)
+    market_probabilities: Optional[Any] = None  # MarketProbabilities from market_derivation
+    market_analysis: Optional[Any] = None  # MarketAnalysis from market_analyser
+    mensione_pick: Optional[Dict[str, Any]] = None
+    easy_match: Optional[Dict[str, Any]] = None
+    prediction_version: Optional[Any] = None  # PredictionVersion
+    analysis_context: Optional[AnalysisContext] = None
+    execution_time_ms: float = 0.0
+    pipeline_version: str = "1.0.0"
+    pipeline_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class PredictionService:
@@ -72,7 +104,7 @@ class PredictionService:
         market_analyser: Optional[MarketAnalyser] = None,
         db_session: Optional[Session] = None,
     ):
-        """Initialize prediction service.
+        """Initialize prediction service with canonical pipeline components.
         
         Args:
             provider: Data provider for fetching match/team data
@@ -104,6 +136,18 @@ class PredictionService:
         )
         self.confidence_engine = ConfidenceEngine()
         self.version_manager = PredictionVersionManager(persistence_service=None)  # In-memory for now
+        
+        # CANONICAL PIPELINE COMPONENTS
+        # ModelOrchestrator with all 7 models registered
+        self.model_orchestrator = ModelOrchestrator.create_default_registry()
+        
+        # Integration layers
+        self.ensemble_integration = EnsembleIntegration.create_default()
+        self.calibration_integration = CalibrationIntegration.create_default()
+        self.confidence_integration = ConfidenceIntegration()
+        
+        # Data quality gate (simplified check - not full quality engine)
+        self.data_quality_gate = DataQualityGate()
         
         # Initialize database-backed feature aggregator if session available
         self.feature_aggregator = None
@@ -699,15 +743,18 @@ class PredictionService:
         stage: PredictionStage = PredictionStage.KICKOFF,
         odds_data: Optional[Dict[str, float]] = None
     ) -> AnalysisContext:
-        """Generate complete MENSIONE prediction with versioning and picks.
+        """Generate complete MENSIONE prediction using canonical pipeline.
         
-        This method implements the simplified Phase 1 pipeline:
-        1. Run Poisson model → get score distribution
-        2. Derive all markets from score distribution
-        3. Assess confidence
-        4. Generate MENSIONE PICK
-        5. Version the prediction
-        6. Return enriched AnalysisContext
+        This method implements the canonical MENSIONE Intelligence Pipeline:
+        1. Extract MatchFeatureSnapshot with data quality assessment
+        2. Run ModelOrchestrator → execute all compatible models
+        3. Ensemble → combine predictions with reliability weighting
+        4. Calibration → calibrate ensemble probabilities
+        5. Confidence → assess confidence from real pipeline values
+        6. Market Derivation → derive all markets from score distribution
+        7. MENSIONE Pick → generate recommended pick
+        8. Versioning → create immutable prediction version
+        9. AnalysisContext → populate context for AI Analyst
         
         Args:
             match: Match to predict
@@ -716,49 +763,114 @@ class PredictionService:
                 Format: {"HOME": 2.1, "DRAW": 3.5, "AWAY": 3.8, "OVER_2_5": 1.85, ...}
         
         Returns:
-            AnalysisContext with predicted_score, mensione_pick, and version_id
+            AnalysisContext with predicted_score, mensione_pick, confidence, and version_id
         """
-        # Step 1: Generate base prediction (Poisson)
-        prediction = self.generate_prediction(match)
+        start_time = datetime.now()
         
-        if prediction is None:
-            # Insufficient data - return context without prediction
+        # STEP 1: Extract canonical feature snapshot
+        try:
+            snapshot = self._extract_canonical_snapshot(match)
+        except Exception as e:
+            # Feature extraction failed - return empty context
+            import logging
+            logging.error(f"Feature snapshot extraction failed: {e}", exc_info=True)
             return self.build_analysis_context(match=match)
         
-        # Step 2: Convert score distribution to tuple format for MarketDerivationEngine
+        # STEP 2: Run model orchestrator
+        try:
+            orchestration_result = self.model_orchestrator.run_all(snapshot)
+        except Exception as e:
+            import logging
+            logging.error(f"Model orchestration failed: {e}", exc_info=True)
+            return self.build_analysis_context(match=match)
+        
+        # Check if any models succeeded
+        if not orchestration_result.successful_predictions:
+            # No models succeeded - return context without prediction
+            return self.build_analysis_context(match=match)
+        
+        # STEP 3: Ensemble - combine predictions
+        try:
+            ensemble_result = self.ensemble_integration.combine_predictions(
+                orchestration_result=orchestration_result,
+                context=None
+            )
+            
+            # Check if ensemble returned a prediction
+            if not isinstance(ensemble_result, ModelPrediction):
+                # Ensemble unavailable - use first successful model as fallback
+                ensemble_result = orchestration_result.successful_predictions[0].prediction
+        except Exception as e:
+            import logging
+            logging.error(f"Ensemble failed: {e}", exc_info=True)
+            # Fallback to first successful model
+            ensemble_result = orchestration_result.successful_predictions[0].prediction
+        
+        # STEP 4: Calibration - calibrate ensemble probabilities
+        try:
+            calibrated_prediction = self.calibration_integration.calibrate_prediction(
+                prediction=ensemble_result
+            )
+            calibration_metadata = calibrated_prediction.metadata
+        except Exception as e:
+            import logging
+            logging.error(f"Calibration failed: {e}", exc_info=True)
+            # Fallback to uncalibrated
+            calibrated_prediction = ensemble_result
+            calibration_metadata = {"calibration_status": "failed"}
+        
+        # STEP 5: Confidence - assess from real pipeline values
+        try:
+            confidence_assessment = self.confidence_integration.assess_confidence(
+                snapshot=snapshot,
+                orchestration_result=orchestration_result,
+                ensemble_prediction=ensemble_result,
+                calibration_metadata=calibration_metadata
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Confidence assessment failed: {e}", exc_info=True)
+            # Fallback to default confidence
+            from app.prediction.confidence_engine import ConfidenceComponents
+            confidence_assessment = ConfidenceAssessment(
+                overall_confidence=0.5,
+                confidence_label="MEDIUM",
+                components=ConfidenceComponents(
+                    model_agreement=0.5,
+                    data_quality=0.5,
+                    sample_size=0.5,
+                    calibration_reliability=0.5,
+                    lineup_certainty=0.5,
+                    prediction_stability=0.5
+                ),
+                contributing_factors=[],
+                limiting_factors=["Confidence assessment error"]
+            )
+        
+        # STEP 6: Convert score distribution to tuple format for MarketDerivationEngine
         score_dist_tuples = {}
-        if prediction.score_distribution:
-            for score_str, prob in prediction.score_distribution.items():
+        if calibrated_prediction.score_distribution:
+            for score_key, prob in calibrated_prediction.score_distribution.items():
                 try:
-                    h, a = score_str.split('-')
-                    score_dist_tuples[(int(h), int(a))] = prob
+                    # score_key might be tuple or string
+                    if isinstance(score_key, tuple):
+                        score_dist_tuples[score_key] = prob
+                    else:
+                        h, a = str(score_key).split('-')
+                        score_dist_tuples[(int(h), int(a))] = prob
                 except (ValueError, AttributeError):
                     continue
         
-        # Step 3: Derive all markets
+        # STEP 7: Derive all markets
         market_probs = None
         if score_dist_tuples:
             try:
                 market_probs = self.market_derivation_engine.derive(score_dist_tuples)
-            except Exception:
-                # Market derivation failed, continue without it
-                pass
+            except Exception as e:
+                import logging
+                logging.error(f"Market derivation failed: {e}", exc_info=True)
         
-        # Step 4: Assess confidence (simplified - only data quality and sample size)
-        # In Phase 1, we use simplified confidence without ensemble agreement
-        features = self.feature_extractor.extract_features(match)
-        n_matches = sum(1 for k, v in features.items() if v is not None and 'strength' in k)
-        
-        confidence_assessment = self.confidence_engine.assess(
-            model_agreement=1.0,  # Single model, perfect "agreement"
-            data_quality_score=0.7,  # Default moderate quality
-            n_matches=max(5, n_matches),  # Assume at least 5 matches
-            brier_score=None,  # No calibration yet
-            lineup_status="expected",
-            recent_predictions=None
-        )
-        
-        # Step 5: Generate MENSIONE PICK
+        # STEP 8: Generate MENSIONE PICK
         mensione_pick = None
         if market_probs:
             try:
@@ -783,36 +895,52 @@ class PredictionService:
                         "predicted_score": pick.predicted_score,
                         "score_distribution_top5": pick.score_distribution_top5
                     }
-            except Exception:
-                # Pick generation failed, continue without it
-                pass
+            except Exception as e:
+                import logging
+                logging.error(f"MENSIONE Pick generation failed: {e}", exc_info=True)
         
-        # Step 6: Extract predicted score (most likely scoreline)
+        # STEP 9: Extract predicted score (most likely scoreline)
         predicted_score = None
         if market_probs and market_probs.exact_score_top:
             predicted_score = market_probs.exact_score_top[0][0]
-        elif prediction.score_distribution:
+        elif calibrated_prediction.score_distribution:
             # Fallback: find max probability scoreline
-            max_score = max(prediction.score_distribution.items(), key=lambda x: x[1], default=None)
+            max_score = max(calibrated_prediction.score_distribution.items(), key=lambda x: x[1], default=None)
             if max_score:
-                predicted_score = max_score[0]
+                score_key = max_score[0]
+                if isinstance(score_key, tuple):
+                    predicted_score = f"{score_key[0]}-{score_key[1]}"
+                else:
+                    predicted_score = str(score_key)
         
-        # Step 7: Create versioned prediction
+        # STEP 10: Collect model metadata for versioning
+        models_used = {}
+        for model_output in orchestration_result.successful_predictions:
+            models_used[model_output.model_id] = model_output.model_version
+        
+        # STEP 11: Create versioned prediction with full pipeline metadata
         prediction_data = {
-            "home_win_prob": prediction.home_win_probability,
-            "draw_prob": prediction.draw_probability,
-            "away_win_prob": prediction.away_win_probability,
-            "home_xg": prediction.home_xg,
-            "away_xg": prediction.away_xg,
+            "home_win_prob": calibrated_prediction.home_win_prob,
+            "draw_prob": calibrated_prediction.draw_prob,
+            "away_win_prob": calibrated_prediction.away_win_prob,
+            "home_xg": calibrated_prediction.home_score_mean,
+            "away_xg": calibrated_prediction.away_score_mean,
             "predicted_score": predicted_score,
-            "btts_probability": prediction.btts_probability,
-            "score_distribution": prediction.score_distribution,
+            "btts_probability": None,  # TODO: derive from score distribution
+            "score_distribution": calibrated_prediction.score_distribution,
             "markets": market_probs.__dict__ if market_probs else None,
             "mensione_pick": mensione_pick,
             "confidence": {
                 "overall": confidence_assessment.overall_confidence,
                 "label": confidence_assessment.confidence_label,
-                "components": confidence_assessment.components.__dict__
+                "components": confidence_assessment.components.__dict__,
+                "contributing_factors": confidence_assessment.contributing_factors,
+                "limiting_factors": confidence_assessment.limiting_factors
+            },
+            "orchestration": {
+                "models_run": len(orchestration_result.successful_predictions),
+                "models_unavailable": len(orchestration_result.unavailable_models),
+                "models_failed": len(orchestration_result.failed_models)
             }
         }
         
@@ -822,22 +950,60 @@ class PredictionService:
                 match_id=match.id,
                 stage=stage,
                 prediction_data=prediction_data,
-                model_versions={self.poisson_model_metadata.id: self.poisson_model_metadata.version},
-                data_quality_score=0.7,
+                model_versions=models_used,
+                data_quality_score=snapshot.data_quality_report.overall_score if snapshot.data_quality_report else 0.5,
                 confidence_score=confidence_assessment.overall_confidence,
-                notes=["Phase 1: Poisson model with market derivation and MENSIONE pick"]
+                notes=[
+                    f"Canonical Pipeline v1.0: {len(models_used)} models, "
+                    f"ensemble agreement={ensemble_result.metadata.get('model_agreement', 0.0):.3f}, "
+                    f"calibration={calibration_metadata.get('calibration_status', 'unknown')}"
+                ]
             )
-        except Exception:
-            # Versioning failed (e.g., duplicate stage), continue without version
-            pass
+        except Exception as e:
+            import logging
+            logging.error(f"Prediction versioning failed: {e}", exc_info=True)
         
-        # Step 8: Generate markets for AnalysisContext
-        markets = self.generate_prediction_markets(match, prediction)
+        # STEP 12: Build legacy Prediction object for backward compatibility
+        legacy_prediction = Prediction(
+            id=str(uuid.uuid4()),
+            match_id=match.id,
+            home_win_probability=calibrated_prediction.home_win_prob,
+            draw_probability=calibrated_prediction.draw_prob,
+            away_win_probability=calibrated_prediction.away_win_prob,
+            home_xg=calibrated_prediction.home_score_mean,
+            away_xg=calibrated_prediction.away_score_mean,
+            predicted_home_score=None,  # Set from predicted_score
+            predicted_away_score=None,
+            btts_probability=None,  # TODO: derive from score distribution
+            score_distribution=calibrated_prediction.score_distribution,
+            over_under_probabilities={},
+            asian_handicap_probabilities={},
+            model_id=ensemble_result.model_id,
+            model_version="ensemble_v1",
+            model_type=ModelType.POISSON,  # Legacy field
+            confidence_score=confidence_assessment.overall_confidence,
+            created_at=datetime.now(),
+            statistical_features=snapshot.get_feature_dict(),
+        )
         
-        # Step 9: Build enriched AnalysisContext
+        # Parse predicted_score into home/away
+        if predicted_score:
+            try:
+                h, a = predicted_score.split('-')
+                legacy_prediction.predicted_home_score = int(h)
+                legacy_prediction.predicted_away_score = int(a)
+            except (ValueError, AttributeError):
+                pass
+        
+        # STEP 13: Generate markets for AnalysisContext (reuse market_probs)
+        markets = None
+        if market_probs:
+            markets = self._convert_market_probs_to_prediction_markets(match, market_probs)
+        
+        # STEP 14: Build enriched AnalysisContext
         context = self.build_analysis_context(
             match=match,
-            prediction=prediction,
+            prediction=legacy_prediction,
             prediction_markets=markets
         )
         
@@ -845,5 +1011,150 @@ class PredictionService:
         context.predicted_score = predicted_score
         context.mensione_pick = mensione_pick
         context.prediction_version_id = version.version_id if version else None
+        context.confidence_assessment = confidence_assessment  # Add confidence to context
+        
+        # Calculate execution time
+        execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
+        
+        # Add pipeline metadata to context
+        if not hasattr(context, 'pipeline_metadata'):
+            context.pipeline_metadata = {}
+        context.pipeline_metadata.update({
+            "execution_time_ms": execution_time_ms,
+            "models_used": list(models_used.keys()),
+            "models_unavailable": [m.model_id for m in orchestration_result.unavailable_models],
+            "ensemble_agreement": ensemble_result.metadata.get("model_agreement", 0.0),
+            "calibration_status": calibration_metadata.get("calibration_status", "unknown"),
+            "data_quality_score": snapshot.data_quality_report.overall_score if snapshot.data_quality_report else None,
+            "pipeline_version": "1.0.0"
+        })
         
         return context
+    
+    def _extract_canonical_snapshot(self, match: Match) -> MatchFeatureSnapshot:
+        """Extract canonical feature snapshot with data quality assessment.
+        
+        Args:
+            match: Match to extract features for
+            
+        Returns:
+            MatchFeatureSnapshot with data quality report
+        """
+        # Extract features using existing extractor
+        features = self.feature_extractor.extract_features(match)
+        
+        # DEVELOPMENT FALLBACK: Provide baseline values for missing features
+        # This preserves determinism while allowing prediction generation
+        is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
+        if is_dev_data:
+            # Provide baseline strength values if missing
+            if features.get("home_attack_strength") is None:
+                features["home_attack_strength"] = 1.0
+            if features.get("away_attack_strength") is None:
+                features["away_attack_strength"] = 1.0
+            if features.get("home_defense_strength") is None:
+                features["home_defense_strength"] = 1.0
+            if features.get("away_defense_strength") is None:
+                features["away_defense_strength"] = 1.0
+        
+        # Run data quality assessment using DataQualityGate
+        data_quality_report = self.data_quality_gate.assess(features)
+        
+        # Extract feature_set if feature_aggregator available
+        feature_set = None
+        if self.feature_aggregator:
+            try:
+                feature_set = self.feature_aggregator.aggregate_features(
+                    home_team_id=match.home_team_id,
+                    away_team_id=match.away_team_id,
+                    match_date=match.scheduled_at if hasattr(match, 'scheduled_at') else datetime.now()
+                )
+            except Exception:
+                # Feature aggregation failed, continue with basic features
+                pass
+        
+        # Build snapshot
+        snapshot = extract_feature_snapshot(
+            match_id=match.id,
+            home_team_id=match.home_team_id,
+            away_team_id=match.away_team_id,
+            feature_set=feature_set,
+            data_quality_report=data_quality_report,
+            home_team_name=match.home_team.name if hasattr(match, 'home_team') and match.home_team else None,
+            away_team_name=match.away_team.name if hasattr(match, 'away_team') and match.away_team else None,
+            scheduled_at=match.scheduled_at if hasattr(match, 'scheduled_at') else None,
+            market_info=None  # TODO: extract from odds_data if available
+        )
+        
+        return snapshot
+    
+    def _convert_market_probs_to_prediction_markets(
+        self,
+        match: Match,
+        market_probs: Any
+    ) -> List[PredictionMarket]:
+        """Convert MarketProbabilities to list of PredictionMarket objects.
+        
+        Args:
+            match: Match object
+            market_probs: MarketProbabilities from MarketDerivationEngine
+            
+        Returns:
+            List of PredictionMarket objects for backward compatibility
+        """
+        markets = []
+        
+        # 1X2
+        if hasattr(market_probs, 'home_win_prob'):
+            markets.append(PredictionMarket(
+                id=str(uuid.uuid4()),
+                prediction_id="",  # Set by caller
+                type=PredictionMarketType.HOME_WIN,
+                probability=market_probs.home_win_prob,
+                fair_odds=market_probs.home_win_odds if hasattr(market_probs, 'home_win_odds') else None,
+                confidence_score=None,
+            ))
+        
+        if hasattr(market_probs, 'draw_prob'):
+            markets.append(PredictionMarket(
+                id=str(uuid.uuid4()),
+                prediction_id="",
+                type=PredictionMarketType.DRAW,
+                probability=market_probs.draw_prob,
+                fair_odds=market_probs.draw_odds if hasattr(market_probs, 'draw_odds') else None,
+                confidence_score=None,
+            ))
+        
+        if hasattr(market_probs, 'away_win_prob'):
+            markets.append(PredictionMarket(
+                id=str(uuid.uuid4()),
+                prediction_id="",
+                type=PredictionMarketType.AWAY_WIN,
+                probability=market_probs.away_win_prob,
+                fair_odds=market_probs.away_win_odds if hasattr(market_probs, 'away_win_odds') else None,
+                confidence_score=None,
+            ))
+        
+        # Over/Under 2.5
+        if hasattr(market_probs, 'over_2_5_prob'):
+            markets.append(PredictionMarket(
+                id=str(uuid.uuid4()),
+                prediction_id="",
+                type=PredictionMarketType.OVER_2_5,
+                probability=market_probs.over_2_5_prob,
+                fair_odds=market_probs.over_2_5_odds if hasattr(market_probs, 'over_2_5_odds') else None,
+                confidence_score=None,
+            ))
+        
+        # BTTS
+        if hasattr(market_probs, 'btts_yes_prob'):
+            markets.append(PredictionMarket(
+                id=str(uuid.uuid4()),
+                prediction_id="",
+                type=PredictionMarketType.BTTS,
+                probability=market_probs.btts_yes_prob,
+                fair_odds=market_probs.btts_yes_odds if hasattr(market_probs, 'btts_yes_odds') else None,
+                confidence_score=None,
+            ))
+        
+        return markets

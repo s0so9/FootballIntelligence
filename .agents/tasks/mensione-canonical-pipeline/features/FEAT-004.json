@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Canonical Calibration Selection and Integration - determine whether calibration.py or calibration_engine.py is canonical, wire into pipeline after ensemble. DECISION: calibration_engine.py is canonical (has IsotonicCalibration, PlattCalibration, sklearn integration, temporal cutoff enforcement). calibration.py contains metrics only (Brier, log loss, ECE, reliability data) - keep as evaluation foundation.",
+  "status": "pending",
+  "steps": [
+    "1. AUDIT DECISION RATIONALE: calibration_engine.py is canonical engine because: (a) implements IsotonicCalibration and PlattCalibration with sklearn, (b) enforces temporal cutoff (fit(data, cutoff_date) prevents leakage), (c) tracks CalibrationMetrics (brier_score, log_loss, n_samples, is_reliable), (d) gracefully degrades when sklearn unavailable or insufficient samples. calibration.py is foundational metrics library (brier_score(), log_loss_binary(), calibration_error(), evaluate_1x2()) - keep as-is for evaluation, not for applying calibration.",
+    "2. VERIFY calibration_engine.py interface: CalibrationEngine.__init__(method='isotonic'|'platt'), CalibrationEngine.fit(data: CalibrationData, cutoff_date), CalibrationEngine.calibrate(prob: float) -> float, CalibrationEngine.is_fitted, CalibrationEngine.metrics: Optional[CalibrationMetrics]. Confirm it only calibrates single probabilities, not full 1X2 vectors.",
+    "3. CREATE 1X2 CALIBRATOR: Add Calibrator1X2 class in calibration_engine.py that wraps three CalibrationEngine instances (one per outcome: home_win, draw, away_win). Method: calibrate_1x2(home_prob, draw_prob, away_prob) -> Tuple[float, float, float] with renormalization to sum=1.0. Method: fit_1x2(historical_predictions: List[Tuple[float,float,float]], outcomes: List[str], timestamps: List[datetime], cutoff_date).",
+    "4. Integration with Ensemble: Add CalibrationIntegration class in model_orchestrator.py. Method: calibrate_prediction(ensemble_prediction: ModelPrediction, calibrator: Optional[Calibrator1X2]) -> ModelPrediction. If calibrator is None or not fitted: return ensemble_prediction unchanged with metadata flag 'calibration_status: uncalibrated'. If calibrator fitted: apply calibration to (home_win_prob, draw_prob, away_win_prob), return new ModelPrediction with calibrated probabilities and metadata 'calibration_status: calibrated', 'calibration_method: isotonic|platt', 'calibrator_metrics: {...}'.",
+    "5. PRESERVE calibration.py AS EVALUATION LIBRARY: Do NOT modify calibration.py. It remains the metrics foundation for backtest evaluation and reliability diagram generation. calibration_engine.py uses calibration.py metrics internally (CalibrationEngine._calculate_metrics calls brier_score and log_loss functions from calibration.py).",
+    "6. Add unit tests in backend/tests/test_calibration_integration.py covering: Calibrator1X2 fits on 100 synthetic 1X2 predictions, Calibrator1X2 calibrates and renormalizes to sum=1.0, CalibrationIntegration returns uncalibrated when calibrator=None, CalibrationIntegration returns calibrated with metadata when fitted, calibration does NOT run when insufficient historical data (< 50 samples)."
+  ],
+  "acceptance_criteria": [
+    "calibration_engine.py remains canonical engine with IsotonicCalibration and PlattCalibration",
+    "calibration.py remains unchanged as metrics/evaluation library",
+    "Calibrator1X2 wrapper calibrates full 1X2 probability vectors with renormalization",
+    "CalibrationIntegration.calibrate_prediction() applies calibration or returns uncalibrated with clear metadata",
+    "Calibration gracefully degrades: uncalibrated probabilities returned when calibrator not fitted or sklearn unavailable",
+    "All existing tests pass: pytest backend/tests/test_calibration.py backend/tests/test_calibration_engine.py -v",
+    "New integration tests pass: pytest backend/tests/test_calibration_integration.py -v (5+ tests)",
+    "No regressions: pytest backend/tests/ --tb=short (931 baseline)"
+  ],
+  "verification": [
+    "Run: cd backend && python -m pytest tests/test_calibration.py tests/test_calibration_engine.py -v",
+    "Expected: All existing calibration tests pass (both files unchanged in core logic)",
+    "Run: cd backend && python -m pytest tests/test_calibration_integration.py -v",
+    "Expected: 5+ tests pass showing 1X2 calibration and graceful degradation",
+    "Run: cd backend && python -m pytest tests/ -k 'not (calibration or ensemble or orchestrator or snapshot)' --tb=short",
+    "Expected: All other tests still pass"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
