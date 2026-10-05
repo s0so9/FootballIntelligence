@@ -1,0 +1,12 @@
+{
+  "task_id": "task-ui-redesign",
+  "task_description": "Complete frontend UI/UX visual redesign of MENSIONE Football Intelligence platform - transform from existing dark green aesthetic to Premium AI Football Intelligence Terminal with dark navy/purple base, electric blue/violet accents, restrained neon glow, and subtle glassmorphism",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004"
+  ],
+  "blocked_reason": null
+}

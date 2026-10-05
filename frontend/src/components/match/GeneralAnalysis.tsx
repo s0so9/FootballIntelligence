@@ -30,28 +30,33 @@ interface GeneralAnalysisProps {
 }
 
 /**
- * Parse pick_market string to Turkish market name and outcome
- * Examples: "HOME" -> {market: "Maç Sonucu", outcome: "Ev Sahibi"}
+ * Parse market and selection to Turkish market name and outcome
+ * Handles new SmartMarketSelector format
  */
-function parsePickMarket(pickMarket: string): { market: string; outcome: string } {
-  const upper = pickMarket.toUpperCase().trim()
-  
-  if (upper === 'HOME') return { market: 'Maç Sonucu', outcome: 'Ev Sahibi Kazanır' }
-  if (upper === 'DRAW') return { market: 'Maç Sonucu', outcome: 'Beraberlik' }
-  if (upper === 'AWAY') return { market: 'Maç Sonucu', outcome: 'Deplasman Kazanır' }
-  if (upper === 'BTTS YES') return { market: 'Karşılıklı Gol', outcome: 'Evet' }
-  if (upper === 'BTTS NO') return { market: 'Karşılıklı Gol', outcome: 'Hayır' }
-  if (upper.startsWith('OVER ')) {
-    const line = upper.replace('OVER ', '')
-    return { market: `Üst/Alt ${line}`, outcome: 'Üst' }
+function parsePickMarket(market: string | undefined, selection: string | undefined): { market: string; outcome: string } {
+  // Handle PASS or missing pick
+  if (!market || !selection) {
+    return { market: 'PASS', outcome: 'Seçim yapılmadı' };
   }
-  if (upper.startsWith('UNDER ')) {
-    const line = upper.replace('UNDER ', '')
-    return { market: `Üst/Alt ${line}`, outcome: 'Alt' }
+  
+  // Use selection directly (already human-readable from backend)
+  // Just translate the market category
+  
+  if (market.startsWith('HOME_WIN') || market.startsWith('DRAW') || market.startsWith('AWAY_WIN') || 
+      market === 'HOME' || market === 'DRAW' || market === 'AWAY') {
+    return { market: 'Maç Sonucu', outcome: selection };
+  }
+  if (market.startsWith('BTTS_')) {
+    return { market: 'Karşılıklı Gol', outcome: selection };
+  }
+  if (market.startsWith('OVER_') || market.startsWith('UNDER_')) {
+    const lineMatch = market.match(/[0-9.]+/);
+    const line = lineMatch ? lineMatch[0] : '?';
+    return { market: `Üst/Alt ${line}`, outcome: selection };
   }
   
   // Fallback: return as-is
-  return { market: pickMarket, outcome: '' }
+  return { market: market, outcome: selection };
 }
 
 export default function GeneralAnalysis({
@@ -69,7 +74,7 @@ export default function GeneralAnalysis({
   let mensioneMarket = ''
   let mensioneOutcome = ''
   if (mensione_pick) {
-    const parsed = parsePickMarket(mensione_pick.pick_market)
+    const parsed = parsePickMarket(mensione_pick.market, mensione_pick.selection)
     mensioneMarket = parsed.market
     mensioneOutcome = parsed.outcome
   }
@@ -84,25 +89,25 @@ export default function GeneralAnalysis({
             awayTeam={awayTeam}
             marketName={mensioneMarket}
             outcome={mensioneOutcome}
-            confidence={mensione_pick.confidence_score}
-            realOdds={mensione_pick.market_odds ?? 0}
+            confidence={mensione_pick.confidence ?? 0}
+            realOdds={mensione_pick.bookmaker_odds ?? 0}
             isFavorite={isFavorite}
             onToggleFavorite={onToggleFavorite}
             inCombine={inCombine}
             onToggleCombine={onToggleCombine}
             // Pass all backend fields for testing/preview
-            predictedScore={mensione_pick.predicted_score}
+            predictedScore={prediction.predicted_score ?? 'N/A'}
             homeXg={prediction.home_xg}
             awayXg={prediction.away_xg}
             bttsProbability={prediction.btts_probability}
             homeWinProbability={prediction.home_win_probability}
             drawProbability={prediction.draw_probability}
             awayWinProbability={prediction.away_win_probability}
-            pickProbability={mensione_pick.pick_probability}
-            reasoningFactors={mensione_pick.reasoning_factors}
-            scoreDistributionTop5={mensione_pick.score_distribution_top5}
-            fairOdds={mensione_pick.fair_odds}
-            marketOdds={mensione_pick.market_odds}
+            pickProbability={mensione_pick.probability ?? 0}
+            reasoningFactors={mensione_pick.selector_reason ? [mensione_pick.selector_reason] : []}
+            scoreDistributionTop5={[]}
+            fairOdds={mensione_pick.fair_odds ?? 0}
+            marketOdds={mensione_pick.bookmaker_odds !== undefined ? mensione_pick.bookmaker_odds : null}
             predictionVersionId={prediction.prediction_version_id}
           />
         </section>
@@ -188,17 +193,15 @@ export default function GeneralAnalysis({
         </div>
       </section>
 
-      {/* Key Indicators from reasoning */}
-      {mensione_pick?.reasoning_factors && mensione_pick.reasoning_factors.length > 0 && (
+      {/* Key Indicators from selector reason */}
+      {mensione_pick?.selector_reason && (
         <section className="general-analysis__key-indicators">
-          <h4 className="general-analysis__section-title">Önemli Göstergeler</h4>
+          <h4 className="general-analysis__section-title">Seçim Nedeni</h4>
           <ul className="key-indicators-list">
-            {mensione_pick.reasoning_factors.slice(0, 5).map((factor, idx) => (
-              <li key={idx} className="key-indicator">
-                <span className="key-indicator__icon">→</span>
-                <span className="key-indicator__text">{factor}</span>
-              </li>
-            ))}
+            <li className="key-indicator">
+              <span className="key-indicator__icon">→</span>
+              <span className="key-indicator__text">{mensione_pick.selector_reason}</span>
+            </li>
           </ul>
         </section>
       )}

@@ -1,0 +1,31 @@
+{
+  "project_type": "React 18 + TypeScript + Vite frontend (no backend changes allowed)",
+  "language": "TypeScript (TSX components), CSS (styling)",
+  "build_system": "Vite 5.0.8 - hot module reload for development, production build via 'npm run build'",
+  "test_framework": "vitest 1.0.4 - component tests in *.test.tsx files",
+  "build_command": "npm run build",
+  "test_command": "npm run type-check && npm run lint",
+  "verification_instructions": "After each FEAT: (1) Run 'npm run type-check' to verify TypeScript compilation, (2) Run 'npm run lint' to check code quality, (3) Start dev server 'npm run dev' and manually verify visual changes in browser at http://localhost:5173, (4) Check all pages: Dashboard (Ana Sayfa), Matches (Maçlar), Predictions (Tahminler), Live (Canlı), Analysis (Analiz), Easy Match, Settings (Ayarlar)",
+  "snapshot_or_generated_files": "dist/ folder contains build output - not checked in. No snapshot files to regenerate.",
+  "environment_constraints": "Windows development environment. Frontend runs independently - backend at http://localhost:8000 must be running for live data but is NOT modified. Browser testing required for visual verification since this is a UI redesign. Never modify backend, API contracts, prediction logic, or data calculations.",
+  "contribution_requirements": "Per AGENTS.md rules: (1) Always read files before modifying them, (2) Never delete working code without justification, (3) Work in small verifiable steps, (4) Run verification after each change, (5) Never claim 'working' without actual verification, (6) PRESERVE existing money-bag SVG icon in AIConfidence.tsx - only enhance its visual presentation, do NOT replace the icon itself, (7) Use REAL data only - no fake teams/scores/dates, (8) Keep Turkish UI labels, English code identifiers, (9) Do NOT modify backend/API/prediction logic",
+  "key_patterns": "Design tokens in tokens.css (documented but not applied as CSS variables). Global styles in global.css (current MENSIONE dark green theme with green #22C55E as primary). Component CSS files co-located with TSX files. Current aesthetic: dark green foundation (#0B0F0D background, #22C55E green accent). Target aesthetic: near-black/deep navy (#0a0a0f), electric blue (#0ea5e9, #3b82f6), violet (#8b5cf6, #a78bfa), subtle glassmorphism, restrained neon glow on accents only. Money-bag icon in AIConfidence.tsx must be preserved - only add blue glow effects around it. All pages must adopt the same cohesive design language.",
+  "relevant_files": [
+    "frontend/src/styles/tokens.css - design token definitions (currently documented, need to be converted to actual CSS custom properties)",
+    "frontend/src/styles/global.css - global styles and color system (current green theme to be replaced with navy/blue/purple)",
+    "frontend/src/components/layout/Sidebar.css - sidebar navigation (needs dark glass effect, blue/purple borders, green active state preserved)",
+    "frontend/src/components/layout/Header.css - top bar (needs transparency, clean icons, green online dot)",
+    "frontend/src/components/layout/AppLayout.css - main layout wrapper (needs background replacement)",
+    "frontend/src/pages/Dashboard.css - dashboard page styles (heading gradient, filter buttons)",
+    "frontend/src/components/predictions/MensionePickCard.css - PRIMARY redesign target (main prediction cards)",
+    "frontend/src/components/predictions/AIConfidence.css - confidence indicator (money-bag icons - ADD blue glow, preserve SVG)",
+    "frontend/src/components/dashboard/LiveMatchesPanel.css - live matches panel (red live indicator to be restrained)",
+    "frontend/src/components/dashboard/LiveMatchCard.css - individual live match cards",
+    "frontend/src/pages/Matches.css - matches listing page",
+    "frontend/src/pages/Predictions.css - predictions page",
+    "frontend/src/pages/MatchDetail.css - match detail page",
+    "frontend/src/components/predictions/AIConfidence.tsx - money-bag SVG icon component (PRESERVE icon, may need className additions for glow effects)",
+    "frontend/public/nicopaz.jpg - existing logo image used in Sidebar"
+  ],
+  "directory_structure": "frontend/src/ contains: styles/ (global.css, tokens.css), components/ (layout/, predictions/, dashboard/, match/, combine/, common/, track-record/), pages/ (Dashboard.tsx, Matches.tsx, Predictions.tsx, MatchDetail.tsx, Analytics.tsx, EasyMatches.tsx, Settings.tsx), api/ (client.ts, types.ts), hooks/ (useFavorites.ts, useCombine.ts). Each component has co-located .css file. Build output goes to dist/. Public assets in public/."
+}

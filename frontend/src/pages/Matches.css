@@ -4,12 +4,12 @@
   display: inline-block;
   margin-left: var(--spacing-2);
   padding: 2px 8px;
-  background: rgba(0, 255, 136, 0.1);
-  border: 1px solid var(--color-accent-green);
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
   border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-accent-green);
+  color: #0ea5e9;
 }
 
 .matches-list {
@@ -20,18 +20,19 @@
 
 .match-card {
   display: block;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(26, 26, 36, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
   text-decoration: none;
   color: inherit;
   transition: all var(--transition-base);
+  backdrop-filter: blur(8px);
 }
 
 .match-card:hover {
-  border-color: var(--color-border-accent);
-  box-shadow: var(--glow-green-hover);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
   transform: translateY(-2px);
 }
 
@@ -41,7 +42,7 @@
   justify-content: space-between;
   margin-bottom: var(--spacing-4);
   padding-bottom: var(--spacing-3);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.15);
 }
 
 .match-card__competition {
@@ -62,8 +63,8 @@
 }
 
 .match-status--scheduled {
-  background: rgba(0, 255, 136, 0.1);
-  color: var(--color-accent-green);
+  background: rgba(14, 165, 233, 0.1);
+  color: #0ea5e9;
 }
 
 .match-status--live {
@@ -170,9 +171,9 @@
   gap: var(--spacing-1);
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--color-accent-green);
+  color: #0ea5e9;
   padding: 4px 8px;
-  background: rgba(0, 255, 136, 0.1);
+  background: rgba(14, 165, 233, 0.1);
   border-radius: var(--radius-sm);
 }
 

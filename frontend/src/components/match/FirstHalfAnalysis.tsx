@@ -35,14 +35,14 @@ function extractFirstHalfMarkets(prediction: MatchPredictionResponse) {
   // Check if mensione_pick is a first-half market
   if (prediction.mensione_pick) {
     const pick = prediction.mensione_pick
-    const pickMarket = pick.pick_market.toUpperCase()
+    const pickMarket = (pick.market || '').toUpperCase()
     
     // Detect first-half related picks
     if (pickMarket.includes('FIRST HALF') || pickMarket.includes('HT') || pickMarket.includes('İLK YARI')) {
       markets.push({
-        name: pick.pick_market,
-        confidence: pick.confidence_score,
-        odds: pick.fair_odds
+        name: pick.market || 'Unknown',
+        confidence: pick.confidence ?? 0,
+        odds: pick.fair_odds ?? 0
       })
     }
   }

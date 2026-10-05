@@ -138,18 +138,37 @@ export interface EasyMatchResponse {
   data_sufficient: boolean;
 }
 
+/**
+ * MENSIONE Pick Response - SmartMarketSelector format
+ * Can be either BestTip or PassDecision
+ */
 export interface MensionePickResponse {
-  pick_market: string;
-  pick_probability: number;
-  confidence_label: string;
-  confidence_score: number;
-  expected_value: number | null;
-  market_odds: number | null;
-  fair_odds: number;
-  edge: number | null;
-  reasoning_factors: string[];
-  predicted_score: string;
-  score_distribution_top5: string[];
+  // Common fields
+  match_id: string;
+  pass_decision: boolean;
+  timestamp: string;
+  pipeline_version: string;
+  
+  // BestTip fields (present when pass_decision === false)
+  market?: string;  // e.g., "OVER_0_5", "HOME_WIN", "BTTS_YES"
+  selection?: string;  // Human-readable selection
+  probability?: number;  // Calibrated model probability
+  confidence?: number;  // Overall confidence score (0.0-1.0)
+  model_agreement?: number;  // Agreement between models (0.0-1.0)
+  data_quality?: number;  // Data quality score (0.0-1.0)
+  edge?: number | null;  // Edge over bookmaker odds (when available)
+  fair_odds?: number;  // Fair odds from model probability
+  bookmaker_odds?: number | null;  // Bookmaker odds (when available)
+  odds_movement?: string | null;  // "rising", "falling", "stable"
+  value_classification?: string;  // "STRONG_VALUE", "VALUE", "NEUTRAL", "NEGATIVE_VALUE"
+  risk_level?: string;  // "LOW", "MEDIUM", "HIGH"
+  selection_score?: number;  // Overall selection score (0.0-1.0)
+  selector_reason?: string;  // Why this market was selected
+  
+  // PassDecision fields (present when pass_decision === true)
+  pass_reason?: string;  // Why no market qualified
+  evaluated_markets_count?: number;
+  best_market_details?: Record<string, unknown> | null;
 }
 
 export interface MatchPredictionResponse {

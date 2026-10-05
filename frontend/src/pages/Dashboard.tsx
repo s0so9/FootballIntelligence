@@ -15,44 +15,49 @@ interface MensionePickData {
 }
 
 /**
- * Parse pick_market to extract market name and outcome
+ * Parse market field to extract market name and outcome for display
+ * Handles both BestTip (market + selection) and null/undefined cases
  */
-function parsePickMarket(pickMarket: string): { marketName: string; outcome: string } {
-  // Examples: "HOME", "OVER 2.5", "BTTS YES", "HOME OVER 1.5"
-  const parts = pickMarket.trim().split(/\s+/);
-  
-  if (parts.length === 1) {
-    // Single word like "HOME", "DRAW", "AWAY"
-    const outcomes: Record<string, string> = {
-      'HOME': 'Ev Sahibi',
-      'DRAW': 'Beraberlik',
-      'AWAY': 'Deplasman',
+function parsePickMarket(market: string | undefined, selection: string | undefined): { marketName: string; outcome: string } {
+  // Handle PASS or missing pick
+  if (!market || !selection) {
+    return {
+      marketName: 'PASS',
+      outcome: 'Seçim yapılmadı',
     };
+  }
+
+  // Use the selection as the outcome directly (it's already human-readable from backend)
+  // Parse market to get the market name in Turkish
+  
+  if (market.startsWith('HOME_WIN') || market.startsWith('DRAW') || market.startsWith('AWAY_WIN') || 
+      market === 'HOME' || market === 'DRAW' || market === 'AWAY') {
     return {
       marketName: 'Maç Sonucu',
-      outcome: outcomes[parts[0]] || parts[0],
+      outcome: selection,
     };
   }
   
-  if (parts[0] === 'BTTS') {
+  if (market.startsWith('BTTS_')) {
     return {
       marketName: 'Karşılıklı Gol',
-      outcome: parts[1] === 'YES' ? 'Evet' : 'Hayır',
+      outcome: selection,
     };
   }
   
-  if (parts[0] === 'OVER' || parts[0] === 'UNDER') {
-    const line = parts[1];
+  if (market.startsWith('OVER_') || market.startsWith('UNDER_')) {
+    const lineMatch = market.match(/[0-9.]+/);
+    const line = lineMatch ? lineMatch[0] : '?';
     return {
       marketName: `Alt/Üst ${line} Gol`,
-      outcome: parts[0] === 'OVER' ? 'Üst' : 'Alt',
+      outcome: selection,
     };
   }
   
-  // Fallback: use pick_market as-is
+  // Default case - use market and selection as-is
   return {
-    marketName: pickMarket,
-    outcome: '',
+    marketName: market,
+    outcome: selection,
   };
 }
 
@@ -173,7 +178,7 @@ export function Dashboard() {
             <div className="mensione-picks-grid">
               {mensionePicksData.map(({ match, prediction }) => {
                 const pick = prediction.mensione_pick!; // Already filtered for non-null
-                const { marketName, outcome } = parsePickMarket(pick.pick_market);
+                const { marketName, outcome } = parsePickMarket(pick.market, pick.selection);
                 
                 return (
                   <MensionePickCard
@@ -182,8 +187,8 @@ export function Dashboard() {
                     awayTeam={match.away_team_id}
                     marketName={marketName}
                     outcome={outcome}
-                    confidence={pick.confidence_score}
-                    realOdds={pick.market_odds ?? 0} // Real bookmaker odds (or 0 if null)
+                    confidence={pick.confidence ?? 0}
+                    realOdds={pick.bookmaker_odds ?? 0} // Real bookmaker odds (or 0 if null)
                     isFavorite={isFavorite(match.id)}
                     onToggleFavorite={() => toggleFavorite(match.id)}
                     inCombine={isInCombine(match.id)}
@@ -194,25 +199,25 @@ export function Dashboard() {
                         matchId: match.id,
                         marketName,
                         outcome,
-                        marketOdds: pick.market_odds,  // null if unavailable
-                        confidence: pick.confidence_score,
+                        marketOdds: pick.bookmaker_odds !== undefined ? pick.bookmaker_odds : null,  // null if unavailable
+                        confidence: pick.confidence ?? 0,
                         homeTeam: match.home_team_id,
                         awayTeam: match.away_team_id,
                       });
                     }}
                     // === Backend fields for testing/preview ===
-                    predictedScore={pick.predicted_score}
+                    predictedScore={prediction.predicted_score ?? 'N/A'}
                     homeXg={prediction.home_xg}
                     awayXg={prediction.away_xg}
                     bttsProbability={prediction.btts_probability}
                     homeWinProbability={prediction.home_win_probability}
                     drawProbability={prediction.draw_probability}
                     awayWinProbability={prediction.away_win_probability}
-                    pickProbability={pick.pick_probability}
-                    reasoningFactors={pick.reasoning_factors}
-                    scoreDistributionTop5={pick.score_distribution_top5}
-                    fairOdds={pick.fair_odds}
-                    marketOdds={pick.market_odds}
+                    pickProbability={pick.probability ?? 0}
+                    reasoningFactors={pick.selector_reason ? [pick.selector_reason] : []}
+                    scoreDistributionTop5={[]}
+                    fairOdds={pick.fair_odds ?? 0}
+                    marketOdds={pick.bookmaker_odds !== undefined ? pick.bookmaker_odds : null}
                     predictionVersionId={prediction.prediction_version_id}
                   />
                 );

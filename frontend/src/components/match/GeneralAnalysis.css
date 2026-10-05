@@ -24,26 +24,28 @@
 
 /* Predicted Score Display */
 .general-analysis__predicted-score {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(26, 26, 36, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
+  backdrop-filter: blur(8px);
 }
 
 .predicted-score-display {
   font-size: var(--text-3xl);
   font-weight: 700;
-  color: var(--color-accent-green);
+  color: #0ea5e9;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
 /* 1X2 Probabilities Grid */
 .general-analysis__probabilities {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(26, 26, 36, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
+  backdrop-filter: blur(8px);
 }
 
 .probabilities-grid {
@@ -68,10 +70,11 @@
 
 /* Expected Goals (xG) Display */
 .general-analysis__xg {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(26, 26, 36, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
+  backdrop-filter: blur(8px);
 }
 
 .xg-display {
@@ -105,7 +108,7 @@
 .xg-team__value {
   font-size: var(--text-3xl);
   font-weight: 700;
-  color: var(--color-accent-green);
+  color: #0ea5e9;
   font-variant-numeric: tabular-nums;
 }
 
@@ -117,10 +120,11 @@
 
 /* BTTS Display */
 .general-analysis__btts {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(26, 26, 36, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
+  backdrop-filter: blur(8px);
 }
 
 .btts-display {
@@ -145,10 +149,11 @@
 
 /* Key Indicators */
 .general-analysis__key-indicators {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: rgba(26, 26, 36, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: var(--radius-lg);
   padding: var(--spacing-6);
+  backdrop-filter: blur(8px);
 }
 
 .key-indicators-list {
@@ -165,17 +170,19 @@
   align-items: flex-start;
   gap: var(--spacing-3);
   padding: var(--spacing-3);
-  background: var(--color-background-darker);
+  background: rgba(15, 15, 25, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.15);
   border-radius: var(--radius-md);
-  transition: background var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .key-indicator:hover {
-  background: var(--color-surface-elevated);
+  background: rgba(59, 130, 246, 0.05);
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 .key-indicator__icon {
-  color: var(--color-accent-green);
+  color: #0ea5e9;
   font-weight: 700;
   flex-shrink: 0;
 }
