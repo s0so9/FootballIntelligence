@@ -61,6 +61,7 @@ export function ComponentsTest() {
       <section className="test-section">
         <h2>MensionePickCard Component</h2>
         <div className="test-grid test-grid--single">
+          {/* Pending without score */}
           <MensionePickCard
             homeTeam="CÓRDOBA"
             awayTeam="TENERIFE"
@@ -72,6 +73,56 @@ export function ComponentsTest() {
             onToggleFavorite={() => setFavorite1(!favorite1)}
             inCombine={combine1}
             onToggleCombine={() => setCombine1(!combine1)}
+            skor={null}
+            durum="pending"
+          />
+          
+          {/* Pending with score */}
+          <MensionePickCard
+            homeTeam="BARCELONA"
+            awayTeam="REAL MADRID"
+            marketName="Maç Sonucu"
+            outcome="Ev Sahibi Kazanır"
+            confidence={0.85}
+            realOdds={1.95}
+            isFavorite={false}
+            onToggleFavorite={() => {}}
+            inCombine={combine2}
+            onToggleCombine={() => setCombine2(!combine2)}
+            skor={{ ev: 3, dep: 1 }}
+            durum="pending"
+          />
+          
+          {/* Won match */}
+          <MensionePickCard
+            homeTeam="LIVERPOOL"
+            awayTeam="ARSENAL"
+            marketName="2.5+ Gol"
+            outcome="Üst"
+            confidence={0.72}
+            realOdds={1.65}
+            isFavorite={false}
+            onToggleFavorite={() => {}}
+            inCombine={combine3}
+            onToggleCombine={() => setCombine3(!combine3)}
+            skor={{ ev: 4, dep: 2 }}
+            durum="won"
+          />
+          
+          {/* Lost match */}
+          <MensionePickCard
+            homeTeam="CHELSEA"
+            awayTeam="MANCHESTER CITY"
+            marketName="İlk Yarı 1.5+ Gol"
+            outcome="Üst"
+            confidence={0.68}
+            realOdds={1.75}
+            isFavorite={false}
+            onToggleFavorite={() => {}}
+            inCombine={false}
+            onToggleCombine={() => {}}
+            skor={{ ev: 0, dep: 1 }}
+            durum="lost"
           />
         </div>
       </section>

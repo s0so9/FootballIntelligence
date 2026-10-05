@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "API + Minimal Frontend Integration. EXTEND app/api/v1/schemas.py MarketOutcomeResponse and MarketAnalysisResponse with optional Phase 5 fields (backward compatible). EXTEND frontend/src/api/types.ts MarketOutcomeResponse interface with optional Phase 5 fields. EXTEND frontend/src/components/predictions/MensionePickCard.tsx to accept optional market intelligence props and display in technical details section only (DO NOT redesign card).",
+  "status": "pending",
+  "steps": [
+    "1. Read backend/app/api/v1/schemas.py to understand existing MarketOutcomeResponse and MarketAnalysisResponse structures.",
+    "2. EXTEND MarketOutcomeResponse in backend/app/api/v1/schemas.py with optional Phase 5 fields: real_odds: Optional[float] = Field(None, description='Real bookmaker odds if available'), implied_probability: Optional[float] = Field(None, description='Implied probability from real odds'), market_edge: Optional[float] = Field(None, description='Market edge (model_prob - implied_prob)'), bookmaker: Optional[str] = Field(None, description='Bookmaker source'), odds_timestamp: Optional[datetime] = Field(None, description='When odds were recorded'). All fields optional for backward compatibility.",
+    "3. Verify MarketAnalysisResponse already has bookmaker_overround field. If missing, add: bookmaker_overround: Optional[float] = Field(None, description='Bookmaker margin/overround').",
+    "4. Read backend/app/api/v1/endpoints/predictions.py (or wherever prediction endpoints are defined) to verify MarketOutcomeResponse is properly mapped from MarketOutcome domain objects. If mapping exists, extend it to include Phase 5 fields when available.",
+    "5. Read frontend/src/api/types.ts. EXTEND MarketOutcomeResponse interface with optional Phase 5 fields: real_odds?: number | null, implied_probability?: number | null, market_edge?: number | null, bookmaker?: string | null, odds_timestamp?: string | null.",
+    "6. Read frontend/src/components/predictions/MensionePickCard.tsx to understand current structure and props. The component is ~700 lines, structured with tabs (general, first-half, full-match). DO NOT redesign the card.",
+    "7. EXTEND MensionePickCardProps interface in frontend/src/components/predictions/MensionePickCard.tsx with optional Phase 5 props at the end: marketEdge?: number | null, impliedProbability?: number | null, bookmakerSource?: string | null, valueClassification?: string | null.",
+    "8. In frontend/src/components/predictions/MensionePickCard.tsx, find the technical details section (likely in 'general' tab). ADD conditional rendering ONLY when Phase 5 props are available: display market edge as percentage if marketEdge !== null, display implied probability as percentage if impliedProbability !== null, display bookmaker source if bookmakerSource !== null, display value classification badge if valueClassification !== null. Use existing card styling patterns. Maximum 4-5 lines of new UI.",
+    "9. Run frontend type-check: cd c:\\FootballIntelligence\\frontend; npm run type-check. Verify no TypeScript errors.",
+    "10. Run backend tests: cd c:\\FootballIntelligence\\backend; python -m pytest tests/ -v. Verify all tests still pass (886+ passing, 15 skipped)."
+  ],
+  "acceptance_criteria": [
+    "MarketOutcomeResponse in backend/app/api/v1/schemas.py has real_odds, implied_probability, market_edge, bookmaker, odds_timestamp fields, all Optional",
+    "MarketAnalysisResponse has bookmaker_overround field",
+    "MarketOutcomeResponse in frontend/src/api/types.ts has matching optional Phase 5 fields",
+    "MensionePickCard accepts optional Phase 5 props",
+    "MensionePickCard displays Phase 5 data in technical details section only when available",
+    "Card design unchanged — minimal additions only",
+    "Frontend type-check passes with no errors",
+    "Backend tests remain passing (886+ baseline)",
+    "API backward compatible — old clients still work"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\frontend; npm run type-check (must pass with 0 errors)",
+    "cd c:\\FootballIntelligence\\backend; python -m pytest tests/test_api_matches.py -v",
+    "cd c:\\FootballIntelligence\\backend; python -m pytest tests/ -v (verify 886+ passing)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

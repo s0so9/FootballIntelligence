@@ -77,6 +77,56 @@ def _map_statistic_to_response(stat: Optional[TeamMatchStatistic]) -> Optional[M
     )
 
 
+def _map_market_outcome_to_response(outcome) -> MarketOutcomeResponse:
+    """Map MarketOutcome domain model to MarketOutcomeResponse schema.
+    
+    Phase 5: Includes optional market intelligence fields when available.
+    """
+    return MarketOutcomeResponse(
+        label=outcome.label,
+        model_probability=outcome.model_probability,
+        calibrated_probability=outcome.calibrated_probability,
+        fair_odds=outcome.fair_odds,
+        # Phase 5 fields (all optional, backward compatible)
+        real_odds=outcome.real_odds,
+        implied_probability=outcome.implied_probability,
+        market_edge=outcome.market_edge,
+        bookmaker=outcome.bookmaker,
+        odds_timestamp=outcome.odds_timestamp,
+    )
+
+
+def _map_bookmaker_comparison_to_response(comparison) -> BookmakerComparisonResponse:
+    """Map BookmakerComparison domain model to BookmakerComparisonResponse schema."""
+    return BookmakerComparisonResponse(
+        label=comparison.label,
+        fair_probability=comparison.fair_probability,
+        fair_odds=comparison.fair_odds,
+        bookmaker_odds=comparison.bookmaker_odds,
+        implied_probability=comparison.implied_probability,
+        edge_value=comparison.edge_value,
+        has_value_flag=comparison.has_value_flag,
+    )
+
+
+def _map_market_analysis_to_response(analysis) -> MarketAnalysisResponse:
+    """Map MarketAnalysis domain model to MarketAnalysisResponse schema.
+    
+    Phase 5: Includes market intelligence data when real odds are available.
+    """
+    return MarketAnalysisResponse(
+        market_type=analysis.market_type.value if hasattr(analysis.market_type, 'value') else str(analysis.market_type),
+        line=analysis.line,
+        outcomes=[_map_market_outcome_to_response(outcome) for outcome in analysis.outcomes],
+        bookmaker_comparison=[
+            _map_bookmaker_comparison_to_response(comp) 
+            for comp in analysis.bookmaker_comparison
+        ] if analysis.bookmaker_comparison else None,
+        bookmaker_overround=analysis.bookmaker_overround,
+        has_bookmaker_odds=analysis.has_bookmaker_odds,
+    )
+
+
 @router.get(
     "",
     response_model=MatchListResponse,

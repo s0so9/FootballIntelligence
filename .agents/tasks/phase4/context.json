@@ -1,0 +1,28 @@
+{
+  "project_type": "Python FastAPI backend with async provider architecture, React TypeScript frontend",
+  "language": "Python 3.12.10",
+  "build_system": "Python venv (.venv), pip for dependencies, npm for frontend (not modified in this phase)",
+  "test_framework": "pytest with pytest-asyncio for async tests",
+  "build_command": "cd backend && .venv\\Scripts\\python.exe -m pytest",
+  "test_command": "cd backend && .venv\\Scripts\\python.exe -m pytest tests/",
+  "verification_instructions": "1. Activate venv: cd backend && .venv\\Scripts\\activate. 2. Run specific test file: .venv\\Scripts\\python.exe -m pytest tests/test_<module>.py -v. 3. Run all tests: .venv\\Scripts\\python.exe -m pytest tests/ -v (38 existing tests must still pass). 4. Check imports: .venv\\Scripts\\python.exe -c 'from app.providers import SofaScoreFootballProvider, DataQualityEngine, SourceIntelligence'",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "Backend venv at backend/.venv must be activated for all Python operations. Never use global Python. SofaScore API is unofficial/reverse-engineered - implementation must handle rate limits and failures gracefully. DevelopmentProvider must remain untouched (used by 38 existing tests).",
+  "contribution_requirements": "AGENTS.md Rule 2: Always read files before editing. Rule 3: Never delete working code without justification. Rule 6: Run tests after changes. Rule 7: Never claim 'implemented' or 'tested' without verification. Rule 10: Never invent statistics. Rule 19: No external AI APIs (OpenAI, Claude, etc). Rule 23: Fix errors instead of reporting them. Rule 24: Complete phase before moving to next.",
+  "key_patterns": "Provider pattern: async class with __init__(base_url, timeout_seconds, retry_count, cache), async close(), _request() method with ProviderError exception handling, normalize methods that convert raw API responses to ProviderXxx models. All providers use ProviderCache with TTL constants (LIVE_DATA_TTL=30, UPCOMING_FIXTURES_TTL=300, etc). All responses include source metadata: provider, source_id, fetched_at, source_updated_at, is_live, data_freshness_seconds. ProviderManager uses SOURCE-OF-TRUTH rule: once a provider returns non-None, that's final - no field-level failover. Manager has routing constants: NORMAL_ORDER, LIVE_ORDER, MATCH_DETAIL_ORDER, METADATA_ORDER.",
+  "relevant_files": [
+    "backend/app/providers/__init__.py",
+    "backend/app/providers/base.py",
+    "backend/app/providers/models.py",
+    "backend/app/providers/exceptions.py",
+    "backend/app/providers/cache.py",
+    "backend/app/providers/manager.py",
+    "backend/app/providers/fotmob.py",
+    "backend/app/providers/ryzellx.py",
+    "backend/app/providers/openligadb.py",
+    "backend/app/providers/development.py",
+    "backend/app/api/v1/schemas.py",
+    "backend/tests/test_api_matches.py"
+  ],
+  "directory_structure": "backend/app/providers/ contains provider implementations. backend/app/api/v1/ contains REST API schemas. backend/tests/ contains 38 existing test files (pytest). frontend/ not modified in this phase. docs/PROGRESS.md tracks implementation progress."
+}

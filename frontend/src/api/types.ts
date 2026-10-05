@@ -90,6 +90,12 @@ export interface MarketOutcomeResponse {
   model_probability: number;
   calibrated_probability: number | null;
   fair_odds: number;
+  // Phase 5: Market Intelligence fields (optional, backward compatible)
+  real_odds?: number | null;
+  implied_probability?: number | null;
+  market_edge?: number | null;
+  bookmaker?: string | null;
+  odds_timestamp?: string | null;
 }
 
 export interface BookmakerComparisonResponse {

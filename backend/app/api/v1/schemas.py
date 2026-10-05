@@ -20,6 +20,13 @@ class MarketOutcomeResponse(BaseModel):
     calibrated_probability: Optional[float] = Field(None, description="Calibrated probability")
     fair_odds: float = Field(..., description="Fair decimal odds")
     
+    # Phase 5: Market Intelligence fields (all optional for backward compatibility)
+    real_odds: Optional[float] = Field(None, description="Real bookmaker odds if available")
+    implied_probability: Optional[float] = Field(None, description="Implied probability from real odds")
+    market_edge: Optional[float] = Field(None, description="Market edge (implied_prob - model_prob)")
+    bookmaker: Optional[str] = Field(None, description="Bookmaker source")
+    odds_timestamp: Optional[datetime] = Field(None, description="When odds were recorded")
+    
     class Config:
         """Pydantic configuration."""
         # Suppress warnings about model_* field names conflicting with Pydantic's namespace

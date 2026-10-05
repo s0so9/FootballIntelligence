@@ -8285,3 +8285,90 @@ According to PROJECT_SPEC.md Phase 4 completion criteria, the next logical steps
 - ✓ Modular architecture: 3 new modules, clean separation
 
 **Ready for:** Phase 4B (API integration with quality metadata), Phase 5 (AI Analyst with enriched context), frontend data quality indicators.
+
+---
+
+## 2026-10-04: MENSIONE AI Match Prediction Card - Result State & Partner Removal
+
+**Objective:** Extend MensionePickCard component to display match result states (won/lost/pending) with score display while preserving all existing MENSIONE functionality.
+
+**Implementation:**
+
+1. **Added Result State Props:**
+   - `skor?: { ev: number; dep: number } | null` — Match score
+   - `durum?: 'won' | 'lost' | 'pending'` — Match result state (defaults to 'pending')
+
+2. **Team Display Logic:**
+   - `skor === null/undefined` → Display "VS" separator (existing behavior)
+   - `skor !== null` → Display score box with actual score
+
+3. **Confidence/Result Badge Logic:**
+   - `durum === 'pending'` → Display AI Confidence (existing behavior)
+   - `durum === 'won'` → Display green WON badge with ✓ icon
+   - `durum === 'lost'` → Display red LOST badge with ✕ icon
+
+4. **Score Box Styling:**
+   - Background: `#0a0f0c`
+   - Border: `1px solid #2a2f2c`
+   - Border-radius: `12px`
+   - Padding: `8px 16px`
+   - Font: 28px bold monospace (Courier New)
+   - Score numbers: white
+   - Separator: gray (#9aa39e)
+
+5. **Result Badge Styling:**
+   - WON: Green (#2ee27b) with subtle background rgba(46, 226, 123, 0.15)
+   - LOST: Red (#ef4444) with subtle background rgba(239, 68, 68, 0.15)
+   - Shape: Pill (border-radius: 9999px)
+   - Accessibility: aria-label attributes added
+
+6. **ComponentsTest Examples:**
+   - Added 4 demonstration cards:
+     - Pending without score (original behavior)
+     - Pending with score (shows score + confidence)
+     - Won match (shows score + WON badge)
+     - Lost match (shows score + LOST badge)
+
+**Files Modified:**
+- `frontend/src/components/predictions/MensionePickCard.tsx`
+- `frontend/src/components/predictions/MensionePickCard.css`
+- `frontend/src/pages/ComponentsTest.tsx`
+
+**Verification Results:**
+
+```powershell
+# TypeScript type checking
+cd C:\FootballIntelligence\frontend
+npm run type-check
+# ✅ Exit code: 0 (No TypeScript errors)
+
+# Linting
+npm run lint
+# ✅ Exit code: 0 (No linting errors)
+
+# Production build
+npm run build
+# ✅ Exit code: 0
+# ✅ Built successfully: 90 modules transformed
+# ✅ Output: dist/index.html (0.47 kB), CSS (85.40 kB), JS (244.15 kB)
+
+# Backend verification (no changes expected)
+cd C:\FootballIntelligence\backend
+python -m pytest --tb=short -q
+# ✅ 886 passed, 15 skipped
+# ✅ No backend regressions
+```
+
+**Partner Removal:**
+- No partner code existed in the component
+- No removal work was necessary
+
+**Design Preservation:**
+- ✅ Existing MENSIONE dark green/gold design intact
+- ✅ All tabs (GENEL/İLK YARI/MAÇ) preserved
+- ✅ AI Confidence system unchanged for pending matches
+- ✅ Real odds/fair odds separation maintained
+- ✅ KOMBİNE functionality preserved
+- ✅ Mobile-first responsive design intact
+
+**Status:** ✅ Complete and verified

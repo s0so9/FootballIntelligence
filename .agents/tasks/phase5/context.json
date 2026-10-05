@@ -1,0 +1,29 @@
+{
+  "project_type": "FastAPI backend + React/TypeScript/Vite frontend",
+  "language": "Python 3.12 (backend), TypeScript (frontend)",
+  "build_system": "backend: pytest via 'python -m pytest tests/', frontend: npm scripts",
+  "test_framework": "backend: pytest with fixtures in tests/conftest.py, frontend: vitest",
+  "build_command": "backend: python -m pytest tests/ (tests serve as verification), frontend: npm run type-check && npm run build",
+  "test_command": "backend: cd backend; python -m pytest tests/ -v, frontend: cd frontend; npm run type-check",
+  "verification_instructions": "After each feature: run backend tests with 'cd c:\\FootballIntelligence\\backend; python -m pytest tests/ -v', verify 886+ tests pass (baseline: 886 passing, 15 skipped). Frontend: 'cd c:\\FootballIntelligence\\frontend; npm run type-check' must pass with no errors.",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "DevelopmentProvider must remain deterministic for tests. No real network calls in unit tests. Windows paths require proper escaping. All new API fields must be optional for backward compatibility.",
+  "contribution_requirements": "AGENTS.md rules 2, 3, 6, 7, 10, 11, 12, 13, 14, 23, 24 are critical: read before edit, work in small verifiable steps, never fabricate numerical data, numerical engine is source of truth, AI Analyst is explanation layer only, fix errors during verification rather than reporting them.",
+  "key_patterns": "Existing odds/market system: app/domain/odds.py (Odds model), app/prediction/market_analysis.py (MarketAnalyser with fair odds calculation and optional bookmaker comparison), app/prediction/market_derivation.py (MarketDerivationEngine), app/prediction/mensione_pick.py (pick selection using MarketRanking). Phase 4: app/providers/source_intelligence.py (SourceIntelligence for multi-source merging), app/providers/data_quality.py (DataQualityEngine). API contracts: app/api/v1/schemas.py defines response schemas. Tests follow pattern: fixtures in tests/conftest.py, verification via assertions, all mock data clearly labeled as [DEV].",
+  "relevant_files": [
+    "backend/app/domain/odds.py",
+    "backend/app/prediction/market_analysis.py",
+    "backend/app/prediction/market_derivation.py",
+    "backend/app/prediction/mensione_pick.py",
+    "backend/app/providers/source_intelligence.py",
+    "backend/app/providers/data_quality.py",
+    "backend/app/providers/development.py",
+    "backend/app/api/v1/schemas.py",
+    "backend/app/domain/enums.py",
+    "backend/tests/conftest.py",
+    "backend/tests/test_market_analysis.py",
+    "frontend/src/api/types.ts",
+    "frontend/src/components/predictions/MensionePickCard.tsx"
+  ],
+  "directory_structure": "backend/app/domain/ — domain models (odds, prediction, enums); backend/app/prediction/ — prediction engines (market_analysis, market_derivation, mensione_pick); backend/app/providers/ — data providers (development, source_intelligence, data_quality); backend/app/api/v1/ — API routes and schemas; backend/tests/ — pytest test suite; frontend/src/api/ — API types; frontend/src/components/predictions/ — prediction UI components"
+}

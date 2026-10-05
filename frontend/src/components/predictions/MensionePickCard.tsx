@@ -24,6 +24,10 @@ interface MensionePickCardProps {
   inCombine: boolean
   onToggleCombine: () => void
   
+  // Result state props
+  skor?: { ev: number; dep: number } | null
+  durum?: 'won' | 'lost' | 'pending'
+  
   // Backend fields - General
   predictedScore?: string | null
   homeXg?: number | null
@@ -38,6 +42,12 @@ interface MensionePickCardProps {
   fairOdds?: number | null
   marketOdds?: number | null
   predictionVersionId?: string | null
+  
+  // Phase 5: Market Intelligence props (optional, backward compatible)
+  marketEdge?: number | null
+  impliedProbability?: number | null
+  bookmakerSource?: string | null
+  valueClassification?: string | null
   
   // Backend fields - Full Match Statistics (when available)
   homeShots?: number | null
@@ -79,6 +89,8 @@ export default function MensionePickCard({
   onToggleFavorite,
   inCombine,
   onToggleCombine,
+  skor,
+  durum = 'pending',
   predictedScore,
   homeXg,
   awayXg,
@@ -92,6 +104,11 @@ export default function MensionePickCard({
   fairOdds,
   marketOdds,
   predictionVersionId,
+  // Phase 5: Market Intelligence props
+  marketEdge,
+  impliedProbability,
+  bookmakerSource,
+  valueClassification,
   // Full match stats
   homeShots,
   awayShots,
@@ -196,7 +213,15 @@ export default function MensionePickCard({
           
           <div className="collapsed-header__teams">
             <span className="team-name">{homeTeam}</span>
-            <span className="vs-separator">vs</span>
+            {(skor === null || skor === undefined) ? (
+              <span className="vs-separator">VS</span>
+            ) : (
+              <div className="score-box">
+                <span className="score-home">{skor.ev}</span>
+                <span className="score-separator">-</span>
+                <span className="score-away">{skor.dep}</span>
+              </div>
+            )}
             <span className="team-name">{awayTeam}</span>
           </div>
           
@@ -214,17 +239,29 @@ export default function MensionePickCard({
         
         {/* Intelligence Row */}
         <div className="collapsed-header__intelligence">
-          {/* AI Confidence */}
-          <div className="intelligence-compact">
-            <div className="intelligence-compact__label">AI GÜVENİ</div>
-            <AIConfidence 
-              confidence={confidence} 
-              size="sm"
-              showPercentage={false}
-              showLevel={false}
-              showLabel={false}
-            />
-          </div>
+          {/* AI Confidence or Result Badge */}
+          {durum === 'pending' ? (
+            <div className="intelligence-compact">
+              <div className="intelligence-compact__label">YAPAY ZEKA GÜVENİ</div>
+              <AIConfidence 
+                confidence={confidence} 
+                size="sm"
+                showPercentage={false}
+                showLevel={false}
+                showLabel={false}
+              />
+            </div>
+          ) : durum === 'won' ? (
+            <div className="result-badge result-badge--won" aria-label="Sonuç: Kazandı">
+              <span className="result-badge__icon">✓</span>
+              <span className="result-badge__text">WON</span>
+            </div>
+          ) : (
+            <div className="result-badge result-badge--lost" aria-label="Sonuç: Kaybetti">
+              <span className="result-badge__icon">✕</span>
+              <span className="result-badge__text">LOST</span>
+            </div>
+          )}
           
           {/* Pick Probability */}
           {pickProbability !== undefined && pickProbability !== null && (
@@ -696,6 +733,39 @@ export default function MensionePickCard({
                     <span className="tech-field__label">Version:</span>
                     <span className="tech-field__value tech-field__value--mono">
                       {predictionVersionId.slice(0, 8)}
+                    </span>
+                  </div>
+                )}
+                {/* Phase 5: Market Intelligence - only when available */}
+                {marketEdge !== undefined && marketEdge !== null && (
+                  <div className="tech-field">
+                    <span className="tech-field__label">Market Edge:</span>
+                    <span className="tech-field__value">
+                      {(marketEdge * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+                {impliedProbability !== undefined && impliedProbability !== null && (
+                  <div className="tech-field">
+                    <span className="tech-field__label">Implied Prob:</span>
+                    <span className="tech-field__value">
+                      {(impliedProbability * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                )}
+                {bookmakerSource && (
+                  <div className="tech-field">
+                    <span className="tech-field__label">Bookmaker:</span>
+                    <span className="tech-field__value">
+                      {bookmakerSource}
+                    </span>
+                  </div>
+                )}
+                {valueClassification && (
+                  <div className="tech-field">
+                    <span className="tech-field__label">Value:</span>
+                    <span className="tech-field__value tech-field__value--badge">
+                      {valueClassification.replace('_', ' ')}
                     </span>
                   </div>
                 )}

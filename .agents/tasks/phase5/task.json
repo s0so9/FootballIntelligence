@@ -1,0 +1,7 @@
+{
+  "task_id": "task-phase5-market-intelligence",
+  "task_description": "Phase 5 — Market Intelligence Expansion: extend existing market/odds architecture with real bookmaker odds normalization, implied probability calculation, market margin analysis, MENSIONE edge calculation, value classification, market movement foundation, and multi-source odds integration",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
+  "blocked_reason": null
+}

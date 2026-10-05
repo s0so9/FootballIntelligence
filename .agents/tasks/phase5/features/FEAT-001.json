@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Canonical Market Model + Real Odds Normalization. EXTEND app/domain/odds.py with optional Phase 5 fields (source_provider, normalized_market_type, selection_label, odds_timestamp). Support market types: 1X2, OVER_UNDER, BTTS, DOUBLE_CHANCE, HANDICAP. EXTEND DevelopmentProvider to map raw mock odds to normalized format. Validate odds > 1.0. Never fabricate missing odds — missing odds remain None.",
+  "status": "completed",
+  "steps": [
+    "1. Read backend/app/domain/odds.py to understand existing Odds model structure with bookmaker, home_win_odds, draw_odds, away_win_odds, over_under_line, over_odds, under_odds, btts_yes_odds, btts_no_odds, asian_handicap fields.",
+    "2. EXTEND Odds model in backend/app/domain/odds.py with optional Phase 5 fields: source_provider: Optional[str], normalized_market_type: Optional[str], selection_label: Optional[str], odds_timestamp: Optional[datetime]. DO NOT remove or change existing fields. Add fields with default None.",
+    "3. Add validation: all odds fields must be > 1.0 or None. Update field validators to check gt=1.0 constraint.",
+    "4. Read backend/app/domain/enums.py and verify PredictionMarketType enum exists. If DOUBLE_CHANCE or HANDICAP are missing, add them.",
+    "5. Read backend/app/providers/development.py to find where mock odds are generated. EXTEND DevelopmentProvider to populate new Phase 5 fields on mock odds: set source_provider='development', normalized_market_type='match_result' for 1X2, selection_label='home'/'draw'/'away', odds_timestamp=datetime.now(). Keep mock odds deterministic.",
+    "6. Add unit tests in backend/tests/test_domain_models.py: test_odds_phase5_fields_optional(), test_odds_validation_rejects_invalid_odds(), test_odds_accepts_valid_phase5_data().",
+    "7. Run backend tests: cd c:\\FootballIntelligence\\backend; python -m pytest tests/test_domain_models.py -v. Verify new tests pass and existing tests remain green (baseline: 886 passing)."
+  ],
+  "acceptance_criteria": [
+    "Odds model has source_provider, normalized_market_type, selection_label, odds_timestamp fields, all Optional",
+    "All odds fields validate > 1.0 or None",
+    "DevelopmentProvider populates new fields on mock odds with deterministic values",
+    "New unit tests pass",
+    "Existing tests remain passing (886 baseline)",
+    "No fabricated odds — missing odds remain None"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\backend; python -m pytest tests/test_domain_models.py::test_odds_phase5_fields_optional -v",
+    "cd c:\\FootballIntelligence\\backend; python -m pytest tests/ -v (verify 886+ passing, 15 skipped)"
+  ],
+  "blocked_reason": null,
+  "findings": "✅ FEAT-001 completed successfully.\n\nChanges:\n- Extended Odds model with 4 Phase 5 fields: source_provider, normalized_market_type, selection_label, odds_timestamp (all Optional)\n- All odds fields validate > 1.0 or None (missing odds remain None, never fabricated)\n- Added DOUBLE_CHANCE and HANDICAP to PredictionMarketType enum\n- Extended DevelopmentProvider.get_match_odds() to populate Phase 5 fields with deterministic mock data\n- Added 7 new unit tests (3 in test_domain_models.py, 4 in test_phase5_feat001.py)\n\nTest results:\n- 893 tests pass (886 baseline + 7 new)\n- 15 skipped (unchanged)\n- All acceptance criteria met\n- Backward compatibility preserved (Phase 5 fields optional)\n- No existing functionality broken\n\nCommit: 859421e"
+}
