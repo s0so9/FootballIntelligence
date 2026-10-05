@@ -93,6 +93,20 @@ export interface EasyMatchResponse {
   data_sufficient: boolean;
 }
 
+export interface MensionePickResponse {
+  pick_market: string;
+  pick_probability: number;
+  confidence_label: string;
+  confidence_score: number;
+  expected_value: number | null;
+  market_odds: number | null;
+  fair_odds: number;
+  edge: number | null;
+  reasoning_factors: string[];
+  predicted_score: string;
+  score_distribution_top5: string[];
+}
+
 export interface MatchPredictionResponse {
   match_id: string;
   home_win_probability: number;
@@ -101,6 +115,9 @@ export interface MatchPredictionResponse {
   home_xg: number;
   away_xg: number;
   btts_probability: number;
+  predicted_score: string | null;
+  mensione_pick: MensionePickResponse | null;
+  prediction_version_id: string | null;
   market_analysis: MarketAnalysisResponse[] | null;
   easy_match: EasyMatchResponse | null;
   is_development_data: boolean;

@@ -48,6 +48,31 @@
   gap: var(--spacing-md);
 }
 
+.header-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  font-size: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.header-icon-button:hover {
+  background: var(--color-hover);
+  color: var(--color-text-primary);
+}
+
+.header-icon-button:focus-visible {
+  outline: 2px solid var(--color-accent-green);
+  outline-offset: 2px;
+}
+
 .header-info {
   display: flex;
   align-items: center;

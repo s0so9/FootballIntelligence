@@ -15,7 +15,7 @@ interface NavItem {
 }
 
 const navigationItems: NavItem[] = [
-  { path: '/', label: 'Ana Sayfa', icon: '📊' },
+  { path: '/', label: 'Ana Sayfa', icon: '🏠' },
   { path: '/matches', label: 'Maçlar', icon: '⚽' },
   { path: '/predictions', label: 'Tahminler', icon: '🎯' },
   { path: '/easy-matches', label: 'Kolay Maçlar', icon: '✅' },

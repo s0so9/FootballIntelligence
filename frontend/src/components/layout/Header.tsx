@@ -19,10 +19,20 @@ export function Header({ onToggleMobileMenu }: HeaderProps) {
       </div>
 
       <div className="header-right">
-        <div className="header-info">
-          <span className="status-dot"></span>
-          <span>Sistem Aktif</span>
-        </div>
+        <button
+          className="header-icon-button"
+          aria-label="Bildirimler"
+          title="Bildirimler (yakında)"
+        >
+          🔔
+        </button>
+        <button
+          className="header-icon-button"
+          aria-label="Profil"
+          title="Profil (yakında)"
+        >
+          👤
+        </button>
       </div>
     </header>
   );
