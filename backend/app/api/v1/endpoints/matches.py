@@ -347,6 +347,38 @@ async def get_match_prediction(
     - Prediction version ID (immutable versioning)
     - Easy Match detection result
     
+    MENSIONE PICK Structure:
+    The mensione_pick field contains either a BestTip or a PassDecision.
+    
+    BestTip (when a qualifying market is found):
+    - market: Market identifier (e.g., "HOME_WIN", "OVER_2_5", "BTTS_YES")
+    - selection: Human-readable selection text
+    - probability: Calibrated model probability [0, 1]
+    - confidence: Overall confidence score [0, 1]
+    - model_agreement: Agreement between models [0, 1]
+    - data_quality: Data quality score [0, 1]
+    - edge: Edge over bookmaker odds (None when odds unavailable)
+    - fair_odds: Fair odds from model probability
+    - bookmaker_odds: Bookmaker odds (None when unavailable)
+    - odds_movement: "rising", "falling", "stable", or None
+    - value_classification: "STRONG_VALUE", "VALUE", "NEUTRAL", "NEGATIVE_VALUE"
+    - risk_level: "LOW", "MEDIUM", "HIGH"
+    - selection_score: Overall selection score [0, 1]
+    - selector_reason: Why this market was selected
+    - timestamp: ISO 8601 timestamp
+    - pipeline_version: Pipeline version string
+    - pass_decision: False
+    
+    PassDecision (when no market qualifies):
+    - pass_decision: True
+    - match_id: Match identifier
+    - pass_reason: "insufficient_data", "weak_agreement", "poor_calibration",
+                   "negative_value", "no_qualifying_market", "high_uncertainty"
+    - evaluated_markets_count: Number of markets evaluated
+    - best_market_details: Details of closest market that didn't qualify
+    - timestamp: ISO 8601 timestamp
+    - pipeline_version: Pipeline version string
+    
     Path Parameters:
     - match_id: Unique match identifier
     

@@ -40,7 +40,6 @@ from app.prediction.poisson import PoissonModel
 from app.prediction.market_analysis import MarketAnalyser
 from app.prediction.easy_matches import EasyMatchDetector
 from app.prediction.market_derivation import MarketDerivationEngine
-from app.prediction.mensione_pick import MensionePickGenerator
 from app.prediction.prediction_version import PredictionVersionManager, PredictionStage
 from app.prediction.confidence_engine import ConfidenceEngine, ConfidenceComponents, ConfidenceAssessment
 from app.prediction.model_orchestrator import (
@@ -129,10 +128,12 @@ class PredictionService:
         
         # Initialize MENSIONE components
         self.market_derivation_engine = MarketDerivationEngine(top_scorelines=20)
-        self.mensione_pick_generator = MensionePickGenerator(
+        from app.prediction.market_selector import SmartMarketSelector
+        self.market_selector = SmartMarketSelector(
             min_confidence=0.4,
-            min_probability=0.55,
-            min_edge=0.0
+            min_probability=0.5,
+            min_edge=0.0,
+            max_risk_level="HIGH"
         )
         self.confidence_engine = ConfidenceEngine()
         self.version_manager = PredictionVersionManager(persistence_service=None)  # In-memory for now
@@ -870,34 +871,54 @@ class PredictionService:
                 import logging
                 logging.error(f"Market derivation failed: {e}", exc_info=True)
         
-        # STEP 8: Generate MENSIONE PICK
+        # STEP 8: Generate MENSIONE PICK using SmartMarketSelector
         mensione_pick = None
+        pipeline_version = "1.0.0"
         if market_probs:
             try:
-                pick = self.mensione_pick_generator.generate(
+                from app.prediction.market_selector import BestTip, PassDecision
+                mensione_result = self.market_selector.evaluate_and_select(
                     market_probs=market_probs,
                     confidence_assessment=confidence_assessment,
-                    odds_data=odds_data
+                    odds_data=odds_data,
+                    pipeline_version=pipeline_version
                 )
                 
-                if pick:
-                    # Convert to dict for AnalysisContext
+                # Convert BestTip or PassDecision to dict for AnalysisContext
+                if isinstance(mensione_result, BestTip):
                     mensione_pick = {
-                        "pick_market": pick.pick_market,
-                        "pick_probability": pick.pick_probability,
-                        "confidence_label": pick.confidence_label,
-                        "confidence_score": pick.confidence_score,
-                        "expected_value": pick.expected_value,
-                        "market_odds": pick.market_odds,
-                        "fair_odds": pick.fair_odds,
-                        "edge": pick.edge,
-                        "reasoning_factors": pick.reasoning_factors,
-                        "predicted_score": pick.predicted_score,
-                        "score_distribution_top5": pick.score_distribution_top5
+                        "match_id": mensione_result.match_id,
+                        "market": mensione_result.market,
+                        "selection": mensione_result.selection,
+                        "probability": mensione_result.probability,
+                        "confidence": mensione_result.confidence,
+                        "model_agreement": mensione_result.model_agreement,
+                        "data_quality": mensione_result.data_quality,
+                        "edge": mensione_result.edge,
+                        "fair_odds": mensione_result.fair_odds,
+                        "bookmaker_odds": mensione_result.bookmaker_odds,
+                        "odds_movement": mensione_result.odds_movement,
+                        "value_classification": mensione_result.value_classification,
+                        "risk_level": mensione_result.risk_level,
+                        "selection_score": mensione_result.selection_score,
+                        "selector_reason": mensione_result.selector_reason,
+                        "timestamp": mensione_result.timestamp.isoformat(),
+                        "pipeline_version": mensione_result.pipeline_version,
+                        "pass_decision": False
+                    }
+                elif isinstance(mensione_result, PassDecision):
+                    mensione_pick = {
+                        "pass_decision": True,
+                        "match_id": mensione_result.match_id,
+                        "pass_reason": mensione_result.pass_reason,
+                        "evaluated_markets_count": mensione_result.evaluated_markets_count,
+                        "best_market_details": mensione_result.best_market_details,
+                        "timestamp": mensione_result.timestamp.isoformat(),
+                        "pipeline_version": mensione_result.pipeline_version
                     }
             except Exception as e:
                 import logging
-                logging.error(f"MENSIONE Pick generation failed: {e}", exc_info=True)
+                logging.error(f"SmartMarketSelector failed: {e}", exc_info=True)
         
         # STEP 9: Extract predicted score (most likely scoreline)
         predicted_score = None

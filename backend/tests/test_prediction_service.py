@@ -572,11 +572,24 @@ class TestDevelopmentDataFallback:
         # Should have predicted score
         assert context.predicted_score is not None
         
-        # Should have MENSIONE pick
+        # Should have MENSIONE pick (BestTip or PassDecision from SmartMarketSelector)
         assert context.mensione_pick is not None
-        assert "pick_market" in context.mensione_pick
-        assert "confidence_label" in context.mensione_pick
-        assert "predicted_score" in context.mensione_pick
+        
+        # Check for either BestTip or PassDecision structure
+        if context.mensione_pick.get("pass_decision") is True:
+            # PassDecision structure
+            assert "pass_reason" in context.mensione_pick
+            assert "evaluated_markets_count" in context.mensione_pick
+            assert "pipeline_version" in context.mensione_pick
+        else:
+            # BestTip structure
+            assert "market" in context.mensione_pick
+            assert "selection" in context.mensione_pick
+            assert "probability" in context.mensione_pick
+            assert "confidence" in context.mensione_pick
+            assert "risk_level" in context.mensione_pick
+            assert "value_classification" in context.mensione_pick
+            assert context.mensione_pick["pass_decision"] is False
         
         # Should have version ID
         assert context.prediction_version_id is not None
