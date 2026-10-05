@@ -89,6 +89,44 @@ class PredictionVersion:
     notes: List[str] = field(default_factory=list)
     """Any notes or warnings about this version"""
     
+    # Frozen MENSIONE Pick (stored at prediction time for track record)
+    selected_market: Optional[str] = None
+    """Selected market identifier (e.g. 'HOME_WIN', 'OVER_2_5', 'BTTS_YES')"""
+    
+    selection_text: Optional[str] = None
+    """Human-readable selection text (e.g. 'Home Win', 'Over 2.5 Goals')"""
+    
+    selection_probability: Optional[float] = None
+    """Model probability at prediction time [0, 1]"""
+    
+    selection_confidence: Optional[float] = None
+    """Confidence score at prediction time [0, 1]"""
+    
+    selection_odds: Optional[float] = None
+    """Bookmaker odds at prediction time (if available)"""
+    
+    selection_fair_odds: Optional[float] = None
+    """Fair odds calculated from model probability"""
+    
+    selection_edge: Optional[float] = None
+    """Edge over bookmaker odds at prediction time (probability - implied_probability)"""
+    
+    value_classification: Optional[str] = None
+    """Value classification: 'STRONG_VALUE', 'VALUE', 'NEUTRAL', 'NEGATIVE_VALUE'"""
+    
+    risk_level: Optional[str] = None
+    """Risk level: 'LOW', 'MEDIUM', 'HIGH'"""
+    
+    # Result Tracking (populated after match settlement — FUTURE USE)
+    actual_result: Optional[str] = None
+    """Actual outcome: 'WON', 'LOST', 'PUSH', 'VOID'"""
+    
+    profit_loss: Optional[float] = None
+    """Profit/loss in units (e.g. +0.85, -1.00)"""
+    
+    settled_at: Optional[datetime] = None
+    """Timestamp when result was recorded"""
+    
     def __post_init__(self):
         """Validate version after initialization."""
         if not self.version_id:
@@ -142,7 +180,8 @@ class PredictionVersionManager:
         data_quality_score: float = 0.0,
         confidence_score: float = 0.0,
         notes: Optional[List[str]] = None,
-        allow_stage_overwrite: bool = False
+        allow_stage_overwrite: bool = False,
+        mensione_pick: Optional[Any] = None
     ) -> PredictionVersion:
         """Create new prediction version.
         
@@ -155,6 +194,7 @@ class PredictionVersionManager:
             confidence_score: Confidence score
             notes: Optional notes
             allow_stage_overwrite: If True, allow multiple versions for same stage
+            mensione_pick: Optional MENSIONE pick data (BestTip or PassDecision dict)
         
         Returns:
             Created PredictionVersion
@@ -184,6 +224,23 @@ class PredictionVersionManager:
             confidence_score=confidence_score,
             notes=notes or []
         )
+        
+        # Populate frozen pick fields from mensione_pick if provided
+        if mensione_pick is not None:
+            if isinstance(mensione_pick, dict):
+                # BestTip dict has 'market' key; PassDecision dict has 'pass_decision': True
+                if mensione_pick.get('pass_decision') is not True and 'market' in mensione_pick:
+                    # BestTip: populate frozen pick fields
+                    version.selected_market = mensione_pick.get('market')
+                    version.selection_text = mensione_pick.get('selection')
+                    version.selection_probability = mensione_pick.get('probability')
+                    version.selection_confidence = mensione_pick.get('confidence')
+                    version.selection_odds = mensione_pick.get('bookmaker_odds')
+                    version.selection_fair_odds = mensione_pick.get('fair_odds')
+                    version.selection_edge = mensione_pick.get('edge')
+                    version.value_classification = mensione_pick.get('value_classification')
+                    version.risk_level = mensione_pick.get('risk_level')
+                # PassDecision: leave frozen pick fields as None (no selection was made)
         
         # Persist version
         if self.persistence_service:
@@ -314,3 +371,54 @@ class PredictionVersionManager:
                         del self._memory_store[match_id][i]
                         return True
             return False
+    
+    def settle_prediction(
+        self,
+        version_id: str,
+        actual_result: str,  # "WON", "LOST", "PUSH", "VOID"
+        profit_loss: Optional[float] = None
+    ) -> Optional[PredictionVersion]:
+        """Settle a prediction with actual match result.
+        
+        This method will be called after matches finish to record outcomes.
+        Foundation for future track record calculation.
+        Result ingestion is not yet implemented.
+        
+        Args:
+            version_id: Version identifier to settle
+            actual_result: Outcome - "WON", "LOST", "PUSH", "VOID"
+            profit_loss: Profit/loss in units (e.g. +0.85, -1.00)
+        
+        Returns:
+            Updated PredictionVersion (future implementation)
+        
+        Raises:
+            NotImplementedError: Result ingestion not yet implemented
+        """
+        # TODO: implement when result ingestion pipeline is ready
+        raise NotImplementedError("Result ingestion not yet implemented")
+    
+    def get_settled_picks_by_market(
+        self,
+        market_type: str,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> list:
+        """Get all settled picks for a specific market type.
+        
+        Future use: calculate historical accuracy per market.
+        Example: get_settled_picks_by_market("HOME_WIN") returns all settled home win bets.
+        
+        Args:
+            market_type: Market identifier (e.g. "HOME_WIN", "OVER_2_5")
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+        
+        Returns:
+            List of settled predictions (future implementation)
+        
+        Raises:
+            NotImplementedError: Track record analysis not yet implemented
+        """
+        # TODO: implement when track record analysis is built
+        raise NotImplementedError("Track record analysis not yet implemented")

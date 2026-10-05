@@ -978,7 +978,8 @@ class PredictionService:
                     f"Canonical Pipeline v1.0: {len(models_used)} models, "
                     f"ensemble agreement={ensemble_result.metadata.get('model_agreement', 0.0):.3f}, "
                     f"calibration={calibration_metadata.get('calibration_status', 'unknown')}"
-                ]
+                ],
+                mensione_pick=mensione_pick
             )
         except Exception as e:
             import logging
