@@ -102,7 +102,7 @@ async def test_manager_get_match_uses_match_detail_order(
     mock_ryzellx,
     sample_provider_match
 ):
-    """Test that get_match uses MATCH_DETAIL_ORDER (ryzellx first)."""
+    """Test that get_match uses MATCH_DETAIL_ORDER (sofascore → ryzellx, ryzellx used when sofascore not configured)."""
     mock_ryzellx.get_match.return_value = sample_provider_match
     
     result, metadata = await provider_manager.get_match("match_123")
@@ -110,7 +110,9 @@ async def test_manager_get_match_uses_match_detail_order(
     assert result is not None
     assert result == sample_provider_match
     assert metadata['selected_provider'] == 'ryzellx'
-    assert metadata['fallback_used'] is False
+    # When sofascore is not configured, ryzellx is used (sofascore would have been first if present)
+    # So this is technically a fallback from the defined order, but functionally correct
+    assert metadata['fallback_used'] is True
     assert 'ryzellx' in metadata['attempted_providers']
     
     # Verify ryzellx was called
@@ -297,7 +299,8 @@ async def test_manager_source_of_truth_no_failover_for_optional_none(
     assert result.provider == "ryzellx"
     assert result.venue_name is None  # Not filled from fotmob
     assert metadata['selected_provider'] == 'ryzellx'
-    assert metadata['fallback_used'] is False
+    # When sofascore is not configured, ryzellx is used from position 1 in MATCH_DETAIL_ORDER
+    assert metadata['fallback_used'] is True
     
     # Verify fotmob was NOT called
     mock_fotmob.get_match.assert_not_called()

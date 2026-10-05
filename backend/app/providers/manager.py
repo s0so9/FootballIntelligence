@@ -4,13 +4,13 @@ The ProviderManager orchestrates multiple football data providers with
 intelligent routing based on data type and use case:
 
 - NORMAL_ORDER: Standard match lists and fixtures (ryzellx → openligadb)
-- LIVE_ORDER: Live/fast data (fotmob → ryzellx → openligadb)
-- MATCH_DETAIL_ORDER: Match detail with stats (ryzellx → fotmob → openligadb)
+- LIVE_ORDER: Live/fast data (fotmob → sofascore → ryzellx → openligadb)
+- MATCH_DETAIL_ORDER: Match detail with stats (sofascore → ryzellx → fotmob → openligadb)
 - METADATA_ORDER: Teams, players, leagues (ryzellx → fotmob → openligadb)
 
 SOURCE-OF-TRUTH RULE:
 Once a provider returns a result (non-None), that is the final result.
-NO field-level failover. If ryzellx returns a match with xg=None, we do NOT
+NO field-level failover. If sofascore returns a match with xg=None, we do NOT
 try fotmob to get xG. This prevents data inconsistency where different fields
 come from different sources with different timestamps.
 """
@@ -39,23 +39,25 @@ class ProviderManager:
     Args:
         ryzellx: RyzellxFootballProvider instance (PRIMARY provider)
         fotmob: FotMobFootballProvider instance (LIVE/FAST provider)
+        sofascore: SofaScoreFootballProvider instance (STATISTICS provider)
         openligadb: OpenLigaDBFootballProvider instance (FALLBACK provider)
         cache: Optional ProviderCache (passed to individual providers)
     """
     
     # Routing constants - define provider order for different operations
     NORMAL_ORDER = ['ryzellx', 'openligadb']
-    LIVE_ORDER = ['fotmob', 'ryzellx', 'openligadb']
-    MATCH_DETAIL_ORDER = ['ryzellx', 'fotmob', 'openligadb']
+    LIVE_ORDER = ['fotmob', 'sofascore', 'ryzellx', 'openligadb']
+    MATCH_DETAIL_ORDER = ['sofascore', 'ryzellx', 'fotmob', 'openligadb']
     METADATA_ORDER = ['ryzellx', 'fotmob', 'openligadb']
     
-    def __init__(self, ryzellx, fotmob, openligadb, cache=None):
+    def __init__(self, ryzellx, fotmob, openligadb, sofascore=None, cache=None):
         """Initialize ProviderManager with provider instances.
         
         Args:
             ryzellx: RyzellxFootballProvider instance
             fotmob: FotMobFootballProvider instance
             openligadb: OpenLigaDBFootballProvider instance
+            sofascore: Optional SofaScoreFootballProvider instance
             cache: Optional ProviderCache (for tracking only, providers use their own)
         """
         self._providers = {
@@ -63,6 +65,8 @@ class ProviderManager:
             'fotmob': fotmob,
             'openligadb': openligadb,
         }
+        if sofascore is not None:
+            self._providers['sofascore'] = sofascore
         self.cache = cache
         
         logger.info(
@@ -202,7 +206,7 @@ class ProviderManager:
     async def get_match(self, match_id: str) -> Tuple[Optional[Any], Dict]:
         """Get detailed match information.
         
-        Uses MATCH_DETAIL_ORDER: ryzellx → fotmob → openligadb
+        Uses MATCH_DETAIL_ORDER: sofascore → ryzellx → fotmob → openligadb
         
         Args:
             match_id: Match ID
@@ -210,11 +214,16 @@ class ProviderManager:
         Returns:
             Tuple of (ProviderMatch or None, metadata_dict)
         """
-        provider_method_map = {
+        provider_method_map = {}
+        
+        if 'sofascore' in self._providers:
+            provider_method_map['sofascore'] = lambda: self._providers['sofascore'].get_match(match_id)
+        
+        provider_method_map.update({
             'ryzellx': lambda: self._providers['ryzellx'].get_match(match_id),
             'fotmob': lambda: self._providers['fotmob'].get_match(match_id),
             'openligadb': lambda: self._providers['openligadb'].get_match(match_id),
-        }
+        })
         
         return await self._try_providers(
             operation_name='get_match',
@@ -225,7 +234,7 @@ class ProviderManager:
     async def get_live_matches(self) -> Tuple[List, Dict]:
         """Get currently live matches.
         
-        Uses LIVE_ORDER: fotmob → ryzellx → openligadb
+        Uses LIVE_ORDER: fotmob → sofascore → ryzellx → openligadb
         
         Returns:
             Tuple of (live_matches_list, metadata_dict)
@@ -235,6 +244,9 @@ class ProviderManager:
             'ryzellx': lambda: self._providers['ryzellx'].get_live_matches(),
             'openligadb': lambda: self._providers['openligadb'].get_live_matches(),
         }
+        
+        if 'sofascore' in self._providers:
+            provider_method_map['sofascore'] = lambda: self._providers['sofascore'].get_live_matches()
         
         result, metadata = await self._try_providers(
             operation_name='get_live_matches',

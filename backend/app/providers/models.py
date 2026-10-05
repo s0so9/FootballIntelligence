@@ -202,6 +202,7 @@ class ProviderMatchStats(BaseModel):
     match_id: str
     team_id: str
     team_name: Optional[str] = None
+    period: Optional[str] = Field(None, description="Match period: 'full', 'first_half', 'second_half'")
     
     # Goals
     goals_scored: Optional[int] = None
