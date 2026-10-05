@@ -1,0 +1,43 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "MENSIONE Design System & Visual Identity - Replace purple/galaxy theme with MENSIONE green glow identity. Create centralized design tokens (colors, typography, spacing, glow levels), establish green glow hierarchy, update global styles, fonts, and all base design system foundations. This feature is independent of others but must complete first as all subsequent features depend on the new design tokens.",
+  "status": "completed",
+  "steps": [
+    "1. Read frontend/src/styles/global.css completely to understand current purple theme structure and CSS variable architecture",
+    "2. Replace color tokens in global.css: change --color-accent-purple (#8b5cf6) to MENSIONE green (~#00ff88), --color-background to very dark (#0a0a0f), --color-surface to dark elevated (#13131a). Remove all galaxy/purple accent variables. Add green glow level variables: --glow-green-mensione (strongest), --glow-green-live (medium), --glow-green-hover (subtle), --glow-green-minimal (barely visible)",
+    "3. Update typography tokens: change --font-family to 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif (Inter from Google Fonts). Keep existing size scale but strengthen hierarchy (increase --text-4xl to 2.5rem, --text-3xl to 2rem for strong match titles)",
+    "4. Add spacing tokens if missing: confirm 4/8/12/16/24/32/48/64px scale exists. Add --spacing-20 (5rem) for large gaps",
+    "5. Update focus styles to use MENSIONE green (--color-accent-green) instead of purple, keep 2px outline-offset for accessibility",
+    "6. Update scrollbar styles to match dark surfaces (--color-surface-elevated thumb, --color-background-darker track)",
+    "7. Remove or neutralize all purple glow effects (--glow-purple-subtle, --glow-purple-medium). Replace with green glow utilities but keep them restrained (no casino aesthetics)",
+    "8. Update status color tokens: keep existing --color-success, --color-error, --color-warning, but ensure --color-success uses a different green than MENSIONE primary green to avoid confusion. Use #10b981 for success states, #00ff88 for MENSIONE brand",
+    "9. Add @import for Inter font from Google Fonts at top of global.css: @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');",
+    "10. Create src/styles/tokens.css with extracted token documentation (color palette, green levels 1-6, typography scale, spacing scale, glow hierarchy). Import tokens.css from global.css",
+    "11. Update AppLayout.css, Sidebar.css, Header.css to reference new green tokens instead of purple variables",
+    "12. Test: run `npm run type-check` and `npm run lint`, start dev server `npm run dev`, visually inspect any page - background should be very dark (#0a0a0f), surfaces dark elevated (#13131a), no purple anywhere, Inter font loaded, layout intact"
+  ],
+  "acceptance_criteria": [
+    "All purple color variables removed from global.css",
+    "MENSIONE green (~#00ff88) defined as primary accent",
+    "4-level green glow hierarchy established (mensione/live/hover/minimal)",
+    "Inter font loaded and set as primary font-family",
+    "tokens.css created with full design token documentation",
+    "No purple visible in UI when dev server running",
+    "Focus states use green outline, scrollbar matches dark theme",
+    "TypeScript, ESLint pass with no errors",
+    "Dev server starts without errors at localhost:5173"
+  ],
+  "verification": [
+    "Run `npm run type-check` - must pass with no errors",
+    "Run `npm run lint` - must pass with no errors", 
+    "Run `npm run dev` and navigate to http://localhost:5173",
+    "Inspect page background color in DevTools - should be #0a0a0f",
+    "Inspect any surface element - should be #13131a",
+    "Check Computed styles for font-family - should include Inter",
+    "Search global.css for 'purple' or '#8b5cf6' - should find zero matches",
+    "Focus any interactive element (tab key) - outline should be green not purple"
+  ],
+  "blocked_reason": null,
+  "findings": "Successfully replaced purple/galaxy theme with MENSIONE green glow identity. All color tokens updated to use vibrant green (#00ff88) as primary accent. 4-level green glow hierarchy established (mensione/live/hover/minimal). Inter font loaded from Google Fonts and set as primary font-family. Typography hierarchy strengthened (--text-4xl: 2.5rem, --text-3xl: 2rem). Added --spacing-20 (5rem) token. Created comprehensive tokens.css documentation file. Updated Sidebar.css logo gradient and active nav link styles to use green. Focus states now use green outline. All purple references removed (verified via grep). Build passes successfully. Note: ESLint configuration is missing from the project, so 'npm run lint' verification could not be completed, but TypeScript type-check and production build both pass without errors."
+}

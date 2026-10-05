@@ -40,7 +40,7 @@
   font-size: var(--text-xl);
   font-weight: 700;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, var(--color-text-primary), var(--color-accent-purple-light));
+  background: linear-gradient(135deg, var(--color-text-primary), var(--color-accent-green-light));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -94,9 +94,9 @@
 }
 
 .sidebar__nav-link--active {
-  background-color: rgba(139, 92, 246, 0.1);
-  color: var(--color-accent-purple-light);
-  box-shadow: var(--glow-purple-subtle);
+  background-color: rgba(0, 255, 136, 0.08);
+  color: var(--color-accent-green-light);
+  box-shadow: var(--glow-green-minimal);
 }
 
 .sidebar__nav-link--active::before {
@@ -107,7 +107,7 @@
   transform: translateY(-50%);
   width: 3px;
   height: 60%;
-  background: var(--color-accent-purple);
+  background: var(--color-accent-green);
   border-radius: 0 2px 2px 0;
 }
 
