@@ -7,6 +7,7 @@ import { Predictions } from './pages/Predictions';
 import { EasyMatches } from './pages/EasyMatches';
 import { Analytics } from './pages/Analytics';
 import { Settings } from './pages/Settings';
+import { ComponentsTest } from './pages/ComponentsTest';
 import './pages/pages.css';
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
           <Route path="/easy-matches" element={<EasyMatches />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/components-test" element={<ComponentsTest />} />
         </Routes>
       </AppLayout>
     </Router>

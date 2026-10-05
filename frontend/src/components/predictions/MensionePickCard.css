@@ -1,0 +1,261 @@
+/**
+ * MensionePickCard Component Styles
+ * 
+ * Main prediction card with MENSIONE PICK badge featuring strongest green glow.
+ * Premium aesthetic, responsive design, accessible interactions.
+ */
+
+.mensione-pick-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-accent);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-base);
+}
+
+.mensione-pick-card:hover {
+  background: var(--color-surface-elevated);
+  border-color: var(--color-accent-green);
+  box-shadow: var(--glow-green-hover);
+}
+
+/* Header - match title and favorite button */
+.mensione-pick-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.mensione-pick-card__match-title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0;
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* Favorite button - star icon (⭐/☆) NOT green bag */
+.mensione-pick-card__favorite-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 1.25rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.mensione-pick-card__favorite-button:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-accent-green);
+  color: var(--color-accent-green);
+  transform: scale(1.05);
+}
+
+.mensione-pick-card__favorite-button:focus-visible {
+  outline: 2px solid var(--color-accent-green);
+  outline-offset: 2px;
+}
+
+.mensione-pick-card__favorite-button[aria-pressed="true"] {
+  color: #fbbf24; /* Gold color for filled star */
+  border-color: #fbbf24;
+}
+
+/* MENSIONE PICK badge - strongest green glow */
+.mensione-pick-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.15) 0%, rgba(0, 255, 136, 0.05) 100%);
+  border: 1px solid var(--color-accent-green);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-accent-green);
+  box-shadow: var(--glow-green-mensione);
+  width: fit-content;
+}
+
+.mensione-pick-badge__icon {
+  font-size: 1rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.6));
+}
+
+.mensione-pick-badge__text {
+  line-height: 1;
+}
+
+/* Market section */
+.mensione-pick-card__market {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.mensione-pick-card__market-name {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.mensione-pick-card__outcome {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+/* AI Confidence section */
+.mensione-pick-card__confidence {
+  /* AIConfidence component handles its own styling */
+}
+
+/* Real odds section - displayed SEPARATELY from confidence */
+.mensione-pick-card__odds-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-background-darker);
+  border-radius: var(--radius-md);
+}
+
+.mensione-pick-card__odds-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mensione-pick-card__odds-value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+}
+
+/* Footer - combine checkbox */
+.mensione-pick-card__footer {
+  display: flex;
+  align-items: center;
+  padding-top: var(--spacing-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.mensione-pick-card__combine-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.mensione-pick-card__combine-label:hover {
+  color: var(--color-text-primary);
+}
+
+.mensione-pick-card__combine-checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  cursor: pointer;
+  accent-color: var(--color-accent-green);
+}
+
+.mensione-pick-card__combine-checkbox:focus-visible {
+  outline: 2px solid var(--color-accent-green);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.mensione-pick-card__combine-text {
+  line-height: 1;
+}
+
+/* Responsive - mobile <640px */
+@media (max-width: 639px) {
+  .mensione-pick-card {
+    padding: var(--spacing-4);
+    gap: var(--spacing-3);
+  }
+  
+  .mensione-pick-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-2);
+  }
+  
+  .mensione-pick-card__match-title {
+    font-size: var(--text-lg);
+  }
+  
+  .mensione-pick-card__favorite-button {
+    align-self: flex-end;
+    position: absolute;
+    top: var(--spacing-4);
+    right: var(--spacing-4);
+  }
+  
+  .mensione-pick-badge {
+    font-size: var(--text-xs);
+    padding: var(--spacing-1) var(--spacing-3);
+  }
+  
+  .mensione-pick-card__odds-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-1);
+  }
+  
+  .mensione-pick-card__odds-value {
+    margin-left: 0;
+    font-size: var(--text-xl);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .mensione-pick-card,
+  .mensione-pick-card__favorite-button {
+    transition: none;
+  }
+  
+  .mensione-pick-card__favorite-button:hover {
+    transform: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) {
+  .mensione-pick-card {
+    border-width: 2px;
+  }
+  
+  .mensione-pick-badge {
+    border-width: 2px;
+  }
+  
+  .mensione-pick-card__favorite-button {
+    border-width: 2px;
+  }
+}

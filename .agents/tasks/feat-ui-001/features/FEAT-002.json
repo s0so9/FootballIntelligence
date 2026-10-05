@@ -1,0 +1,50 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Core MENSIONE Components - Build reusable AIConfidence component with green glow money-bag indicators, MensionePickCard, LiveMatchCard, MarketRow, and update existing ProbabilityDisplay/ConfidenceIndicator to use new green theme. These components form the building blocks for the dashboard and match intelligence pages. Depends on FEAT-001 (design tokens must exist first).",
+  "status": "completed",
+  "steps": [
+    "1. Read frontend/src/components/common/ProbabilityDisplay.tsx and ConfidenceIndicator.tsx to understand existing component patterns and props interfaces",
+    "2. Create frontend/src/components/predictions/AIConfidence.tsx: Accept confidence prop (0-1 or 0-100), map to 1-6 scale using: <=0.16=1, <=0.33=2, <=0.5=3, <=0.67=4, <=0.83=5, >0.83=6. Turkish labels: ['Çok düşük', 'Düşük', 'Orta', 'İyi', 'Yüksek', 'Çok yüksek']. Render custom SVG/CSS money-bag icons (NOT emoji) with MENSIONE green fill and scaled glow based on level. Show level/6 text, Turkish label, percentage.",
+    "3. Create AIConfidence.css with money-bag icon styles: .ai-confidence__icon--active uses MENSIONE green fill, box-shadow with green glow (intensity scales 1/6=0.1 opacity to 6/6=0.5 opacity), .ai-confidence__icon--inactive uses muted gray. Use CSS custom properties for glow levels from tokens.css",
+    "4. Create frontend/src/components/predictions/AIConfidence.test.tsx: test confidence=0.82 maps to 5/6 'Yüksek', confidence=0.15 maps to 1/6 'Çok düşük', confidence=1.0 maps to 6/6 'Çok yüksek'. Test NO hardcoded values.",
+    "5. Create frontend/src/components/predictions/MensionePickCard.tsx: Props: homeTeam, awayTeam, marketName, outcome, confidence (pass to AIConfidence), realOdds, isFavorite, onToggleFavorite, onToggleCombine, inCombine. Display MENSIONE PICK badge with strongest green glow (use --glow-green-mensione). Show star icon for favorite (⭐ filled, ☆ empty). Show combine checkbox. AI confidence and odds shown separately - NEVER combined mathematically.",
+    "6. Create MensionePickCard.css: .mensione-pick-card with dark surface background, subtle border. .mensione-pick-badge with strong green glow (box-shadow: 0 0 20px var(--color-accent-green-glow)), padding, uppercase MENSIONE PICK text. .favorite-button and .combine-checkbox with hover states, focus visible outlines. Responsive: stack vertically on mobile <640px.",
+    "7. Create frontend/src/components/dashboard/LiveMatchCard.tsx: Props: homeTeam, awayTeam, score: {home, away}, minute, status ('live'|'ht'|'ft'), liveStats?: {shots, shotsOnTarget, corners, possession}. Show 🔴 LIVE indicator with subtle red pulse animation (respects prefers-reduced-motion). Show score prominently, minute, live stats if available. Empty/loading states: 'Şu anda canlı maç yok' when no data, skeleton when loading, 'Canlı istatistikler mevcut değil' when stats unavailable.",
+    "8. Create LiveMatchCard.css: .live-match-card compact layout, .live-indicator with red pulse @keyframes, .live-stats grid for stats display. Skeleton loader with shimmer effect for loading state.",
+    "9. Create frontend/src/components/predictions/MarketRow.tsx: Props: marketName, confidence, realOdds, onToggleCombine, inCombine. Compact single-line row: market name (e.g., 'İlk Yarı 0.5+ Gol'), confidence percentage, odds, combine checkbox. Use for non-primary markets.",
+    "10. Create MarketRow.css: .market-row flexbox layout, hover background change, focus-within state for accessibility",
+    "11. Update frontend/src/components/common/ConfidenceIndicator.tsx: Replace any purple references with MENSIONE green, ensure it uses new CSS variables from tokens.css, keep existing behavior but align visual treatment with AIConfidence (green color, no purple)",
+    "12. Update frontend/src/components/common/ProbabilityDisplay.tsx: Replace purple status colors with green where appropriate (high probability = green tint, not purple), use new tokens",
+    "13. Test: `npm run test` to run all new component tests, `npm run type-check`, `npm run lint`, manually import components in a test page and verify rendering, glow effects, responsive behavior, accessibility (keyboard focus, reduced motion)"
+  ],
+  "acceptance_criteria": [
+    "AIConfidence component renders 1-6 money-bag icons with green glow scaling by confidence level",
+    "Money-bag icons are CSS/SVG NOT emoji (full color control)",
+    "6/6 confidence has strongest controlled green glow, 1/6 has minimal glow",
+    "MensionePickCard displays MENSIONE PICK badge with strongest green glow",
+    "Favorite uses star icon (⭐/☆) NOT green bag",
+    "AI confidence and real odds displayed separately, never combined",
+    "LiveMatchCard shows live indicator with red pulse, handles empty/loading/unavailable states",
+    "MarketRow provides compact single-line market display",
+    "All components support keyboard navigation and focus states",
+    "prefers-reduced-motion: reduce disables pulse animation",
+    "All tests pass (npm run test)",
+    "TypeScript and ESLint pass with no errors",
+    "Components render correctly in dev server"
+  ],
+  "verification": [
+    "Run `npm run test` - all AIConfidence, component tests pass",
+    "Run `npm run type-check` - no TypeScript errors",
+    "Run `npm run lint` - no ESLint errors",
+    "Run `npm run dev`, create temporary test page importing AIConfidence with confidence={0.82}",
+    "Verify AIConfidence shows 5 green glowing money-bags + 1 gray inactive",
+    "Verify green glow visible but not excessive (premium not casino)",
+    "Test keyboard: Tab through MensionePickCard, favorite/combine focusable and operable with Enter/Space",
+    "Test reduced motion: set prefers-reduced-motion in DevTools, pulse animation should disable",
+    "Verify LiveMatchCard empty state shows 'Şu anda canlı maç yok'",
+    "Verify no console errors in browser DevTools"
+  ],
+  "blocked_reason": null,
+  "findings": "Successfully implemented all core MENSIONE components. Created AIConfidence component with 1-6 money-bag scale using custom SVG icons with MENSIONE green glow that scales by confidence level. Created MensionePickCard with strongest green glow for MENSIONE PICK badge, displaying AI confidence and real odds separately (never combined). Created LiveMatchCard with red pulse animation (respects prefers-reduced-motion), empty/loading states, and live stats display. Created MarketRow for compact market display. Updated ConfidenceIndicator and ProbabilityDisplay components to use MENSIONE green from tokens (they already reference global CSS status classes which were updated in FEAT-001). All 22 AIConfidence tests pass. TypeScript type-check passes. ESLint passes with warning about TypeScript version (not a blocker). Production build passes. Created test setup file for vitest with jest-dom matchers. Created .eslintrc.cjs configuration file (was missing). Created ComponentsTest page at /components-test route for manual verification. All components are responsive (mobile <640px), keyboard accessible (focus states, ARIA labels), support prefers-reduced-motion, and high contrast mode."
+}
