@@ -7,7 +7,7 @@ MatchFeatureSnapshot, handles partial failures gracefully, and aggregates result
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 from app.prediction.interfaces import (
@@ -24,6 +24,7 @@ from app.prediction.negative_binomial import NegativeBinomialModel
 from app.prediction.form_adjusted import FormAdjustedModel
 from app.prediction.logistic_regression import LogisticRegressionModel
 from app.prediction.ensemble_engine import EnsembleEngine, ReliabilityWeights
+from app.prediction.calibration_engine import IsotonicCalibration
 
 
 logger = logging.getLogger(__name__)
@@ -404,3 +405,138 @@ class EnsembleIntegration:
             EnsembleIntegration with ReliabilityWeights strategy
         """
         return EnsembleIntegration()
+
+
+class Calibrator1X2:
+    """Calibrator for 1X2 probabilities (home/draw/away).
+    
+    Wraps three IsotonicCalibration instances - one for each outcome.
+    Renormalizes after calibration to ensure probabilities sum to 1.0.
+    """
+    
+    def __init__(self):
+        """Initialize three calibrators."""
+        self.home_calibrator = IsotonicCalibration()
+        self.draw_calibrator = IsotonicCalibration()
+        self.away_calibrator = IsotonicCalibration()
+    
+    @property
+    def is_fitted(self) -> bool:
+        """Check if all three calibrators are fitted."""
+        return (
+            self.home_calibrator.is_fitted and
+            self.draw_calibrator.is_fitted and
+            self.away_calibrator.is_fitted
+        )
+    
+    def calibrate_1x2(
+        self,
+        home_prob: float,
+        draw_prob: float,
+        away_prob: float
+    ) -> Tuple[float, float, float]:
+        """Calibrate 1X2 probabilities and renormalize.
+        
+        Args:
+            home_prob: Raw home win probability
+            draw_prob: Raw draw probability
+            away_prob: Raw away win probability
+            
+        Returns:
+            Tuple of (calibrated_home, calibrated_draw, calibrated_away)
+        """
+        if not self.is_fitted:
+            # Return uncalibrated if not fitted
+            return (home_prob, draw_prob, away_prob)
+        
+        # Calibrate each outcome
+        cal_home = self.home_calibrator.calibrate(home_prob)
+        cal_draw = self.draw_calibrator.calibrate(draw_prob)
+        cal_away = self.away_calibrator.calibrate(away_prob)
+        
+        # Renormalize to sum to 1.0
+        total = cal_home + cal_draw + cal_away
+        if total > 0:
+            cal_home /= total
+            cal_draw /= total
+            cal_away /= total
+        else:
+            # Fallback to original if calibration fails
+            return (home_prob, draw_prob, away_prob)
+        
+        return (cal_home, cal_draw, cal_away)
+
+
+class CalibrationIntegration:
+    """Integration layer for probability calibration.
+    
+    Wires the canonical calibration_engine.py into the prediction pipeline.
+    """
+    
+    def __init__(self, calibrator: Optional[Calibrator1X2] = None):
+        """Initialize calibration integration.
+        
+        Args:
+            calibrator: Calibrator1X2 instance (creates new if None)
+        """
+        if calibrator is None:
+            calibrator = Calibrator1X2()
+        self.calibrator = calibrator
+    
+    def calibrate_prediction(
+        self,
+        prediction: ModelPrediction
+    ) -> ModelPrediction:
+        """Calibrate a prediction's 1X2 probabilities.
+        
+        Args:
+            prediction: Raw model prediction
+            
+        Returns:
+            New ModelPrediction with calibrated probabilities
+        """
+        # Calibrate probabilities
+        cal_home, cal_draw, cal_away = self.calibrator.calibrate_1x2(
+            prediction.home_win_prob,
+            prediction.draw_prob,
+            prediction.away_win_prob
+        )
+        
+        # Determine calibration status
+        is_calibrated = self.calibrator.is_fitted
+        calibration_status = (
+            "calibrated" if is_calibrated
+            else "uncalibrated_fallback"
+        )
+        
+        # Create new prediction with calibrated probabilities
+        calibrated_metadata = {
+            **prediction.metadata,
+            "calibration_status": calibration_status,
+            "is_calibrated": is_calibrated,
+            "original_home_prob": prediction.home_win_prob,
+            "original_draw_prob": prediction.draw_prob,
+            "original_away_prob": prediction.away_win_prob,
+        }
+        
+        return ModelPrediction(
+            model_id=prediction.model_id,
+            home_score_mean=prediction.home_score_mean,
+            away_score_mean=prediction.away_score_mean,
+            home_win_prob=cal_home,
+            draw_prob=cal_draw,
+            away_win_prob=cal_away,
+            confidence_score=prediction.confidence_score,
+            data_quality_score=prediction.data_quality_score,
+            score_distribution=prediction.score_distribution,
+            metadata=calibrated_metadata
+        )
+    
+    @staticmethod
+    def create_default() -> "CalibrationIntegration":
+        """Create calibration integration with unfitted calibrator.
+        
+        Returns:
+            CalibrationIntegration with new unfitted Calibrator1X2
+        """
+        return CalibrationIntegration()
