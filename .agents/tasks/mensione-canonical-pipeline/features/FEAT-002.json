@@ -1,31 +1,41 @@
 {
   "id": "FEAT-002",
-  "type": "feat",
-  "description": "Create ModelOrchestrator - runs all compatible models from MatchFeatureSnapshot, collects outputs as ModelPrediction|ModelAvailability, tracks which models ran vs failed vs unavailable. Does NOT create new models or duplicate existing ones.",
+  "type": "fix",
+  "description": "Verify and fix canonical pipeline integrity issues identified in review.json. Address: (1) Verify _extract_canonical_snapshot uses extract_feature_snapshot, (2) Instantiate DataQualityEngine and populate snapshot.data_quality_report, (3) Search and destroy hardcoded model_agreement=1.0 and data_quality_score=0.7, (4) Verify ensemble model_agreement flows to confidence assessment, (5) Verify calibration metadata includes is_fitted status. This is surgical fixes to existing pipeline, not rebuild.",
   "status": "pending",
   "steps": [
-    "1. Create backend/app/prediction/model_orchestrator.py with ModelOrchestrator class. Constructor accepts: list of PredictionModel instances (poisson, dixon_coles, elo, monte_carlo, negative_binomial, form_adjusted, contextual_adjuster, logistic_regression), optional MatchFeatureSnapshot for context.",
-    "2. Add ModelOrchestrator.register_model(model: PredictionModel) to dynamically add models to the orchestrator.",
-    "3. Add ModelOrchestrator.run_all(snapshot: MatchFeatureSnapshot, match_context: Optional[Dict] = None) -> ModelOrchestrationResult. For each registered model: (a) call model.check_requirements(snapshot.to_features_dict()), (b) if requirements met: call model.predict(), (c) if requirements not met: create ModelAvailability with reason, (d) catch exceptions and convert to ModelAvailability with 'failed' reason.",
-    "4. Define ModelOrchestrationResult dataclass containing: successful_predictions: List[ModelPrediction], unavailable_models: List[ModelAvailability], failed_models: List[ModelAvailability], participating_model_ids: List[str], unavailable_model_ids: List[str], failed_model_ids: List[str], execution_metadata: Dict (timing, counts).",
-    "5. Add ModelOrchestrationResult.has_sufficient_models(min_models: int = 2) -> bool to check if enough models ran for ensemble.",
-    "6. Add helper method ModelOrchestrator.create_default_registry() -> List[PredictionModel] that instantiates all existing models with default configs (Poisson, DixonColes, Elo, MonteCarlo, etc.) - this is a convenience factory, NOT new implementations.",
-    "7. Integration: Adapt existing models if needed to implement PredictionModel interface. PoissonModel, DixonColesModel, EloRatingSystem must expose predict(features, context) -> ModelPrediction|ModelAvailability. Check existing interfaces.py to see current signatures.",
-    "8. Add unit tests in backend/tests/test_model_orchestrator.py covering: orchestrator with 3 mock models (2 succeed, 1 unavailable), orchestrator with all models failing, orchestrator with insufficient models (< 2), execution_metadata contains timing and counts, default_registry creates all 8+ models."
+    "Read backend/app/prediction/service.py _extract_canonical_snapshot() method (search for 'def _extract_canonical_snapshot')",
+    "If _extract_canonical_snapshot doesn't exist or doesn't call extract_feature_snapshot from feature_snapshot.py, implement it correctly",
+    "Read backend/app/prediction/feature_snapshot.py extract_feature_snapshot() to understand signature and DataQualityEngine usage",
+    "If DataQualityEngine not instantiated in PredictionService.__init__, add: from app.prediction.data_quality import DataQualityEngine; self.data_quality_engine = DataQualityEngine()",
+    "Update extract_feature_snapshot or _extract_canonical_snapshot to call data_quality_engine and populate snapshot.data_quality_report",
+    "Search for hardcoded confidence values: cd backend && Select-String -Path 'app\\prediction\\*.py' -Pattern 'model_agreement\\s*=\\s*(0\\.\\d+|1\\.0)' | Where-Object { $_.Line -notmatch '^(\\s*#|.*def.*model_agreement)' }",
+    "For each match in production code (not tests, not function signatures), replace with real pipeline value: orchestration_result.model_agreement or ensemble_result.metadata.get('model_agreement', 0.0)",
+    "Search for hardcoded data quality: cd backend && Select-String -Path 'app\\prediction\\*.py' -Pattern 'data_quality.*=\\s*0\\.\\d+' | Where-Object { $_.Line -notmatch '^(\\s*#|.*def.*data_quality)' }",
+    "Replace with snapshot.data_quality_report.overall_score if snapshot.data_quality_report else 0.5 (with clear comment explaining fallback)",
+    "Read generate_full_prediction() STEP 5 (confidence assessment, lines 836+) and verify it receives real model_agreement from orchestration_result or ensemble_result.metadata",
+    "Read calibration_engine.py and verify Calibrator1X2 exposes is_fitted property or metadata field",
+    "If not exposed, add is_fitted property to Calibrator1X2 class",
+    "Update CalibrationIntegration.calibrate_prediction to include is_fitted in returned metadata",
+    "Run component tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_confidence_engine.py tests/test_calibration_engine.py tests/test_model_orchestrator.py -v",
+    "Run integration test: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback -v",
+    "Verify no hardcoded values remain: rerun search commands from steps 6 and 8"
   ],
   "acceptance_criteria": [
-    "ModelOrchestrator.run_all() executes all registered models without stopping on first failure",
-    "ModelOrchestrationResult clearly distinguishes successful/unavailable/failed models",
-    "Partial model failure does not kill entire orchestration - remaining models still run",
-    "Default registry instantiates Poisson, DixonColes, Elo, MonteCarlo, NegativeBinomial, FormAdjusted, ContextualAdjuster, LogisticRegression (8 models)",
-    "Unit tests pass: pytest backend/tests/test_model_orchestrator.py -v (5+ tests)",
-    "No existing tests broken: pytest backend/tests/ --tb=short (931 baseline)"
+    "_extract_canonical_snapshot exists and calls extract_feature_snapshot from feature_snapshot.py",
+    "DataQualityEngine instantiated in PredictionService.__init__",
+    "snapshot.data_quality_report populated with real quality assessment (not None)",
+    "No hardcoded model_agreement=1.0 in production code (tests/defaults in __init__ OK)",
+    "No hardcoded data_quality_score=0.7 in production code",
+    "Confidence assessment receives real model_agreement from ensemble",
+    "Calibration metadata includes is_fitted status",
+    "Component tests pass (confidence, calibration, orchestrator)",
+    "Integration test passes with real pipeline values"
   ],
   "verification": [
-    "Run: cd backend && python -m pytest tests/test_model_orchestrator.py -v",
-    "Expected: 5+ new tests pass, orchestrator handles partial failures gracefully",
-    "Run: cd backend && python -m pytest tests/test_poisson.py tests/test_dixon_coles.py tests/test_elo.py -v",
-    "Expected: All existing model tests still pass (models unchanged)"
+    "cd C:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_confidence_engine.py tests/test_calibration_engine.py tests/test_model_orchestrator.py -v",
+    "cd C:\\FootballIntelligence\\backend && Select-String -Path 'app\\prediction\\*.py' -Pattern '(model_agreement|data_quality_score)\\s*=\\s*[0-9]' | Where-Object { $_.Line -notmatch '^(\\s*#|.*def)' }",
+    "Verify search returns no suspicious hardcoded values in production code"
   ],
   "blocked_reason": null,
   "findings": ""

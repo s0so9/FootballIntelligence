@@ -1,32 +1,41 @@
 {
   "id": "FEAT-005",
   "type": "feat",
-  "description": "Real Confidence Integration - wire ConfidenceEngine to actual pipeline outputs, replace all hardcoded assumptions (data_quality_score=0.7, model_agreement=1.0) with real values from DataQualityGate, ensemble, calibration, and feature completeness.",
+  "description": "Extend PredictionVersionManager to store SmartMarketSelector's BestTip as frozen pick. Add 9 frozen pick fields (selected_market, selection_text, selection_probability, selection_confidence, selection_odds, selection_fair_odds, selection_edge, value_classification, risk_level) and 3 result tracking foundation fields (actual_result, profit_loss, settled_at). Update create_version() to accept mensione_pick parameter and populate fields from BestTip. Add foundation methods settle_prediction() and get_settled_picks_by_market() as stubs. This enables future per-market historical accuracy tracking.",
   "status": "pending",
   "steps": [
-    "1. AUDIT existing ConfidenceEngine (backend/app/prediction/confidence_engine.py): ConfidenceEngine.assess(model_agreement, data_quality_score, n_matches, brier_score, lineup_status, recent_predictions) -> ConfidenceAssessment. Components: model_agreement (from ensemble), data_quality (from DataQualityGate), sample_size_score (from n_matches), calibration_reliability (from brier_score), lineup_certainty (from lineup_status), feature_stability (from recent_predictions variance).",
-    "2. Integration with Pipeline: Add ConfidenceIntegration class in model_orchestrator.py. Method: assess_confidence(snapshot: MatchFeatureSnapshot, orchestration_result: ModelOrchestrationResult, ensemble_prediction: ModelPrediction, calibration_metrics: Optional[CalibrationMetrics]) -> ConfidenceAssessment. Extract: (a) model_agreement from ensemble_prediction.metadata['model_agreement'], (b) data_quality_score from snapshot.data_quality_metadata.overall_score, (c) n_matches from snapshot metadata or features dict, (d) brier_score from calibration_metrics if available, (e) lineup_status from snapshot.player_availability.lineup_status ('confirmed'/'expected'/'unknown'), (f) recent_predictions = None for now (future: track prediction history).",
-    "3. REMOVE HARDCODED VALUES: Search backend/app/prediction/ for hardcoded values like 'data_quality_score = 0.7', 'model_agreement = 1.0', 'confidence = 0.8', etc. Replace with actual ConfidenceAssessment.overall_confidence from ConfidenceIntegration. Update PredictionService.generate_prediction() to use real confidence instead of None.",
-    "4. Add confidence to ModelPrediction: Ensure ModelPrediction.confidence_score is populated from ConfidenceAssessment.overall_confidence (already exists in interfaces.py ModelPrediction, just needs wiring).",
-    "5. Handle Missing Data Gracefully: When DataQualityGate returns low score (< 0.4), ConfidenceEngine should reflect that in low overall_confidence. When ensemble has low model_agreement (high variance), confidence decreases. When calibration unavailable (brier_score=None), use calibration_reliability=0.7 (neutral default from ConfidenceEngine._calculate_calibration_reliability).",
-    "6. Add unit tests in backend/tests/test_confidence_integration.py covering: ConfidenceIntegration with high-quality inputs produces HIGH confidence (>0.7), ConfidenceIntegration with low data_quality (<0.4) produces LOW confidence (<0.4), ConfidenceIntegration with low model_agreement (<0.5) reduces confidence, ConfidenceIntegration with no calibration uses neutral reliability (0.7), ConfidenceAssessment.component_breakdown shows weighted contributions summing to overall_confidence."
+    "Read backend/app/prediction/prediction_version.py to understand PredictionVersion dataclass and PredictionVersionManager structure",
+    "Extend PredictionVersion dataclass with frozen pick fields: selected_market: Optional[str] = None, selection_text: Optional[str] = None, selection_probability: Optional[float] = None, selection_confidence: Optional[float] = None, selection_odds: Optional[float] = None, selection_fair_odds: Optional[float] = None, selection_edge: Optional[float] = None, value_classification: Optional[str] = None, risk_level: Optional[str] = None",
+    "Add result tracking foundation fields: actual_result: Optional[str] = None, profit_loss: Optional[float] = None, settled_at: Optional[datetime] = None",
+    "Locate PredictionVersionManager.create_version() method signature",
+    "Add parameter: mensione_pick: Optional[Dict[str, Any]] = None",
+    "In create_version(), after creating version object, check if mensione_pick is BestTip: if mensione_pick and mensione_pick.get('type') == 'best_tip': version.selected_market = mensione_pick.get('market'); version.selection_text = mensione_pick.get('selection'); version.selection_probability = mensione_pick.get('probability'); version.selection_confidence = mensione_pick.get('confidence'); version.selection_odds = mensione_pick.get('bookmaker_odds'); version.selection_fair_odds = mensione_pick.get('fair_odds'); version.selection_edge = mensione_pick.get('edge'); version.value_classification = mensione_pick.get('value_classification'); version.risk_level = mensione_pick.get('risk_level')",
+    "If mensione_pick is PassDecision (type='pass_decision') or None, leave frozen pick fields as None",
+    "Add foundation method to PredictionVersionManager: def settle_prediction(self, version_id: str, actual_result: str, profit_loss: Optional[float] = None) -> Optional[PredictionVersion]: # TODO: Implement settlement logic for future historical accuracy tracking; pass",
+    "Add foundation method: def get_settled_picks_by_market(self, market_type: str, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> List[PredictionVersion]: # TODO: Implement query for settled picks by market type; return []",
+    "Read backend/app/prediction/service.py generate_full_prediction() to find create_version() call (around line 955)",
+    "Update call to pass mensione_pick: version = self.version_manager.create_version(match_id=match.id, stage=stage, prediction_data=prediction_data, model_versions=models_used, data_quality_score=..., confidence_score=..., notes=[...], mensione_pick=mensione_pick)",
+    "Create or extend backend/tests/test_prediction_version.py with test fixtures for BestTip dict and PassDecision dict",
+    "Test cases: (1) create_version with BestTip populates all 9 frozen pick fields, (2) create_version with PassDecision leaves frozen pick fields None, (3) create_version without mensione_pick leaves frozen pick fields None, (4) frozen pick fields preserve values correctly (no mutation), (5) actual_result/profit_loss/settled_at remain None initially, (6) settle_prediction method exists and accepts correct parameters, (7) get_settled_picks_by_market method exists and returns list",
+    "Run version manager tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_version.py -v",
+    "Run integration test: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback -v to verify frozen pick stored in pipeline"
   ],
   "acceptance_criteria": [
-    "ConfidenceEngine receives real values from snapshot.data_quality_metadata, ensemble.metadata['model_agreement'], calibration_metrics.brier_score",
-    "No hardcoded confidence values remain in prediction pipeline (confidence=0.7, model_agreement=1.0, etc.)",
-    "Confidence correctly degrades with low data quality, low model agreement, or missing calibration",
-    "ConfidenceAssessment.component_breakdown provides transparency (model_agreement=0.25*X, data_quality=0.25*Y, ...)",
-    "All existing tests pass: pytest backend/tests/test_confidence_engine.py -v",
-    "New integration tests pass: pytest backend/tests/test_confidence_integration.py -v (5+ tests)",
-    "No regressions: pytest backend/tests/ --tb=short (931 baseline)"
+    "PredictionVersion has 9 frozen pick fields (selected_market, selection_text, selection_probability, selection_confidence, selection_odds, selection_fair_odds, selection_edge, value_classification, risk_level)",
+    "PredictionVersion has 3 result tracking fields (actual_result, profit_loss, settled_at) initialized to None",
+    "create_version() accepts mensione_pick: Optional[Dict[str, Any]] parameter",
+    "create_version() populates frozen pick fields when mensione_pick type='best_tip'",
+    "create_version() leaves frozen pick fields None when mensione_pick type='pass_decision' or None",
+    "settle_prediction() method exists (stub with TODO comment)",
+    "get_settled_picks_by_market() method exists (stub returning empty list)",
+    "PredictionService.generate_full_prediction() passes mensione_pick to create_version()",
+    "7+ unit tests verify frozen pick storage, all passing",
+    "Integration test verifies frozen picks stored correctly in full pipeline"
   ],
   "verification": [
-    "Run: cd backend && python -m pytest tests/test_confidence_engine.py -v",
-    "Expected: All existing ConfidenceEngine tests pass (no changes to core logic)",
-    "Run: cd backend && python -m pytest tests/test_confidence_integration.py -v",
-    "Expected: 5+ tests pass showing real confidence calculation from pipeline components",
-    "Run: cd backend && python -m pytest tests/ -k 'not (confidence or calibration or ensemble or orchestrator or snapshot)' --tb=short",
-    "Expected: All other tests still pass"
+    "cd C:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_version.py -v",
+    "cd C:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback -v",
+    "Verify frozen pick fields populated in version object"
   ],
   "blocked_reason": null,
   "findings": ""

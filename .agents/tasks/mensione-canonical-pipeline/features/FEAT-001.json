@@ -1,30 +1,35 @@
 {
   "id": "FEAT-001",
-  "type": "feat",
-  "description": "Create MatchFeatureSnapshot - canonical feature representation for one match containing all available data without fabrication. Integrates DataQualityGate and source provenance tracking.",
+  "type": "fix",
+  "description": "Fix failing test test_full_prediction_pipeline_with_development_fallback by correcting team IDs to match existing DevelopmentProvider data, then verify canonical pipeline execution produces predicted_score. Test uses non-existent team_pipeline_1/2 but DevelopmentProvider has dev_team_alpha/beta/gamma/delta with 20 matches (19 completed). Simple ID fix should make test pass.",
   "status": "pending",
   "steps": [
-    "1. Create backend/app/prediction/feature_snapshot.py with MatchFeatureSnapshot dataclass containing: match_identity, team_ids, competition, strength_metrics (home/away attack/defense), form_metrics (recent/opponent-adjusted), home_advantage, league_context, player_availability (injuries/suspensions/lineup_status), tactical_context, spatial_features, first_half_context, data_quality_metadata (DataQualityReport from DataQualityGate), source_provenance (per-field source tracking), market_context (odds if available), live_context (for future use). All fields Optional - None means unavailable, not zero.",
-    "2. Add MatchFeatureSnapshot.from_features(features: Dict, match: Match, data_quality_report: DataQualityReport) factory method that maps MatchFeatureExtractor output to the canonical snapshot structure.",
-    "3. Add MatchFeatureSnapshot.validate() method that ensures no field contains fabricated placeholder values (e.g., all strengths == 1.0 should trigger warning in metadata, not failure).",
-    "4. Add MatchFeatureSnapshot.to_dict() for serialization to AnalysisContext.",
-    "5. Integration: Modify MatchFeatureExtractor in backend/app/features/base.py to optionally return MatchFeatureSnapshot instead of raw dict via extract_snapshot(match: Match) -> MatchFeatureSnapshot method.",
-    "6. Wire DataQualityGate into feature extraction: call DataQualityGate.assess(features) and attach report to snapshot.data_quality_metadata.",
-    "7. Add unit tests in backend/tests/test_feature_snapshot.py covering: snapshot creation from features dict, validation of missing data (all None fields valid), validation rejecting fabricated uniform values, round-trip serialization via to_dict(), DataQualityGate integration."
+    "Read backend/tests/test_prediction_service.py lines 550-605 to locate TestDevelopmentDataFallback.test_full_prediction_pipeline_with_development_fallback",
+    "Replace team_pipeline_1 with dev_team_alpha (home_team_id)",
+    "Replace team_pipeline_2 with dev_team_beta (away_team_id)",
+    "Replace comp_pipeline with dev_comp_league_a (competition_id)",
+    "Replace season_pipeline with dev_season_2023_2024 (season_id)",
+    "Run the specific failing test: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback::test_full_prediction_pipeline_with_development_fallback -v",
+    "If test still fails, read generate_full_prediction() execution path in service.py to diagnose why predicted_score is None",
+    "Check if _extract_canonical_snapshot() exists and calls extract_feature_snapshot() from feature_snapshot.py",
+    "Verify orchestration_result has successful_predictions before proceeding to ensemble",
+    "Verify market_probs.exact_score_top is populated (lines 915-925 in service.py)",
+    "Fix any bugs found in pipeline execution (do not rebuild - fix bugs)",
+    "Rerun test until PASS",
+    "Run full DevelopmentDataFallback test class: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback -v"
   ],
   "acceptance_criteria": [
-    "MatchFeatureSnapshot dataclass exists with all specified fields typed as Optional",
-    "Factory method from_features() correctly maps MatchFeatureExtractor output",
-    "Snapshot preserves None for unavailable data without converting to 0 or 1.0",
-    "DataQualityReport attached to snapshot.data_quality_metadata",
-    "Unit tests pass: pytest backend/tests/test_feature_snapshot.py -v (5+ tests)",
-    "No existing tests broken: pytest backend/tests/ -v (931 baseline maintained)"
+    "Test uses correct team IDs matching DevelopmentProvider (dev_team_alpha, dev_team_beta, dev_comp_league_a, dev_season_2023_2024)",
+    "test_full_prediction_pipeline_with_development_fallback passes with predicted_score not None",
+    "context.mensione_pick is not None and contains pick_market, confidence_label, predicted_score",
+    "context.prediction_version_id is not None",
+    "context.model_predictions has at least 1 prediction with probabilities",
+    "All TestDevelopmentDataFallback tests pass (2 tests in class)",
+    "No changes to DevelopmentProvider (already has 20 matches)"
   ],
   "verification": [
-    "Run: cd backend && python -m pytest tests/test_feature_snapshot.py -v",
-    "Expected: 5+ new tests pass",
-    "Run: cd backend && python -m pytest tests/ -k 'not test_feature_snapshot' --tb=short",
-    "Expected: All 931 existing tests still pass"
+    "cd C:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback -v",
+    "Verify output shows 2 passed for TestDevelopmentDataFallback"
   ],
   "blocked_reason": null,
   "findings": ""

@@ -555,10 +555,10 @@ class TestDevelopmentDataFallback:
         # Create minimal match
         minimal_match = Match(
             id="pipeline_test_match",
-            home_team_id="team_pipeline_1",
-            away_team_id="team_pipeline_2",
-            competition_id="comp_pipeline",
-            season_id="season_pipeline",
+            home_team_id="dev_team_alpha",
+            away_team_id="dev_team_beta",
+            competition_id="dev_comp_league_a",
+            season_id="dev_season_2023_2024",
             scheduled_at=datetime.now() + timedelta(days=1),
             status=MatchStatus.SCHEDULED,
         )
@@ -591,10 +591,10 @@ class TestDevelopmentDataFallback:
         # Create minimal match
         minimal_match = Match(
             id="markets_test_match",
-            home_team_id="team_markets_1",
-            away_team_id="team_markets_2",
-            competition_id="comp_markets",
-            season_id="season_markets",
+            home_team_id="dev_team_alpha",
+            away_team_id="dev_team_beta",
+            competition_id="dev_comp_league_a",
+            season_id="dev_season_2023_2024",
             scheduled_at=datetime.now() + timedelta(days=1),
             status=MatchStatus.SCHEDULED,
         )

@@ -30,11 +30,13 @@ class TeamStrengthMetrics:
     xg_per_match: Optional[float] = None
     shots_per_match: Optional[float] = None
     shots_on_target_per_match: Optional[float] = None
+    attack_strength: Optional[float] = None  # Relative attack strength vs league avg
     
     # Defence metrics
     goals_conceded_per_match: Optional[float] = None
     xg_against_per_match: Optional[float] = None
     shots_against_per_match: Optional[float] = None
+    defense_strength: Optional[float] = None  # Relative defense strength vs league avg
     
     # Overall
     points_per_match: Optional[float] = None
@@ -227,20 +229,28 @@ class MatchFeatureSnapshot:
         # Home strength
         if self.home_strength:
             features["home_goals_per_match"] = self.home_strength.goals_scored_per_match
+            features["home_goals_scored_avg"] = self.home_strength.goals_scored_per_match  # Alias for Poisson
             features["home_xg_per_match"] = self.home_strength.xg_per_match
             features["home_goals_conceded_per_match"] = self.home_strength.goals_conceded_per_match
+            features["home_goals_conceded_avg"] = self.home_strength.goals_conceded_per_match  # Alias for Poisson
             features["home_xg_against_per_match"] = self.home_strength.xg_against_per_match
             features["home_points_per_match"] = self.home_strength.points_per_match
             features["home_elo"] = self.home_strength.elo_rating
+            features["home_attack_strength"] = self.home_strength.attack_strength
+            features["home_defense_strength"] = self.home_strength.defense_strength
         
         # Away strength
         if self.away_strength:
             features["away_goals_per_match"] = self.away_strength.goals_scored_per_match
+            features["away_goals_scored_avg"] = self.away_strength.goals_scored_per_match  # Alias for Poisson
             features["away_xg_per_match"] = self.away_strength.xg_per_match
             features["away_goals_conceded_per_match"] = self.away_strength.goals_conceded_per_match
+            features["away_goals_conceded_avg"] = self.away_strength.goals_conceded_per_match  # Alias for Poisson
             features["away_xg_against_per_match"] = self.away_strength.xg_against_per_match
             features["away_points_per_match"] = self.away_strength.points_per_match
             features["away_elo"] = self.away_strength.elo_rating
+            features["away_attack_strength"] = self.away_strength.attack_strength
+            features["away_defense_strength"] = self.away_strength.defense_strength
         
         # Home form
         if self.home_form:

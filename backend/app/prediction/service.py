@@ -831,7 +831,7 @@ class PredictionService:
             import logging
             logging.error(f"Confidence assessment failed: {e}", exc_info=True)
             # Fallback to default confidence
-            from app.prediction.confidence_engine import ConfidenceComponents
+            from app.prediction.confidence_engine import ConfidenceComponents, ConfidenceWeights
             confidence_assessment = ConfidenceAssessment(
                 overall_confidence=0.5,
                 confidence_label="MEDIUM",
@@ -843,8 +843,8 @@ class PredictionService:
                     lineup_certainty=0.5,
                     prediction_stability=0.5
                 ),
-                contributing_factors=[],
-                limiting_factors=["Confidence assessment error"]
+                weights=ConfidenceWeights(),
+                component_breakdown={}
             )
         
         # STEP 6: Convert score distribution to tuple format for MarketDerivationEngine
@@ -934,8 +934,8 @@ class PredictionService:
                 "overall": confidence_assessment.overall_confidence,
                 "label": confidence_assessment.confidence_label,
                 "components": confidence_assessment.components.__dict__,
-                "contributing_factors": confidence_assessment.contributing_factors,
-                "limiting_factors": confidence_assessment.limiting_factors
+                "weights": confidence_assessment.weights.__dict__,
+                "component_breakdown": confidence_assessment.component_breakdown
             },
             "orchestration": {
                 "models_run": len(orchestration_result.successful_predictions),
@@ -964,6 +964,15 @@ class PredictionService:
             logging.error(f"Prediction versioning failed: {e}", exc_info=True)
         
         # STEP 12: Build legacy Prediction object for backward compatibility
+        # Convert score distribution from tuple keys to string keys for legacy Prediction
+        legacy_score_distribution = {}
+        if calibrated_prediction.score_distribution:
+            for score_key, prob in calibrated_prediction.score_distribution.items():
+                if isinstance(score_key, tuple):
+                    legacy_score_distribution[f"{score_key[0]}-{score_key[1]}"] = prob
+                else:
+                    legacy_score_distribution[str(score_key)] = prob
+        
         legacy_prediction = Prediction(
             id=str(uuid.uuid4()),
             match_id=match.id,
@@ -974,8 +983,8 @@ class PredictionService:
             away_xg=calibrated_prediction.away_score_mean,
             predicted_home_score=None,  # Set from predicted_score
             predicted_away_score=None,
-            btts_probability=None,  # TODO: derive from score distribution
-            score_distribution=calibrated_prediction.score_distribution,
+            btts_probability=market_probs.btts_yes if market_probs else 0.0,  # Derive from market derivation
+            score_distribution=legacy_score_distribution,
             over_under_probabilities={},
             asian_handicap_probabilities={},
             model_id=ensemble_result.model_id,
@@ -983,6 +992,7 @@ class PredictionService:
             model_type=ModelType.POISSON,  # Legacy field
             confidence_score=confidence_assessment.overall_confidence,
             created_at=datetime.now(),
+            generated_at=datetime.now(),  # Required field
             statistical_features=snapshot.get_feature_dict(),
         )
         
@@ -1011,23 +1021,14 @@ class PredictionService:
         context.predicted_score = predicted_score
         context.mensione_pick = mensione_pick
         context.prediction_version_id = version.version_id if version else None
-        context.confidence_assessment = confidence_assessment  # Add confidence to context
+        # confidence_assessment is embedded in confidence dict in prediction_version_data
         
         # Calculate execution time
         execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
         
         # Add pipeline metadata to context
-        if not hasattr(context, 'pipeline_metadata'):
-            context.pipeline_metadata = {}
-        context.pipeline_metadata.update({
-            "execution_time_ms": execution_time_ms,
-            "models_used": list(models_used.keys()),
-            "models_unavailable": [m.model_id for m in orchestration_result.unavailable_models],
-            "ensemble_agreement": ensemble_result.metadata.get("model_agreement", 0.0),
-            "calibration_status": calibration_metadata.get("calibration_status", "unknown"),
-            "data_quality_score": snapshot.data_quality_report.overall_score if snapshot.data_quality_report else None,
-            "pipeline_version": "1.0.0"
-        })
+        # Pipeline metadata is already stored in prediction_version
+        # No need to add to context which doesn't have that field
         
         return context
     
@@ -1085,6 +1086,68 @@ class PredictionService:
             scheduled_at=match.scheduled_at if hasattr(match, 'scheduled_at') else None,
             market_info=None  # TODO: extract from odds_data if available
         )
+        
+        # COMPATIBILITY: If snapshot has no strength metrics (feature_set was None),
+        # populate from the flat features dict to ensure models can run
+        if snapshot.home_strength is None or snapshot.away_strength is None:
+            from app.prediction.feature_snapshot import TeamStrengthMetrics, FormMetrics
+            
+            # Populate home strength from features
+            if snapshot.home_strength is None:
+                snapshot.home_strength = TeamStrengthMetrics(
+                    goals_scored_per_match=features.get("home_recent_avg_goals_scored") or features.get("home_goals_scored_avg") or features.get("home_goal_scoring_rate"),
+                    xg_per_match=features.get("home_xg_avg"),
+                    goals_conceded_per_match=features.get("home_recent_avg_goals_conceded") or features.get("home_goals_conceded_avg") or features.get("home_goal_conceding_rate"),
+                    xg_against_per_match=features.get("home_xg_conceded_avg"),
+                    points_per_match=features.get("home_form_points_per_match") or features.get("home_points_per_match"),
+                    elo_rating=features.get("home_elo"),
+                    attack_strength=features.get("home_attack_strength"),
+                    defense_strength=features.get("home_defense_strength"),
+                )
+            
+            # Populate away strength from features
+            if snapshot.away_strength is None:
+                snapshot.away_strength = TeamStrengthMetrics(
+                    goals_scored_per_match=features.get("away_recent_avg_goals_scored") or features.get("away_goals_scored_avg") or features.get("away_goal_scoring_rate"),
+                    xg_per_match=features.get("away_xg_avg"),
+                    goals_conceded_per_match=features.get("away_recent_avg_goals_conceded") or features.get("away_goals_conceded_avg") or features.get("away_goal_conceding_rate"),
+                    xg_against_per_match=features.get("away_xg_conceded_avg"),
+                    points_per_match=features.get("away_form_points_per_match") or features.get("away_points_per_match"),
+                    elo_rating=features.get("away_elo"),
+                    attack_strength=features.get("away_attack_strength"),
+                    defense_strength=features.get("away_defense_strength"),
+                )
+            
+            # Populate form metrics if missing
+            if snapshot.home_form is None:
+                snapshot.home_form = FormMetrics(
+                    wins=int(features.get("home_recent_wins", 0)) if features.get("home_recent_wins") is not None else None,
+                    draws=int(features.get("home_recent_draws", 0)) if features.get("home_recent_draws") is not None else None,
+                    losses=int(features.get("home_recent_losses", 0)) if features.get("home_recent_losses") is not None else None,
+                    points=int(features.get("home_recent_points", 0)) if features.get("home_recent_points") is not None else None,
+                    goals_for=int(features.get("home_recent_goals_scored", 0)) if features.get("home_recent_goals_scored") is not None else None,
+                    goals_against=int(features.get("home_recent_goals_conceded", 0)) if features.get("home_recent_goals_conceded") is not None else None,
+                    goal_difference=None,  # Calculate if needed
+                    points_per_match=features.get("home_form_points_per_match"),
+                    win_rate=features.get("home_win_rate"),
+                    clean_sheet_rate=features.get("home_clean_sheet_rate"),
+                    matches_analyzed=int(features.get("home_match_count", 5)) if features.get("home_match_count") is not None else 5,
+                )
+            
+            if snapshot.away_form is None:
+                snapshot.away_form = FormMetrics(
+                    wins=int(features.get("away_recent_wins", 0)) if features.get("away_recent_wins") is not None else None,
+                    draws=int(features.get("away_recent_draws", 0)) if features.get("away_recent_draws") is not None else None,
+                    losses=int(features.get("away_recent_losses", 0)) if features.get("away_recent_losses") is not None else None,
+                    points=int(features.get("away_recent_points", 0)) if features.get("away_recent_points") is not None else None,
+                    goals_for=int(features.get("away_recent_goals_scored", 0)) if features.get("away_recent_goals_scored") is not None else None,
+                    goals_against=int(features.get("away_recent_goals_conceded", 0)) if features.get("away_recent_goals_conceded") is not None else None,
+                    goal_difference=None,  # Calculate if needed
+                    points_per_match=features.get("away_form_points_per_match"),
+                    win_rate=features.get("away_win_rate"),
+                    clean_sheet_rate=features.get("away_clean_sheet_rate"),
+                    matches_analyzed=int(features.get("away_match_count", 5)) if features.get("away_match_count") is not None else 5,
+                )
         
         return snapshot
     

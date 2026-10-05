@@ -1,33 +1,37 @@
 {
   "id": "FEAT-004",
   "type": "feat",
-  "description": "Canonical Calibration Selection and Integration - determine whether calibration.py or calibration_engine.py is canonical, wire into pipeline after ensemble. DECISION: calibration_engine.py is canonical (has IsotonicCalibration, PlattCalibration, sklearn integration, temporal cutoff enforcement). calibration.py contains metrics only (Brier, log loss, ECE, reliability data) - keep as evaluation foundation.",
+  "description": "Integrate SmartMarketSelector into PredictionService, replacing MensionePickGenerator. Update service initialization, modify generate_full_prediction() STEP 8 to call evaluate_and_select(), convert BestTip/PassDecision to dict for AnalysisContext.mensione_pick, update API documentation, and verify all integration tests pass with enhanced mensione_pick structure.",
   "status": "pending",
   "steps": [
-    "1. AUDIT DECISION RATIONALE: calibration_engine.py is canonical engine because: (a) implements IsotonicCalibration and PlattCalibration with sklearn, (b) enforces temporal cutoff (fit(data, cutoff_date) prevents leakage), (c) tracks CalibrationMetrics (brier_score, log_loss, n_samples, is_reliable), (d) gracefully degrades when sklearn unavailable or insufficient samples. calibration.py is foundational metrics library (brier_score(), log_loss_binary(), calibration_error(), evaluate_1x2()) - keep as-is for evaluation, not for applying calibration.",
-    "2. VERIFY calibration_engine.py interface: CalibrationEngine.__init__(method='isotonic'|'platt'), CalibrationEngine.fit(data: CalibrationData, cutoff_date), CalibrationEngine.calibrate(prob: float) -> float, CalibrationEngine.is_fitted, CalibrationEngine.metrics: Optional[CalibrationMetrics]. Confirm it only calibrates single probabilities, not full 1X2 vectors.",
-    "3. CREATE 1X2 CALIBRATOR: Add Calibrator1X2 class in calibration_engine.py that wraps three CalibrationEngine instances (one per outcome: home_win, draw, away_win). Method: calibrate_1x2(home_prob, draw_prob, away_prob) -> Tuple[float, float, float] with renormalization to sum=1.0. Method: fit_1x2(historical_predictions: List[Tuple[float,float,float]], outcomes: List[str], timestamps: List[datetime], cutoff_date).",
-    "4. Integration with Ensemble: Add CalibrationIntegration class in model_orchestrator.py. Method: calibrate_prediction(ensemble_prediction: ModelPrediction, calibrator: Optional[Calibrator1X2]) -> ModelPrediction. If calibrator is None or not fitted: return ensemble_prediction unchanged with metadata flag 'calibration_status: uncalibrated'. If calibrator fitted: apply calibration to (home_win_prob, draw_prob, away_win_prob), return new ModelPrediction with calibrated probabilities and metadata 'calibration_status: calibrated', 'calibration_method: isotonic|platt', 'calibrator_metrics: {...}'.",
-    "5. PRESERVE calibration.py AS EVALUATION LIBRARY: Do NOT modify calibration.py. It remains the metrics foundation for backtest evaluation and reliability diagram generation. calibration_engine.py uses calibration.py metrics internally (CalibrationEngine._calculate_metrics calls brier_score and log_loss functions from calibration.py).",
-    "6. Add unit tests in backend/tests/test_calibration_integration.py covering: Calibrator1X2 fits on 100 synthetic 1X2 predictions, Calibrator1X2 calibrates and renormalizes to sum=1.0, CalibrationIntegration returns uncalibrated when calibrator=None, CalibrationIntegration returns calibrated with metadata when fitted, calibration does NOT run when insufficient historical data (< 50 samples)."
+    "Read backend/app/prediction/service.py PredictionService.__init__ lines 90-153 to locate MensionePickGenerator initialization",
+    "Replace MensionePickGenerator import with SmartMarketSelector: from app.prediction.market_selector import SmartMarketSelector, BestTip, PassDecision",
+    "Replace self.mensione_pick_generator = MensionePickGenerator(...) with self.market_selector = SmartMarketSelector(min_confidence=0.4, min_probability=0.5, min_edge=0.0, max_risk_level='HIGH')",
+    "Read generate_full_prediction() STEP 8 (around lines 870-905) where mensione_pick_generator.generate() is called",
+    "Replace with: result = self.market_selector.evaluate_and_select(match_id=match.id, market_probs=market_probs, confidence_assessment=confidence_assessment, odds_data=odds_data)",
+    "Update mensione_pick conversion: if isinstance(result, BestTip): mensione_pick = {\"type\": \"best_tip\", \"match_id\": result.match_id, \"market\": result.market, \"selection\": result.selection, \"probability\": result.probability, \"confidence\": result.confidence, \"model_agreement\": result.model_agreement, \"data_quality\": result.data_quality, \"edge\": result.edge, \"fair_odds\": result.fair_odds, \"bookmaker_odds\": result.bookmaker_odds, \"value_classification\": result.value_classification, \"risk_level\": result.risk_level, \"selection_score\": result.selection_score, \"selector_reason\": result.selector_reason, \"timestamp\": result.timestamp.isoformat()}",
+    "If isinstance(result, PassDecision): mensione_pick = {\"type\": \"pass_decision\", \"match_id\": result.match_id, \"pass_decision\": True, \"pass_reason\": result.pass_reason, \"evaluated_markets_count\": result.evaluated_markets_count, \"best_market_details\": result.best_market_details, \"timestamp\": result.timestamp.isoformat()}",
+    "Read backend/app/domain/analysis.py to verify AnalysisContext.mensione_pick field type (should be Optional[Dict[str, Any]]) - no schema change needed",
+    "Read backend/app/api/v1/endpoints/matches.py GET /matches/{match_id}/prediction endpoint docstring",
+    "Update docstring to document new mensione_pick structure with type field ('best_tip' or 'pass_decision'), BestTip fields example, PassDecision fields example",
+    "Run integration test: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py::TestDevelopmentDataFallback -v",
+    "Run API tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_match_intelligence.py -v",
+    "Run prediction service tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py -v",
+    "Verify mensione_pick has correct structure (type field, all BestTip or PassDecision fields present)"
   ],
   "acceptance_criteria": [
-    "calibration_engine.py remains canonical engine with IsotonicCalibration and PlattCalibration",
-    "calibration.py remains unchanged as metrics/evaluation library",
-    "Calibrator1X2 wrapper calibrates full 1X2 probability vectors with renormalization",
-    "CalibrationIntegration.calibrate_prediction() applies calibration or returns uncalibrated with clear metadata",
-    "Calibration gracefully degrades: uncalibrated probabilities returned when calibrator not fitted or sklearn unavailable",
-    "All existing tests pass: pytest backend/tests/test_calibration.py backend/tests/test_calibration_engine.py -v",
-    "New integration tests pass: pytest backend/tests/test_calibration_integration.py -v (5+ tests)",
-    "No regressions: pytest backend/tests/ --tb=short (931 baseline)"
+    "PredictionService.__init__ uses SmartMarketSelector instead of MensionePickGenerator",
+    "generate_full_prediction() calls market_selector.evaluate_and_select()",
+    "mensione_pick dict includes type='best_tip' and all BestTip fields when BestTip returned",
+    "mensione_pick dict includes type='pass_decision' and all PassDecision fields when PassDecision returned",
+    "API documentation updated with new mensione_pick structure examples",
+    "Integration test test_full_prediction_pipeline_with_development_fallback passes",
+    "API test suite test_match_intelligence.py passes (backward compatible)",
+    "Prediction service test suite passes with enhanced mensione_pick"
   ],
   "verification": [
-    "Run: cd backend && python -m pytest tests/test_calibration.py tests/test_calibration_engine.py -v",
-    "Expected: All existing calibration tests pass (both files unchanged in core logic)",
-    "Run: cd backend && python -m pytest tests/test_calibration_integration.py -v",
-    "Expected: 5+ tests pass showing 1X2 calibration and graceful degradation",
-    "Run: cd backend && python -m pytest tests/ -k 'not (calibration or ensemble or orchestrator or snapshot)' --tb=short",
-    "Expected: All other tests still pass"
+    "cd C:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_prediction_service.py tests/test_match_intelligence.py -v",
+    "Verify all tests pass with SmartMarketSelector integration"
   ],
   "blocked_reason": null,
   "findings": ""

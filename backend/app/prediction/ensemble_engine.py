@@ -18,7 +18,7 @@ import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app.prediction.interfaces import ModelPrediction, ModelAvailability
 from app.domain.enums import ModelType
@@ -225,6 +225,16 @@ class EnsembleEngine:
             for pred in predictions
         )
         
+        # Combine score distributions (weighted average)
+        combined_score_distribution: Dict[Tuple[int, int], float] = {}
+        for pred in predictions:
+            if pred.score_distribution:
+                weight = normalized_weights[pred.model_id]
+                for scoreline, prob in pred.score_distribution.items():
+                    if scoreline not in combined_score_distribution:
+                        combined_score_distribution[scoreline] = 0.0
+                    combined_score_distribution[scoreline] += prob * weight
+        
         # Build metadata
         metadata = {
             "model_weights": normalized_weights,
@@ -241,6 +251,7 @@ class EnsembleEngine:
             home_win_prob=combined_home_win,
             draw_prob=combined_draw,
             away_win_prob=combined_away_win,
+            score_distribution=combined_score_distribution,
             confidence_score=ensemble_confidence,
             data_quality_score=ensemble_data_quality,
             metadata=metadata

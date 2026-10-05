@@ -1,32 +1,42 @@
 {
   "id": "FEAT-003",
   "type": "feat",
-  "description": "Canonical Ensemble Selection and Integration - determine whether ensemble.py or ensemble_engine.py is canonical, make the other a compatibility wrapper, wire into pipeline. DECISION: ensemble_engine.py is canonical (has ReliabilityWeights, DynamicWeights, model_agreement calculation). ensemble.py becomes a compatibility wrapper.",
+  "description": "Implement SmartMarketSelector to replace MensionePickGenerator with sophisticated market evaluation. Evaluates all markets from MarketProbabilities, ranks by selection_score (probability × confidence × (1 + edge)), applies filters (min_confidence=0.4, min_probability=0.5, min_edge=0.0), returns BestTip or PassDecision. Includes value classification (STRONG_VALUE ≥10%, VALUE ≥5%, NEUTRAL ≥0%, NEGATIVE_VALUE <0%) and risk levels (LOW/MEDIUM/HIGH based on confidence/agreement/quality thresholds).",
   "status": "pending",
   "steps": [
-    "1. AUDIT DECISION RATIONALE: ensemble_engine.py is canonical because: (a) implements WeightingStrategy abstraction (StaticWeights, ReliabilityWeights, DynamicWeights), (b) calculates model_agreement from standard deviation of predictions, (c) handles ModelPrediction (from interfaces.py) and ModelAvailability, (d) returns ensemble with metadata (model_weights, weighting_strategy, model_agreement, contributing_models). ensemble.py implements weighted averaging but lacks strategy abstraction and agreement calculation - it is simpler but less extensible.",
-    "2. VERIFY ensemble_engine.py interface: EnsembleEngine.__init__(strategy: WeightingStrategy), EnsembleEngine.combine(predictions: List[ModelPrediction], context: Optional[Dict]) -> ModelPrediction | ModelAvailability. Confirm it returns ModelPrediction (not EnsemblePrediction from ensemble.py) with metadata field containing ensemble-specific info.",
-    "3. CREATE COMPATIBILITY WRAPPER: Refactor backend/app/prediction/ensemble.py so EnsembleModel becomes a thin wrapper around EnsembleEngine. EnsembleModel.predict(model_inputs: List[ModelPredictionInput]) -> EnsemblePrediction: (a) convert ModelPredictionInput list to ModelPrediction list, (b) create StaticWeights strategy from self.weights, (c) call EnsembleEngine(strategy).combine(predictions), (d) convert ModelPrediction result back to EnsemblePrediction for backward compatibility. Add deprecation docstring noting ensemble_engine.py is canonical.",
-    "4. Integration with ModelOrchestrator: Add EnsembleIntegration class in model_orchestrator.py that converts ModelOrchestrationResult.successful_predictions to ensemble input and calls EnsembleEngine. Method: combine_predictions(orchestration_result: ModelOrchestrationResult, strategy: WeightingStrategy = ReliabilityWeights()) -> ModelPrediction | ModelAvailability.",
-    "5. PRESERVE EXISTING TESTS: Ensure all existing tests in backend/tests/test_ensemble.py still pass (they use EnsembleModel API). Ensure all existing tests in backend/tests/test_ensemble_engine.py still pass (they use EnsembleEngine API).",
-    "6. Add integration tests in backend/tests/test_ensemble_integration.py covering: EnsembleModel wrapper calls EnsembleEngine underneath, ensemble with StaticWeights, ensemble with ReliabilityWeights (uses confidence_score * data_quality_score), ensemble with DynamicWeights + league context, model_agreement calculation (std dev of home_win_prob), ensemble fails gracefully with < 2 models."
+    "Read backend/app/prediction/mensione_pick.py to understand current MensionePickGenerator structure",
+    "Read backend/app/prediction/market_derivation.py MarketProbabilities dataclass to understand available markets",
+    "Create backend/app/prediction/market_selector.py with imports: from dataclasses import dataclass, field; from typing import Optional, Dict, List, Union; from datetime import datetime; from app.prediction.market_derivation import MarketProbabilities; from app.prediction.confidence_engine import ConfidenceAssessment",
+    "Define BestTip dataclass with fields: match_id (str), market (str), selection (str), probability (float), confidence (float), model_agreement (float), data_quality (float), edge (Optional[float]), fair_odds (float), bookmaker_odds (Optional[float]), odds_movement (Optional[float]), value_classification (str), risk_level (str), selection_score (float), selector_reason (str), timestamp (datetime), pipeline_version (str)",
+    "Define PassDecision dataclass with fields: match_id (str), pass_reason (str), evaluated_markets_count (int), best_market_details (Optional[Dict[str, any]]), timestamp (datetime), pipeline_version (str)",
+    "Implement SmartMarketSelector class: __init__(min_confidence=0.4, min_probability=0.5, min_edge=0.0, max_risk_level='HIGH', pipeline_version='1.0.0')",
+    "Implement evaluate_and_select(match_id: str, market_probs: MarketProbabilities, confidence_assessment: ConfidenceAssessment, odds_data: Optional[Dict[str, float]] = None) -> Union[BestTip, PassDecision]",
+    "In evaluate_and_select: extract all markets from market_probs (home_win, draw, away_win, over_2_5, under_2_5, btts_yes, btts_no, double_chance markets, top exact scores)",
+    "For each market: calculate fair_odds = 1.0 / probability; if odds_data provided, get bookmaker_odds and edge = (probability * bookmaker_odds) - 1.0; classify value: STRONG_VALUE (edge≥0.10), VALUE (edge≥0.05), NEUTRAL (edge≥0.0), NEGATIVE_VALUE (edge<0.0)",
+    "Calculate risk_level: LOW (confidence≥0.7 AND model_agreement≥0.8 AND data_quality≥0.7), MEDIUM (confidence≥0.5 AND model_agreement≥0.6 AND data_quality≥0.5), HIGH (below MEDIUM)",
+    "Calculate selection_score = probability * confidence * (1.0 + edge) if edge else probability * confidence",
+    "Filter markets: probability ≥ min_probability, confidence ≥ min_confidence, edge ≥ min_edge (if odds_data), risk_level ≤ max_risk_level",
+    "Rank by selection_score descending; select top market as BestTip with all fields populated",
+    "If no markets qualify, return PassDecision with pass_reason explaining which filter failed, evaluated_markets_count, best_market_details (highest scored market even if disqualified)",
+    "Create backend/tests/test_market_selector.py with fixtures for MarketProbabilities and ConfidenceAssessment",
+    "Test cases: (1) select best when multiple qualify, (2) PASS when confidence below threshold, (3) PASS when probability below threshold, (4) PASS when edge below threshold, (5) PASS when risk too high, (6) value classification STRONG_VALUE for 12% edge, (7) value classification VALUE for 7% edge, (8) value classification NEUTRAL for 2% edge, (9) value classification NEGATIVE_VALUE for -3% edge, (10) risk level LOW for high scores, (11) risk level MEDIUM for moderate scores, (12) risk level HIGH for low scores, (13) no odds_data case (edge=None, still selects), (14) tie-breaking by probability, (15) PassDecision includes best_market_details",
+    "Run tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_market_selector.py -v"
   ],
   "acceptance_criteria": [
-    "ensemble_engine.py remains unchanged (canonical implementation)",
-    "ensemble.py EnsembleModel becomes compatibility wrapper calling EnsembleEngine internally",
-    "EnsembleIntegration.combine_predictions() wires ModelOrchestrationResult -> EnsembleEngine",
-    "Model agreement score calculated from prediction variance (existing logic in ensemble_engine.py)",
-    "All existing tests pass: pytest backend/tests/test_ensemble.py backend/tests/test_ensemble_engine.py -v",
-    "New integration tests pass: pytest backend/tests/test_ensemble_integration.py -v (5+ tests)",
-    "No regressions: pytest backend/tests/ --tb=short (931 baseline)"
+    "SmartMarketSelector class exists in backend/app/prediction/market_selector.py",
+    "BestTip dataclass has 17 required fields",
+    "PassDecision dataclass has 5 required fields",
+    "evaluate_and_select() evaluates all markets from MarketProbabilities",
+    "selection_score calculation: probability × confidence × (1 + edge)",
+    "Filters applied: min_confidence, min_probability, min_edge, max_risk_level",
+    "Value classification: STRONG_VALUE (≥10%), VALUE (≥5%), NEUTRAL (≥0%), NEGATIVE_VALUE (<0%)",
+    "Risk levels: LOW (conf≥0.7, agree≥0.8, qual≥0.7), MEDIUM (conf≥0.5, agree≥0.6, qual≥0.5), HIGH (below)",
+    "PassDecision issued when no markets qualify with descriptive pass_reason",
+    "15+ unit tests covering all scenarios, all passing"
   ],
   "verification": [
-    "Run: cd backend && python -m pytest tests/test_ensemble.py tests/test_ensemble_engine.py -v",
-    "Expected: All existing ensemble tests pass (backward compatibility preserved)",
-    "Run: cd backend && python -m pytest tests/test_ensemble_integration.py -v",
-    "Expected: 5+ integration tests pass showing wrapper works and agreement calculated",
-    "Run: cd backend && python -m pytest tests/ -k 'not (test_ensemble or test_model_orchestrator or test_feature_snapshot)' --tb=short",
-    "Expected: All other tests still pass"
+    "cd C:\\FootballIntelligence\\backend && .venv\\Scripts\\python.exe -m pytest tests/test_market_selector.py -v",
+    "Verify output shows 15+ passed tests for SmartMarketSelector"
   ],
   "blocked_reason": null,
   "findings": ""
