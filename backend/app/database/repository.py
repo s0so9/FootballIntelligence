@@ -7,7 +7,7 @@ Repositories provide a clean interface for database operations with:
 """
 
 from typing import Optional, List, Type, TypeVar, Generic
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, and_, or_, desc
 from sqlalchemy.orm import Session
@@ -141,7 +141,19 @@ class BaseRepository(Generic[T]):
             
             # Update timestamp only if something changed
             if updated:
-                existing.updated_at = utc_now()
+                new_timestamp = utc_now()
+                # Ensure updated_at is newer than existing timestamp (handle microsecond-level timing)
+                # Handle timezone-aware and naive datetime comparison
+                existing_ts = existing.updated_at
+                if existing_ts.tzinfo is None:
+                    # Make comparison timezone-naive if existing is naive
+                    new_timestamp = new_timestamp.replace(tzinfo=None)
+                
+                if new_timestamp <= existing_ts:
+                    # Add a microsecond to ensure it's newer
+                    new_timestamp = existing_ts + timedelta(microseconds=1)
+                
+                existing.updated_at = new_timestamp
             
             self.session.flush()
             return existing

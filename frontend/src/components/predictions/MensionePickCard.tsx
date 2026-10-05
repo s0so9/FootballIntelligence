@@ -74,7 +74,7 @@ export default function MensionePickCard({
   marketName,
   outcome,
   confidence,
-  realOdds: _realOdds,
+  realOdds: _realOdds, // eslint-disable-line @typescript-eslint/no-unused-vars
   isFavorite,
   onToggleFavorite,
   inCombine,
