@@ -23,6 +23,7 @@ from app.prediction.monte_carlo import MonteCarloSimulation
 from app.prediction.negative_binomial import NegativeBinomialModel
 from app.prediction.form_adjusted import FormAdjustedModel
 from app.prediction.logistic_regression import LogisticRegressionModel
+from app.prediction.ensemble_engine import EnsembleEngine, ReliabilityWeights
 
 
 logger = logging.getLogger(__name__)
@@ -334,3 +335,72 @@ class ModelOrchestrator:
         logger.info(f"Created default orchestrator with {len(orchestrator._models)} models")
         
         return orchestrator
+
+
+class EnsembleIntegration:
+    """Integration layer for ensemble prediction.
+    
+    Wires the canonical ensemble_engine.py into the model orchestration pipeline.
+    """
+    
+    def __init__(self, engine: Optional[EnsembleEngine] = None):
+        """Initialize ensemble integration.
+        
+        Args:
+            engine: EnsembleEngine instance (defaults to ReliabilityWeights)
+        """
+        if engine is None:
+            # Default to reliability-based weighting
+            engine = EnsembleEngine(strategy=ReliabilityWeights())
+        self.engine = engine
+    
+    def combine_predictions(
+        self,
+        orchestration_result: ModelOrchestrationResult,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ModelPrediction | ModelAvailability:
+        """Combine predictions from orchestration result.
+        
+        Args:
+            orchestration_result: Result from ModelOrchestrator.run_all()
+            context: Optional context (league_id, etc.)
+            
+        Returns:
+            Combined ensemble prediction or ModelAvailability
+        """
+        # Extract successful predictions
+        predictions = [
+            output.prediction
+            for output in orchestration_result.successful_predictions
+            if output.prediction is not None
+        ]
+        
+        if len(predictions) == 0:
+            return ModelAvailability(
+                model_id="ensemble_v1",
+                available=False,
+                reason="No successful model predictions available",
+                missing_features=[]
+            )
+        
+        # Use ensemble engine to combine
+        result = self.engine.combine(predictions, context)
+        
+        # Log ensemble result
+        if isinstance(result, ModelPrediction):
+            agreement = result.metadata.get("model_agreement", 0.0)
+            n_models = result.metadata.get("n_models", 0)
+            logger.info(
+                f"Ensemble combined {n_models} models with agreement={agreement:.3f}"
+            )
+        
+        return result
+    
+    @staticmethod
+    def create_default() -> "EnsembleIntegration":
+        """Create ensemble integration with default reliability-based weighting.
+        
+        Returns:
+            EnsembleIntegration with ReliabilityWeights strategy
+        """
+        return EnsembleIntegration()
