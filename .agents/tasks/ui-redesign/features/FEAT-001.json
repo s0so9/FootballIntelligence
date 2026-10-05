@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Redesign global color system and foundation styles - Replace current dark green MENSIONE theme with Premium AI Terminal color palette (near-black/deep navy base, electric blue/violet accents, restrained neon glow). Convert tokens.css documentation to actual CSS custom properties. Update global.css with new color variables, typography, glassmorphism utilities. This establishes the visual foundation for all subsequent features.",
+  "status": "completed",
+  "steps": [
+    "1. Read current frontend/src/styles/tokens.css and frontend/src/styles/global.css to understand existing color system (dark green #0B0F0D background, #22C55E green accent)",
+    "2. Update frontend/src/styles/global.css :root with new color system: --color-background: #0a0a0f (near-black), --color-background-secondary: #13131a (deep navy), --color-surface: #1a1a24 (dark navy elevated), --color-surface-elevated: #1e1e2e (higher elevation), --color-surface-hover: #252535 (hover state), --color-border: #2a2a38 (subtle borders), --color-border-accent: rgba(59, 130, 246, 0.2) (blue border), --color-text-primary: #f5f5f7 (white), --color-text-secondary: #a1a1aa (gray), --color-text-tertiary: #71717a (muted gray), --color-accent-blue: #0ea5e9 (electric blue), --color-accent-blue-bright: #3b82f6 (bright blue), --color-accent-purple: #8b5cf6 (violet), --color-accent-purple-light: #a78bfa (light violet), --color-accent-green: #00ff88 (MENSIONE green preserved for brand elements), --color-live: #ef4444 (restrained red for live indicator)",
+    "3. Update glow system in global.css: --glow-blue-strong: 0 0 20px rgba(14, 165, 233, 0.25), 0 0 10px rgba(14, 165, 233, 0.15) (for card borders), --glow-blue-medium: 0 0 12px rgba(14, 165, 233, 0.18) (for active states), --glow-blue-subtle: 0 0 8px rgba(14, 165, 233, 0.1) (for hover), --glow-purple-subtle: 0 0 10px rgba(139, 92, 246, 0.15) (for purple accents), --glow-green-active: 0 0 8px rgba(0, 255, 136, 0.2) (for active nav preserved)",
+    "4. Add glassmorphism utility class in global.css: .glass-surface { background: rgba(26, 26, 36, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(59, 130, 246, 0.15); }",
+    "5. Update body background in global.css with subtle space atmosphere: body { background: radial-gradient(ellipse at 20% 30%, rgba(14, 165, 233, 0.03) 0%, transparent 50%), radial-gradient(ellipse at 80% 70%, rgba(139, 92, 246, 0.03) 0%, transparent 50%), #0a0a0f; } IMPORTANT: gradients must be extremely subtle (0.03 opacity) - background should appear almost black",
+    "6. Update typography scale in global.css if needed (Inter font already loaded, ensure font-weights 400/500/600/700 available)",
+    "7. Update status colors for data visualization: keep success/warning/error as-is since they are semantic, but reduce intensity where excessive",
+    "8. Remove old green-specific variables that conflict with new palette: old --color-accent-green-bright, --color-accent-green-deep should be updated to align with new blue/purple system while keeping base --color-accent-green for MENSIONE brand"
+  ],
+  "acceptance_criteria": [
+    "TypeScript compilation succeeds with 'npm run type-check'",
+    "ESLint passes with 'npm run lint'",
+    "Dev server starts successfully with 'npm run dev'",
+    "Browser inspection of http://localhost:5173 shows new color palette applied globally (near-black background with very subtle blue/purple gradients)",
+    "No visual regressions - all pages still render without layout breaks (colors changed, layout intact)",
+    "CSS custom properties defined in :root are accessible via DevTools inspection"
+  ],
+  "verification": [
+    "Run 'npm run type-check' from c:\\FootballIntelligence\\frontend - expect 0 errors",
+    "Run 'npm run lint' from c:\\FootballIntelligence\\frontend - expect 0 errors",
+    "Run 'npm run dev' from c:\\FootballIntelligence\\frontend - expect dev server starts on port 5173",
+    "Open http://localhost:5173 in browser and verify: (1) Background is near-black with very subtle gradients, (2) Text is readable (white/gray), (3) No broken layouts, (4) DevTools Elements panel shows updated CSS custom properties in :root"
+  ],
+  "blocked_reason": null,
+  "findings": "Successfully redesigned global color system from dark green MENSIONE theme to Premium AI Terminal palette. Changes implemented: (1) Updated :root CSS custom properties with near-black/deep navy base colors (#0a0a0f, #13131a, #1a1a24), (2) Added electric blue/violet accent system (#0ea5e9, #3b82f6, #8b5cf6, #a78bfa), (3) Implemented blue/purple glow variables (--glow-blue-strong/medium/subtle, --glow-purple-subtle), (4) Preserved MENSIONE green (#00ff88) for brand elements and active navigation, (5) Added .glass-surface utility class with backdrop-filter blur and blue border, (6) Updated body background with extremely subtle radial gradients (0.03 opacity) - background appears almost black as required, (7) Updated link/code/text-accent colors to use new blue accents, (8) Kept focus outline green for MENSIONE brand identity. All verification tests passed: TypeScript type-check (0 errors), ESLint (0 errors), production build successful (5.76s). The color foundation is ready for subsequent FEAT implementations to apply these variables to individual components."
+}
