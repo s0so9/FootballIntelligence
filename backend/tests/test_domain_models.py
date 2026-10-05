@@ -202,6 +202,123 @@ def test_odds_model():
     assert odds.bookmaker == "Bet365"
 
 
+def test_odds_phase5_fields_optional():
+    """Test Phase 5 fields are optional in Odds model."""
+    # Should work without Phase 5 fields (backward compatibility)
+    odds = Odds(
+        id="odds_1",
+        match_id="match_1",
+        bookmaker="Bet365",
+        home_win_odds=2.10,
+        draw_odds=3.40,
+        away_win_odds=3.60,
+        fetched_at=datetime.now(),
+    )
+    assert odds.source_provider is None
+    assert odds.normalized_market_type is None
+    assert odds.selection_label is None
+    assert odds.odds_timestamp is None
+    
+    # Should work with Phase 5 fields
+    odds_with_phase5 = Odds(
+        id="odds_2",
+        match_id="match_1",
+        bookmaker="Bet365",
+        home_win_odds=2.10,
+        draw_odds=3.40,
+        away_win_odds=3.60,
+        fetched_at=datetime.now(),
+        source_provider="development",
+        normalized_market_type="match_result",
+        selection_label="home",
+        odds_timestamp=datetime.now(),
+    )
+    assert odds_with_phase5.source_provider == "development"
+    assert odds_with_phase5.normalized_market_type == "match_result"
+    assert odds_with_phase5.selection_label == "home"
+    assert odds_with_phase5.odds_timestamp is not None
+
+
+def test_odds_validation_rejects_invalid_odds():
+    """Test odds validation rejects odds <= 1.0."""
+    # Valid odds > 1.0 should work
+    valid_odds = Odds(
+        id="odds_1",
+        match_id="match_1",
+        bookmaker="Bet365",
+        home_win_odds=2.10,
+        draw_odds=3.40,
+        away_win_odds=3.60,
+        fetched_at=datetime.now(),
+    )
+    assert valid_odds.home_win_odds == 2.10
+    
+    # Invalid odds = 1.0 should fail
+    with pytest.raises(ValueError):
+        Odds(
+            id="odds_2",
+            match_id="match_1",
+            bookmaker="Bet365",
+            home_win_odds=1.0,  # Invalid: must be > 1.0
+            fetched_at=datetime.now(),
+        )
+    
+    # Invalid odds < 1.0 should fail
+    with pytest.raises(ValueError):
+        Odds(
+            id="odds_3",
+            match_id="match_1",
+            bookmaker="Bet365",
+            home_win_odds=0.5,  # Invalid: must be > 1.0
+            fetched_at=datetime.now(),
+        )
+    
+    # None is acceptable (missing odds)
+    odds_with_none = Odds(
+        id="odds_4",
+        match_id="match_1",
+        bookmaker="Bet365",
+        home_win_odds=None,  # Valid: missing odds
+        draw_odds=3.40,
+        away_win_odds=3.60,
+        fetched_at=datetime.now(),
+    )
+    assert odds_with_none.home_win_odds is None
+
+
+def test_odds_accepts_valid_phase5_data():
+    """Test Odds model accepts complete Phase 5 data."""
+    timestamp = datetime.now()
+    
+    odds = Odds(
+        id="odds_phase5",
+        match_id="match_1",
+        bookmaker="Bet365",
+        home_win_odds=2.10,
+        draw_odds=3.40,
+        away_win_odds=3.60,
+        over_under_line=2.5,
+        over_odds=1.90,
+        under_odds=1.95,
+        btts_yes_odds=1.85,
+        btts_no_odds=1.98,
+        fetched_at=timestamp,
+        source_provider="sofascore",
+        normalized_market_type="match_result",
+        selection_label="away",
+        odds_timestamp=timestamp,
+    )
+    
+    assert odds.id == "odds_phase5"
+    assert odds.source_provider == "sofascore"
+    assert odds.normalized_market_type == "match_result"
+    assert odds.selection_label == "away"
+    assert odds.odds_timestamp == timestamp
+    assert odds.home_win_odds == 2.10
+    assert odds.over_odds == 1.90
+    assert odds.btts_yes_odds == 1.85
+
+
 def test_backtest_result_model():
     """Test BacktestResult model."""
     result = BacktestResult(

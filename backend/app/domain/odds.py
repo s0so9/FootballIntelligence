@@ -35,6 +35,12 @@ class Odds(BaseModel):
     fetched_at: datetime = Field(..., description="When odds were fetched")
     updated_at: Optional[datetime] = Field(None, description="Last odds update")
     
+    # Phase 5: Market Intelligence fields
+    source_provider: Optional[str] = Field(None, description="Data source provider (e.g., 'development', 'sofascore')")
+    normalized_market_type: Optional[str] = Field(None, description="Normalized market type (e.g., 'match_result', 'over_under', 'btts')")
+    selection_label: Optional[str] = Field(None, description="Selection label (e.g., 'home', 'draw', 'away', 'over', 'under')")
+    odds_timestamp: Optional[datetime] = Field(None, description="Timestamp when these specific odds were published by bookmaker")
+    
     class Config:
         """Pydantic configuration."""
 

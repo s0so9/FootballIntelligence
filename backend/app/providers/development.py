@@ -788,3 +788,47 @@ class DevelopmentProvider(FootballDataProvider):
     def get_team_match_statistics_firsthalf(self, match_id: str) -> List[TeamMatchStatistic]:
         """Get mock first-half team statistics for a match."""
         return [s for s in self._team_statistics_ht if s.match_id == match_id]
+    
+    # === Odds ===
+    
+    def get_match_odds(self, match_id: str) -> List["Odds"]:
+        """
+        Get mock betting odds for a match.
+        
+        ⚠️  ALL ODDS ARE FICTITIOUS - FOR DEVELOPMENT ONLY ⚠️
+        
+        Returns deterministic mock odds with Phase 5 fields populated.
+        """
+        from app.domain.odds import Odds
+        
+        # Only return odds for matches we have
+        match = self.get_match(match_id)
+        if not match:
+            return []
+        
+        # Generate deterministic mock odds with Phase 5 fields
+        now = datetime.now()
+        
+        # Base odds for 1X2 market
+        odds = Odds(
+            id=f"dev_odds_{match_id}",
+            match_id=match_id,
+            bookmaker="[DEV] Mock Bookmaker",
+            home_win_odds=2.10,
+            draw_odds=3.40,
+            away_win_odds=3.60,
+            over_under_line=2.5,
+            over_odds=1.90,
+            under_odds=1.95,
+            btts_yes_odds=1.85,
+            btts_no_odds=1.98,
+            fetched_at=now,
+            updated_at=now,
+            # Phase 5 fields
+            source_provider="development",
+            normalized_market_type="match_result",
+            selection_label="home",  # Primary selection for this odds object
+            odds_timestamp=now,
+        )
+        
+        return [odds]

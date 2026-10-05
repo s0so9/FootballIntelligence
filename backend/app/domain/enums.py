@@ -44,6 +44,8 @@ class PredictionMarketType(str, Enum):
     MATCH_RESULT = "match_result"  # 1X2
     OVER_UNDER = "over_under"
     BTTS = "btts"  # Both Teams To Score
+    DOUBLE_CHANCE = "double_chance"  # Phase 5: Double chance market (e.g., 1X, 12, X2)
+    HANDICAP = "handicap"  # Phase 5: Handicap/Asian handicap market
     CORRECT_SCORE = "correct_score"
     TEAM_GOALS = "team_goals"
     TOTAL_GOALS = "total_goals"
