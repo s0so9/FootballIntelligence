@@ -2,6 +2,7 @@
 
 import pytest
 from datetime import datetime
+from typing import List
 
 from app.prediction.prediction_version import (
     PredictionVersion,
@@ -280,3 +281,136 @@ class TestPredictionVersionValidation:
         
         assert version.stage == PredictionStage.KICKOFF
         assert isinstance(version.stage, PredictionStage)
+
+
+class TestPredictionVersionImmutabilityWithPersistence:
+    """Test immutability enforcement with database persistence.
+    
+    This test class addresses Finding #4 from FEAT-005 review:
+    "Immutability enforcement untested under database writes"
+    
+    Verifies that duplicate stage writes are rejected when persistence_service
+    is configured with actual database operations.
+    """
+    
+    def test_immutability_with_mock_database_persistence(self):
+        """Test that immutability is enforced when using persistence service.
+        
+        This test uses a mock persistence service to verify the enforcement
+        logic without requiring a real database connection.
+        """
+        # Create mock persistence service
+        class MockPersistenceService:
+            def __init__(self):
+                self.storage = {}
+            
+            def save_version(self, version: PredictionVersion) -> None:
+                """Save version to mock storage."""
+                if version.match_id not in self.storage:
+                    self.storage[version.match_id] = []
+                self.storage[version.match_id].append(version)
+            
+            def get_versions(self, match_id: str) -> List[PredictionVersion]:
+                """Get all versions for match from mock storage."""
+                versions = self.storage.get(match_id, [])
+                return sorted(versions, key=lambda v: v.created_at)
+            
+            def delete_version(self, version_id: str) -> bool:
+                """Delete version from mock storage."""
+                for match_id, versions in self.storage.items():
+                    for i, v in enumerate(versions):
+                        if v.version_id == version_id:
+                            del self.storage[match_id][i]
+                            return True
+                return False
+        
+        # Create manager with mock persistence
+        mock_persistence = MockPersistenceService()
+        manager = PredictionVersionManager(persistence_service=mock_persistence)
+        
+        # Create first version at KICKOFF stage
+        v1 = manager.create_version(
+            match_id="match_db_test",
+            stage=PredictionStage.KICKOFF,
+            prediction_data={"home_win_prob": 0.45, "data_source": "v1"},
+            confidence_score=0.75
+        )
+        
+        assert v1 is not None
+        assert v1.stage == PredictionStage.KICKOFF
+        
+        # Verify version was persisted
+        persisted_versions = mock_persistence.get_versions("match_db_test")
+        assert len(persisted_versions) == 1
+        assert persisted_versions[0].version_id == v1.version_id
+        
+        # Attempt to create second version at same stage should raise ValueError
+        with pytest.raises(ValueError) as exc_info:
+            manager.create_version(
+                match_id="match_db_test",
+                stage=PredictionStage.KICKOFF,
+                prediction_data={"home_win_prob": 0.50, "data_source": "v2"},
+                confidence_score=0.80
+            )
+        
+        assert "already exists" in str(exc_info.value).lower()
+        assert "match_db_test" in str(exc_info.value)
+        
+        # Verify only one version exists in persistence
+        persisted_versions = mock_persistence.get_versions("match_db_test")
+        assert len(persisted_versions) == 1
+        assert persisted_versions[0].version_id == v1.version_id
+        assert persisted_versions[0].prediction_data["data_source"] == "v1"  # Original data unchanged
+        
+    def test_immutability_enforcement_checks_persistence_not_memory(self):
+        """Test that immutability check uses persistence service, not in-memory fallback."""
+        # Create mock persistence that simulates existing version
+        class MockPersistenceWithExisting:
+            def __init__(self):
+                self.storage = {}
+                # Pre-populate with existing version
+                existing_version = PredictionVersion(
+                    version_id="existing_v1",
+                    match_id="match_existing",
+                    stage=PredictionStage.LINEUP_CONFIRMED,
+                    created_at=datetime(2026, 1, 1, 12, 0, 0),
+                    prediction_data={"home_win_prob": 0.40}
+                )
+                self.storage["match_existing"] = [existing_version]
+            
+            def save_version(self, version: PredictionVersion) -> None:
+                if version.match_id not in self.storage:
+                    self.storage[version.match_id] = []
+                self.storage[version.match_id].append(version)
+            
+            def get_versions(self, match_id: str) -> List[PredictionVersion]:
+                versions = self.storage.get(match_id, [])
+                return sorted(versions, key=lambda v: v.created_at)
+            
+            def delete_version(self, version_id: str) -> bool:
+                for match_id, versions in self.storage.items():
+                    for i, v in enumerate(versions):
+                        if v.version_id == version_id:
+                            del self.storage[match_id][i]
+                            return True
+                return False
+        
+        mock_persistence = MockPersistenceWithExisting()
+        manager = PredictionVersionManager(persistence_service=mock_persistence)
+        
+        # Attempt to create version at same stage as existing should fail
+        with pytest.raises(ValueError) as exc_info:
+            manager.create_version(
+                match_id="match_existing",
+                stage=PredictionStage.LINEUP_CONFIRMED,
+                prediction_data={"home_win_prob": 0.50},
+                confidence_score=0.80
+            )
+        
+        assert "already exists" in str(exc_info.value).lower()
+        
+        # Verify only the original version exists
+        versions = mock_persistence.get_versions("match_existing")
+        assert len(versions) == 1
+        assert versions[0].version_id == "existing_v1"
+        assert versions[0].prediction_data["home_win_prob"] == 0.40

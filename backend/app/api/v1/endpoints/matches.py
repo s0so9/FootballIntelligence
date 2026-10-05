@@ -142,7 +142,7 @@ async def get_match(
         }
     },
     summary="Get match prediction",
-    description="Get prediction, market analysis, and easy match detection for a specific match.",
+    description="Get prediction, MENSIONE PICK, versioned prediction, market analysis, and easy match detection for a specific match.",
 )
 async def get_match_prediction(
     match_id: str,
@@ -156,8 +156,9 @@ async def get_match_prediction(
     - Match outcome probabilities (1X2)
     - Expected goals (xG)
     - BTTS probability
-    - Market analysis with fair odds
-    - Bookmaker comparison (only if real odds provided)
+    - Predicted score (most likely scoreline)
+    - MENSIONE PICK (recommended market with confidence and reasoning)
+    - Prediction version ID (immutable versioning)
     - Easy Match detection result
     
     Path Parameters:
@@ -185,8 +186,16 @@ async def get_match_prediction(
         db_session=db
     )
     
-    # Generate prediction
-    prediction = prediction_service.generate_prediction(match)
+    # Generate full MENSIONE prediction (Phase 1 pipeline: Poisson → Markets → Pick → Versioning)
+    analysis_context = prediction_service.generate_full_prediction(
+        match=match,
+        odds_data=None  # No real bookmaker odds available in development
+    )
+    
+    # Extract prediction from context
+    prediction = None
+    if analysis_context.model_predictions and len(analysis_context.model_predictions) > 0:
+        prediction = analysis_context.model_predictions[0]
     
     if prediction is None:
         raise HTTPException(
@@ -194,52 +203,11 @@ async def get_match_prediction(
             detail="Insufficient data to generate prediction for this match"
         )
     
-    # Generate market analysis (without bookmaker odds for now)
-    market_analysis = prediction_service.generate_market_analysis(
-        match=match,
-        prediction=prediction,
-        bookmaker_odds=None,  # No real bookmaker odds available in development
-    )
-    
-    # Detect easy match
+    # Detect easy match for backward compatibility
     easy_match_result = prediction_service.detect_easy_match(
         match=match,
         prediction=prediction,
     )
-    
-    # Convert market analysis to response schema
-    market_analysis_responses = None
-    if market_analysis and market_analysis.markets:
-        market_analysis_responses = [
-            MarketAnalysisResponse(
-                market_type=m.market_type,
-                line=m.line,
-                outcomes=[
-                    MarketOutcomeResponse(
-                        label=o.label,
-                        model_probability=o.model_probability,
-                        calibrated_probability=o.calibrated_probability,
-                        fair_odds=o.fair_odds,
-                    )
-                    for o in m.outcomes
-                ],
-                bookmaker_comparison=[
-                    BookmakerComparisonResponse(
-                        label=bc.label,
-                        fair_probability=bc.fair_probability,
-                        fair_odds=bc.fair_odds,
-                        bookmaker_odds=bc.bookmaker_odds,
-                        implied_probability=bc.implied_probability,
-                        edge_value=bc.edge_value,
-                        has_value_flag=bc.has_value_flag,
-                    )
-                    for bc in m.bookmaker_comparison
-                ] if m.bookmaker_comparison else None,
-                bookmaker_overround=m.bookmaker_overround,
-                has_bookmaker_odds=m.has_bookmaker_odds,
-            )
-            for m in market_analysis.markets
-        ]
     
     # Convert easy match result to response schema
     easy_match_response = None
@@ -275,7 +243,10 @@ async def get_match_prediction(
         home_xg=prediction.home_xg,
         away_xg=prediction.away_xg,
         btts_probability=prediction.btts_probability,
-        market_analysis=market_analysis_responses,
+        predicted_score=analysis_context.predicted_score,
+        mensione_pick=analysis_context.mensione_pick,
+        prediction_version_id=analysis_context.prediction_version_id,
+        market_analysis=None,  # Market analysis removed in favor of full market derivation in mensione_pick
         easy_match=easy_match_response,
         is_development_data=provider.is_development_data(),
     )

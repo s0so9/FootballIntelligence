@@ -6,7 +6,7 @@ in API versioning without changing internal domain structures.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 from app.domain.enums import MatchStatus, MatchOutcome
@@ -87,6 +87,18 @@ class MatchPredictionResponse(BaseModel):
     home_xg: float = Field(..., description="Home expected goals")
     away_xg: float = Field(..., description="Away expected goals")
     btts_probability: float = Field(..., description="Both teams to score probability")
+    predicted_score: Optional[str] = Field(
+        None,
+        description="Most likely scoreline (e.g., '3-1') - distinct from MENSIONE PICK"
+    )
+    mensione_pick: Optional[Dict[str, Any]] = Field(
+        None,
+        description="MENSIONE recommended pick with market, confidence, and reasoning"
+    )
+    prediction_version_id: Optional[str] = Field(
+        None,
+        description="Unique identifier for this prediction version (immutable)"
+    )
     market_analysis: Optional[List[MarketAnalysisResponse]] = Field(
         None,
         description="Market analysis across supported markets"
