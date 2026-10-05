@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Provider Health Monitoring System - Create health.py with ProviderHealthStatus model and ProviderHealthService class that checks provider availability and maps HTTP errors to specific failure modes (402→PAYMENT_REQUIRED, 404→ENDPOINT_INVALID, timeout→TIMEOUT, etc.). In-memory storage only, no database persistence.",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/providers/health.py with ProviderHealthStatus Pydantic model: provider_name (str), is_available (bool), last_check_utc (datetime), last_success_utc (Optional[datetime]), consecutive_failures (int), error_code (Optional[str]), error_detail (Optional[str])",
+    "Add ProviderHealthService class with __init__(provider_manager: ProviderManager), _health_cache (Dict[str, ProviderHealthStatus]) for in-memory storage",
+    "Implement async check_provider(provider_name: str) method that: gets provider instance from manager, calls a lightweight test endpoint (e.g., get_live_matches()), catches ProviderHTTPError and maps status_code (402→PAYMENT_REQUIRED, 404→ENDPOINT_INVALID, 429→RATE_LIMITED, 5xx→SERVER_ERROR), catches ProviderTimeoutError→TIMEOUT, catches ProviderError→UNKNOWN_ERROR, updates _health_cache with ProviderHealthStatus, returns ProviderHealthStatus",
+    "Implement async check_all() method that calls check_provider() for all providers in manager (ryzellx, fotmob, sofascore, openligadb), returns Dict[str, ProviderHealthStatus]",
+    "Add get_health_status(provider_name: str) method that returns cached ProviderHealthStatus or None if never checked",
+    "Add get_all_health_statuses() method that returns Dict[str, ProviderHealthStatus] from cache"
+  ],
+  "acceptance_criteria": [
+    "health.py exists with ProviderHealthStatus model (7 fields) and ProviderHealthService class",
+    "ProviderHealthService correctly maps HTTP 402 to PAYMENT_REQUIRED error_code",
+    "ProviderHealthService correctly maps HTTP 404 to ENDPOINT_INVALID error_code",
+    "ProviderHealthService correctly maps ProviderTimeoutError to TIMEOUT error_code",
+    "check_all() method tests all 4 providers and returns health status dict",
+    "Health status stored in-memory only (_health_cache dict), no database writes",
+    "consecutive_failures counter increments on repeated failures, resets on success"
+  ],
+  "verification": [
+    "pytest backend/tests/providers/test_health.py -v - all health monitoring tests pass with mocked provider responses simulating various failure modes"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

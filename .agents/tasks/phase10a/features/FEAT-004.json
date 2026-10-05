@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Live Matches API Endpoint with Health & Quality Reporting - Create backend/app/api/v1/endpoints/live_matches.py with GET /api/v1/matches/live endpoint. Returns live matches from ProviderManager, provider health status, data quality indicators, and gracefully returns empty list + health status when all providers fail. Register in existing route structure (backend/app/api/v1/__init__.py).",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/api/v1/endpoints/live_matches.py with FastAPI router (prefix='/matches', tag='live')",
+    "Add GET /live endpoint with query params: league_id (Optional[str]), include_stats (Optional[bool], default=False). Response model: LiveMatchesResponse with fields: matches (List), provider_health (Dict), data_quality (Dict), timestamp (datetime), provider_used (Optional[str])",
+    "Implement endpoint logic: get ProviderManager from dependency injection (use existing get_data_provider pattern from matches.py), optionally get ProviderHealthService, call manager.get_live_matches() which returns (matches, metadata), extract provider_used from metadata['selected_provider']",
+    "If ProviderHealthService available, call get_all_health_statuses() and include in response. If not available, set provider_health to empty dict",
+    "For each ProviderLiveMatch in results, compute data_quality summary: aggregate has_xg, has_events, has_shots flags across all matches, return as data_quality dict in response",
+    "Handle provider failures gracefully: if get_live_matches() raises ProviderError or returns empty list, return LiveMatchesResponse with empty matches list, include provider_health showing all providers unavailable, never fabricate data",
+    "Add response schema classes to backend/app/api/v1/schemas.py: LiveMatchResponse (match_id, status, minute, home_score, away_score, home_team, away_team, data_quality_flags), LiveMatchesResponse (matches, provider_health, data_quality, timestamp, provider_used)",
+    "In backend/app/api/v1/__init__.py: import live_matches router and include it: api_router.include_router(live_matches.router)"
+  ],
+  "acceptance_criteria": [
+    "live_matches.py endpoint file exists with GET /live route",
+    "Endpoint returns LiveMatchesResponse with matches, provider_health, data_quality, timestamp fields",
+    "league_id query param filters results when provided",
+    "include_stats query param controls statistics inclusion",
+    "Empty list returned with health status when all providers fail (no fabricated data)",
+    "provider_used field correctly set from ProviderManager metadata",
+    "LiveMatchResponse and LiveMatchesResponse schemas added to schemas.py",
+    "Router registered in v1/__init__.py"
+  ],
+  "verification": [
+    "pytest backend/tests/providers/test_live_matches.py -v - tests verify endpoint response structure, graceful failure handling, health reporting, and that no data is fabricated when providers unavailable",
+    "Manual verification: start backend server, curl http://localhost:8000/api/v1/matches/live - returns JSON with empty matches list and provider health showing current provider states"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

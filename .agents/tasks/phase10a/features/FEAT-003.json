@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Spatial Data Models & Enhanced ProviderLiveMatch - Extend backend/app/providers/models.py with spatial field support: PlayerPosition, BallPosition, FieldDimensions models. Add optional spatial fields to existing ProviderLiveMatch model (player_positions, ball_position, field_dimensions). Add DataQualityIndicators model. All spatial fields default to None and MUST NOT FABRICATE coordinates. Validate spatial coordinates within realistic football pitch bounds when present.",
+  "status": "pending",
+  "steps": [
+    "In backend/app/providers/models.py, add PlayerPosition Pydantic model: player_id (str), player_name (Optional[str]), team_id (str), x (float), y (float), timestamp (datetime). Add field validators: x in [0, 120], y in [0, 80] (realistic pitch meters)",
+    "Add BallPosition model: x (float), y (float), z (Optional[float]), timestamp (datetime). Validators: x in [0, 120], y in [0, 80], z in [0, 10] if present",
+    "Add FieldDimensions model: length_meters (float), width_meters (float), unit (str). Validators: length in [90, 120], width in [45, 90]",
+    "Add DataQualityIndicators model: has_player_positions (bool), has_ball_tracking (bool), has_xg (bool), has_shots (bool), has_events (bool), has_shot_coordinates (bool), has_live_statistics (bool)",
+    "Extend existing ProviderLiveMatch model (around line 318 in models.py) by adding optional fields: player_positions (Optional[List[PlayerPosition]]), ball_position (Optional[BallPosition]), field_dimensions (Optional[FieldDimensions]), data_quality (Optional[DataQualityIndicators]). DO NOT replace ProviderLiveMatch, only add new fields to existing model.",
+    "Add docstring comment to each spatial field: 'Optional spatial data. Defaults to None. MUST NOT FABRICATE. Only set when provider supplies real coordinates.'",
+    "Add model_validator to ProviderLiveMatch that checks: if player_positions is not None, validate each position's coordinates are within field_dimensions if present, otherwise use default bounds [0-120, 0-80]"
+  ],
+  "acceptance_criteria": [
+    "PlayerPosition model exists with x/y coordinate validation (0-120 x, 0-80 y)",
+    "BallPosition model exists with x/y/z coordinate validation",
+    "FieldDimensions model exists with realistic pitch dimension validation",
+    "DataQualityIndicators model exists with 7 boolean flags",
+    "ProviderLiveMatch model extended (not replaced) with 4 new optional fields",
+    "All spatial fields default to None",
+    "Docstrings on spatial fields explicitly state MUST NOT FABRICATE",
+    "Pydantic validation rejects coordinates outside realistic bounds (e.g., x=150 or y=-10)"
+  ],
+  "verification": [
+    "pytest backend/tests/providers/test_normalization.py -v - tests verify spatial field validation, bounds checking, and that invalid coordinates raise ValidationError"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -14,7 +14,7 @@ NEVER invent values for missing fields.
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.domain.enums import MatchStatus, MatchEventType, MatchOutcome
 
@@ -315,6 +315,127 @@ class ProviderStanding(BaseModel):
     form: Optional[str] = None  # e.g., 'WWDLL'
 
 
+class PlayerPosition(BaseModel):
+    """Player position coordinates on the pitch.
+    
+    Optional spatial data. Defaults to None. MUST NOT FABRICATE.
+    Only set when provider supplies real tracking coordinates.
+    
+    Coordinate system: standard pitch dimensions in meters
+    - x: 0 to 120 meters (pitch length)
+    - y: 0 to 80 meters (pitch width)
+    """
+    
+    player_id: str = Field(..., description="Player identifier")
+    player_name: Optional[str] = Field(None, description="Player name if available")
+    team_id: str = Field(..., description="Team identifier")
+    x: float = Field(..., description="X coordinate in meters (0-120)")
+    y: float = Field(..., description="Y coordinate in meters (0-80)")
+    timestamp: datetime = Field(..., description="Timestamp of position data")
+    
+    @field_validator('x')
+    @classmethod
+    def validate_x(cls, v: float) -> float:
+        """Validate x coordinate within realistic pitch bounds."""
+        if not (0 <= v <= 120):
+            raise ValueError(f"x coordinate must be between 0 and 120 meters, got {v}")
+        return v
+    
+    @field_validator('y')
+    @classmethod
+    def validate_y(cls, v: float) -> float:
+        """Validate y coordinate within realistic pitch bounds."""
+        if not (0 <= v <= 80):
+            raise ValueError(f"y coordinate must be between 0 and 80 meters, got {v}")
+        return v
+
+
+class BallPosition(BaseModel):
+    """Ball position coordinates on the pitch.
+    
+    Optional spatial data. Defaults to None. MUST NOT FABRICATE.
+    Only set when provider supplies real tracking coordinates.
+    
+    Coordinate system: standard pitch dimensions in meters
+    - x: 0 to 120 meters (pitch length)
+    - y: 0 to 80 meters (pitch width)
+    - z: 0 to 30 meters (height, optional)
+    """
+    
+    x: float = Field(..., description="X coordinate in meters (0-120)")
+    y: float = Field(..., description="Y coordinate in meters (0-80)")
+    z: Optional[float] = Field(None, description="Z coordinate (height) in meters (0-30)")
+    timestamp: datetime = Field(..., description="Timestamp of position data")
+    
+    @field_validator('x')
+    @classmethod
+    def validate_x(cls, v: float) -> float:
+        """Validate x coordinate within realistic pitch bounds."""
+        if not (0 <= v <= 120):
+            raise ValueError(f"x coordinate must be between 0 and 120 meters, got {v}")
+        return v
+    
+    @field_validator('y')
+    @classmethod
+    def validate_y(cls, v: float) -> float:
+        """Validate y coordinate within realistic pitch bounds."""
+        if not (0 <= v <= 80):
+            raise ValueError(f"y coordinate must be between 0 and 80 meters, got {v}")
+        return v
+    
+    @field_validator('z')
+    @classmethod
+    def validate_z(cls, v: Optional[float]) -> Optional[float]:
+        """Validate z coordinate within realistic bounds if present."""
+        if v is not None and not (0 <= v <= 30):
+            raise ValueError(f"z coordinate must be between 0 and 30 meters, got {v}")
+        return v
+
+
+class FieldDimensions(BaseModel):
+    """Football pitch dimensions.
+    
+    Standard FIFA pitch dimensions range:
+    - Length: 90-120 meters
+    - Width: 45-90 meters
+    """
+    
+    length_m: float = Field(..., description="Pitch length in meters")
+    width_m: float = Field(..., description="Pitch width in meters")
+    
+    @field_validator('length_m')
+    @classmethod
+    def validate_length(cls, v: float) -> float:
+        """Validate pitch length within FIFA standard range."""
+        if not (90 <= v <= 120):
+            raise ValueError(f"Pitch length must be between 90 and 120 meters, got {v}")
+        return v
+    
+    @field_validator('width_m')
+    @classmethod
+    def validate_width(cls, v: float) -> float:
+        """Validate pitch width within FIFA standard range."""
+        if not (45 <= v <= 90):
+            raise ValueError(f"Pitch width must be between 45 and 90 meters, got {v}")
+        return v
+
+
+class DataQualityIndicators(BaseModel):
+    """Data quality indicators for live match data.
+    
+    Flags indicating what data types are actually present in the response.
+    All default to False - only set to True when real data is present.
+    """
+    
+    has_player_positions: bool = Field(False, description="True if player positions available")
+    has_ball_tracking: bool = Field(False, description="True if ball tracking available")
+    has_xg: bool = Field(False, description="True if xG data available")
+    has_shots: bool = Field(False, description="True if shot data available")
+    has_events: bool = Field(False, description="True if event data available")
+    has_shot_coordinates: bool = Field(False, description="True if shot coordinates available")
+    has_live_statistics: bool = Field(False, description="True if live statistics available")
+
+
 class ProviderLiveMatch(BaseModel):
     """Normalized live match state from provider.
     
@@ -350,3 +471,24 @@ class ProviderLiveMatch(BaseModel):
     
     # Last update timestamp from provider
     last_updated: datetime
+    
+    # Spatial data (Phase 10A) - all optional, MUST NOT FABRICATE
+    player_positions: Optional[List[PlayerPosition]] = Field(
+        None,
+        description="Optional spatial data. Defaults to None. MUST NOT FABRICATE. Only set when provider supplies real coordinates."
+    )
+    
+    ball_position: Optional[BallPosition] = Field(
+        None,
+        description="Optional spatial data. Defaults to None. MUST NOT FABRICATE. Only set when provider supplies real coordinates."
+    )
+    
+    field_dimensions: Optional[FieldDimensions] = Field(
+        None,
+        description="Pitch dimensions. Optional, defaults to None."
+    )
+    
+    data_quality: Optional[DataQualityIndicators] = Field(
+        None,
+        description="Data quality indicators. Optional, defaults to None."
+    )

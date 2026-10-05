@@ -1,0 +1,31 @@
+{
+  "project_type": "FastAPI + React TypeScript - Football Intelligence Platform",
+  "language": "Python (backend), TypeScript (frontend)",
+  "build_system": "Python with pip/virtualenv, no frontend build in this phase",
+  "test_framework": "pytest in backend/tests/",
+  "build_command": "None (no compilation step for Python)",
+  "test_command": "pytest backend/tests/providers/ -v",
+  "verification_instructions": "Run pytest for new provider test modules. No real network calls in tests - all use mocked httpx responses. Tests verify: capability detection logic, health status mapping, normalization with spatial fields, API response structure.",
+  "snapshot_or_generated_files": "None",
+  "environment_constraints": "use_real_providers=False by default (keep this). Never expose secrets in logs. Do not activate providers globally. SofaScore base_url not in config yet - will be added. Ryzellx returns 402 Payment Required. FotMob /api/matches returns 404. OpenLigaDB xg=None always (authoritative).",
+  "contribution_requirements": "From AGENTS.md: always inspect files before editing, work in small verifiable steps, run tests after implementation, never claim working without verification, never fabricate data (REAL DATA > NULL > FABRICATED DATA), update docs/PROGRESS.md after completion.",
+  "key_patterns": "Provider classes: async methods, httpx.AsyncClient, retry logic, normalization to ProviderXxx models with source metadata. ProviderManager: routing by operation type (LIVE_ORDER, MATCH_DETAIL_ORDER, etc.), source-of-truth rule (one provider per response). Exception hierarchy: ProviderError base with TimeoutError, HTTPError, InvalidDataError, NotFoundError. Models: Pydantic BaseModel with provider/source_id/fetched_at/is_live/data_freshness_seconds. Tests: pytest with mocked httpx, no real network.",
+  "relevant_files": [
+    "c:\\FootballIntelligence\\backend\\app\\providers\\models.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\exceptions.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\manager.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\ryzellx.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\fotmob.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\sofascore.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\openligadb.py",
+    "c:\\FootballIntelligence\\backend\\app\\providers\\cache.py",
+    "c:\\FootballIntelligence\\backend\\app\\config.py",
+    "c:\\FootballIntelligence\\backend\\app\\api\\v1\\endpoints\\matches.py",
+    "c:\\FootballIntelligence\\backend\\app\\api\\v1\\__init__.py",
+    "c:\\FootballIntelligence\\backend\\app\\main.py",
+    "c:\\FootballIntelligence\\backend\\tests\\test_providers.py",
+    "c:\\FootballIntelligence\\backend\\tests\\test_providers_manager.py",
+    "c:\\FootballIntelligence\\docs\\PROGRESS.md"
+  ],
+  "directory_structure": "backend/app/providers/ (provider implementations), backend/app/api/v1/endpoints/ (REST endpoints), backend/tests/ (test files), docs/ (documentation)"
+}

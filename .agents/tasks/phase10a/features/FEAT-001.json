@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Provider Capability Detection System - Create capabilities.py with ProviderCapabilityStatus enum and ProviderCapabilityMatrix model. Add detect_capabilities() method to each provider class (Ryzellx, FotMob, SofaScore, OpenLigaDB) that performs real HTTP test requests to validate what each provider actually supports. Map HTTP status codes (402→PAYMENT_REQUIRED, 404→ENDPOINT_INVALID, etc.) and never expose secrets in logs.",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/providers/capabilities.py with ProviderCapabilityStatus enum (SUPPORTED, PARTIAL, UNAVAILABLE, NOT_TESTED, NOT_CONFIGURED, AUTH_REQUIRED, PAYMENT_REQUIRED) and capability keys list (live_matches, match_details, match_statistics, player_positions, ball_tracking, xg_data, lineups, events, shots, shot_xg, shot_coordinates, possession, corners, fouls, passes, saves)",
+    "Add ProviderCapabilityMatrix Pydantic model with fields: provider_name (str), last_checked (datetime), capabilities (Dict[str, ProviderCapabilityStatus]), endpoint_tests (Dict[str, Dict] for test results), notes (Optional[str])",
+    "In backend/app/providers/ryzellx.py: add async detect_capabilities() method that tests /api/matches/live, /api/match/{test_id}, records 402 status as PAYMENT_REQUIRED, marks live_matches/match_details capabilities accordingly, returns ProviderCapabilityMatrix",
+    "In backend/app/providers/fotmob.py: add async detect_capabilities() method that tests /api/matches endpoint (date param), records 404 status as ENDPOINT_INVALID, marks capabilities based on response, returns ProviderCapabilityMatrix",
+    "In backend/app/providers/sofascore.py: add async detect_capabilities() method that tests /sport/football/events/live and /event/{test_id}/statistics endpoints, marks live_matches/match_statistics capabilities, returns ProviderCapabilityMatrix. Add sofascore_base_url to backend/app/config.py Settings with default https://api.sofascore.com",
+    "In backend/app/providers/openligadb.py: add async detect_capabilities() method that marks xg_data as UNAVAILABLE (authoritative), tests /getavailableleagues endpoint, marks match_details/standings capabilities, returns ProviderCapabilityMatrix",
+    "All detect_capabilities() methods use try-except around HTTP requests, handle ProviderTimeoutError/ProviderHTTPError/ProviderNotFoundError, never expose API keys or secrets in logs, set appropriate ProviderCapabilityStatus based on error type"
+  ],
+  "acceptance_criteria": [
+    "capabilities.py exists with ProviderCapabilityStatus enum (7 values) and ProviderCapabilityMatrix model",
+    "Each of 4 provider classes (Ryzellx, FotMob, SofaScore, OpenLigaDB) has detect_capabilities() async method",
+    "Ryzellx.detect_capabilities() correctly maps 402 status to PAYMENT_REQUIRED",
+    "FotMob.detect_capabilities() correctly maps 404 status to ENDPOINT_INVALID",
+    "OpenLigaDB.detect_capabilities() marks xg_data as UNAVAILABLE (never SUPPORTED)",
+    "SofaScore configuration added to config.py with sofascore_base_url field",
+    "No secrets exposed in any log statements or error messages"
+  ],
+  "verification": [
+    "pytest backend/tests/providers/test_capabilities.py -v - all capability detection tests pass with mocked httpx responses simulating 402, 404, 200 status codes"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
