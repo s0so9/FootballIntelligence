@@ -8601,3 +8601,230 @@ Phase 5 Market Intelligence Expansion is complete and verified. All architectura
 - ? "Never fabricate" constraint enforced throughout
 
 **Detailed Report:** See .agents/tasks/phase5/FINAL_REPORT.md for complete implementation report with formulas, test coverage, and verification results.
+
+---
+## Entry: 2026-01-23 - FEAT-005 Final Canonical Pipeline Audit and Verification
+
+### Task
+
+FEAT-005: Final canonical pipeline audit and verification. This is a verification-only task following completion of FEAT-002 (SmartMarketSelector), FEAT-003 (integration), and FEAT-004 (frozen picks).
+
+### Audit Checklist Completed
+
+**1. Model Registry Verification:**
+- ? All 7 models present in ModelOrchestrator.create_default_registry()
+- ? PoissonModel, DixonColesModel, EloModel, MonteCarloSimulation, NegativeBinomialModel, FormAdjustedModel, LogisticRegressionModel
+- Location: `backend/app/prediction/model_orchestrator.py` lines 324-336
+
+**2. Pipeline Engine Verification:**
+- ? EnsembleIntegration imported and used (line 795)
+- ? CalibrationIntegration imported and used (line 812)
+- ? ConfidenceIntegration imported and used (line 825)
+- Location: `backend/app/prediction/service.py`
+
+**3. Canonical Pipeline Integrity:**
+- ? Single sequential execution verified in generate_full_prediction()
+- ? Feature extraction ? ONCE (line ~770)
+- ? ModelOrchestrator.run_all ? ONCE (line ~785)
+- ? EnsembleIntegration.combine_predictions ? ONCE (line ~795)
+- ? CalibrationIntegration.calibrate_prediction ? ONCE (line ~812)
+- ? ConfidenceIntegration.assess_confidence ? ONCE (line ~825)
+- ? MarketDerivationEngine.derive ? ONCE (line ~875)
+- ? SmartMarketSelector.evaluate_and_select ? ONCE (line ~881)
+- ? No duplicate pipeline execution detected
+- ? No hidden fallback paths
+
+**4. Hardcoded Values Audit:**
+- ? No hardcoded model_agreement in production code
+- ? No hardcoded data_quality_score in production code
+- ? Only legitimate fallback values in exception handlers (line 840)
+- ? Only legitimate defaults in signal extraction and fallback paths
+
+**5. Market Selector Verification:**
+- ? SmartMarketSelector used (lines 132, 881)
+- ? MensionePickGenerator not found (deprecated/removed)
+- ? BestTip and PassDecision logic active
+
+### Test Suite Results
+
+**Backend Test Suite:**
+```
+Tests run: 1016 passed, 0 failed, 14 skipped, 566 warnings
+Execution time: 55.87s
+Result: ? PASS
+```
+
+**Pipeline-Specific Tests:**
+```
+Tests run: 96 passed, 0 failed, 14 skipped, 78 warnings
+Execution time: 2.39s
+Modules: test_model_orchestrator, test_prediction_service, test_confidence_engine, 
+         test_ensemble_engine, test_calibration_engine, test_market_selector
+Result: ? PASS
+```
+
+**Market Selector Tests:**
+```
+Tests run: 20 passed, 0 failed, 61 warnings
+Execution time: 1.87s
+Result: ? PASS
+```
+
+### API Smoke Test
+
+**Endpoint:** `GET http://127.0.0.1:8765/api/v1/matches/dev_match_002/prediction`
+
+**Result:** ? PASS
+- Status Code: 200 OK
+- Response contains: `mensione_pick` with BestTip structure
+- Market: OVER_0_5
+- Selection: Over 0.5 Goals
+- Probability: 0.957
+- Confidence: 0.684
+- Model Agreement: 0.982
+- Data Quality: 0.6875
+- Value Classification: NEUTRAL
+- Risk Level: MEDIUM
+- Selection Score: 0.840
+- Pass Decision: false
+
+**Structure Verification:**
+- ? Contains market, selection, probability, confidence
+- ? Contains model_agreement, data_quality, edge
+- ? Contains value_classification, risk_level, selection_score
+- ? Contains selector_reason, timestamp, pipeline_version
+- ? Contains pass_decision flag
+- ? No fabricated odds (edge=null, bookmaker_odds=null when unavailable)
+
+### Frontend Verification
+
+**Type Check:**
+```
+Result: ? PASS (exit 0)
+```
+
+**Lint:**
+```
+Result: ? PASS (exit 0)
+```
+
+**Build:**
+```
+Result: ? PASS
+Build time: 6.06s
+Output: dist/index.html, dist/assets/index-DUUZylOq.css (85.40 kB), dist/assets/index-Cnpg--nV.js (245.05 kB)
+```
+
+### Pipeline Architecture Verification
+
+**Canonical Flow Confirmed:**
+```
+Match
+  ? Feature Snapshot (with data quality assessment)
+  ? ModelOrchestrator (7 models)
+  ? Ensemble (reliability-weighted combination)
+  ? Calibration (isotonic calibration)
+  ? Confidence (computed from pipeline values)
+  ? Market Intelligence (derived from score distribution)
+  ? Smart Market Selector (BestTip or PassDecision)
+  ? Prediction Version (immutable with full metadata)
+  ? AnalysisContext (for AI Analyst)
+```
+
+**No Duplicate Pipeline:** ? Verified
+**No Fabricated Data:** ? Verified (nulls preserved when data unavailable)
+**No Hardcoded Production Values:** ? Verified
+**No Hidden Poisson-Only Fallback:** ? Verified
+
+### Issues Found and Fixed
+
+**None.** All audit checks passed on first verification.
+
+### Verification Commands
+
+```powershell
+# Model verification
+Select-String -Path "backend\app\prediction\model_orchestrator.py" -Pattern "register|PoissonModel|DixonColes|EloModel|MonteCarlo|NegativeBinomial|FormAdjusted|LogisticRegression"
+
+# Engine verification
+Select-String -Path "backend\app\prediction\service.py" -Pattern "EnsembleIntegration|CalibrationIntegration|ConfidenceIntegration"
+
+# SmartMarketSelector verification
+Select-String -Path "backend\app\prediction\service.py" -Pattern "SmartMarketSelector"
+
+# Full test suite
+cd backend; .venv\Scripts\python.exe -m pytest tests/ -v --tb=short
+
+# Pipeline tests
+cd backend; .venv\Scripts\python.exe -m pytest tests/test_model_orchestrator.py tests/test_prediction_service.py tests/test_confidence_engine.py tests/test_ensemble_engine.py tests/test_calibration_engine.py tests/test_market_selector.py -v
+
+# Market selector tests
+cd backend; .venv\Scripts\python.exe -m pytest tests/test_market_selector.py -v
+
+# API smoke test
+cd backend; Start-Process -FilePath ".venv\Scripts\python.exe" -ArgumentList "-m","uvicorn","app.main:app","--host","127.0.0.1","--port","8765"
+Start-Sleep -Seconds 8
+Invoke-WebRequest -Uri "http://127.0.0.1:8765/api/v1/matches/dev_match_002/prediction" -Method GET -UseBasicParsing
+Stop-Process -Name "python"
+
+# Frontend verification
+cd frontend; npm run type-check
+cd frontend; npm run lint
+cd frontend; npm run build
+```
+
+### Current Status
+
+**? FEAT-005 COMPLETE: Canonical pipeline audit verified**
+
+**Summary:**
+- ? All 7 models registered and operational
+- ? All 3 engines (ensemble, calibration, confidence) integrated
+- ? Canonical pipeline executes sequentially without duplication
+- ? SmartMarketSelector generates BestTip/PassDecision correctly
+- ? No hardcoded confidence or model agreement in production code
+- ? No fabricated odds or data (nulls preserved)
+- ? Backend: 1016 tests passed, 0 failed
+- ? Frontend: type-check PASS, lint PASS, build PASS
+- ? API smoke test: 200 OK with valid mensione_pick structure
+
+**Implementation Quality:**
+- Pipeline integrity: VERIFIED
+- Test coverage: COMPREHENSIVE (1016 tests)
+- Architecture compliance: VERIFIED
+- Data integrity: VERIFIED (no fabrication)
+- API contract: VERIFIED
+- Frontend build: VERIFIED
+
+### Next Steps
+
+According to PROJECT_SPEC.md, the next phases are:
+
+**Phase 6: Result Ingestion and Prediction Accuracy Tracking**
+- Ingest match results (final scores, events)
+- Link predictions to actual outcomes
+- Calculate prediction accuracy metrics
+- Track model performance over time
+- Store accuracy data for model calibration
+
+**Phase 7: Accuracy Dashboard**
+- Display prediction vs. actual comparison
+- Show model accuracy metrics by league, team, market
+- Visualize calibration curves
+- Display ROI and value bet performance
+- Track MENSIONE pick success rate
+
+**Phase 8: Odds Scraping and Real Market Data**
+- Integrate real bookmaker odds sources
+- Implement odds scraping/API clients
+- Store historical odds data
+- Enable true edge calculation
+- Track odds movement
+
+**Future Enhancements:**
+- Multi-currency support
+- Bankroll management
+- Bet tracking
+- Portfolio optimization
+- Advanced market analysis
+- Machine learning model improvements
