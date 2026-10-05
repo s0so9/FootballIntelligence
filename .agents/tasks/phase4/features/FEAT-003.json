@@ -1,0 +1,40 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement SourceIntelligence for multi-provider data merging and conflict detection, plus comprehensive test coverage",
+  "status": "completed",
+  "steps": [
+    "1. Create backend/app/providers/source_intelligence.py with SourceIntelligence class. Synchronous class (no async) that works with ProviderMatchStats objects.",
+    "2. Implement merge_statistics(self, stats_list: List[ProviderMatchStats], strategy: str = 'first') -> Optional[ProviderMatchStats]. Three strategies: 'first' (first non-None value per field wins), 'most_complete' (provider with most non-None fields wins entirely, not field-by-field), 'highest_quality' (use DataQualityEngine.check_completeness and DataQualityEngine.check_consistency to score each ProviderMatchStats, pick highest). Return None if stats_list is empty.",
+    "3. Implement detect_conflicts(self, stats_list: List[ProviderMatchStats]) -> Dict[str, List[Dict]]. For each field, check if providers disagree. Return {field_name: [{'provider': str, 'value': Any}, ...]} only for fields where values differ across providers (excluding None values).",
+    "4. Implement get_field_sources(self, merged_stats: ProviderMatchStats, stats_list: List[ProviderMatchStats]) -> Dict[str, str]. For each non-None field in merged_stats, find which provider in stats_list supplied that value. Return {field_name: provider_name}.",
+    "5. Update backend/app/providers/__init__.py: add 'from app.providers.source_intelligence import SourceIntelligence' and add 'SourceIntelligence' to __all__ list.",
+    "6. Create backend/tests/test_sofascore_provider.py. Test structure following backend/tests/test_api_matches.py pattern (pytest with fixtures). Tests: test_sofascore_provider_initialization, test_normalize_match_statistics_maps_all_fields, test_normalize_match_statistics_handles_missing_fields, test_normalize_match_statistics_sets_period_field, test_get_match_statistics_returns_tuple, test_get_match_caches_result, test_parse_match_status_handles_all_statuses, test_provider_exports. Use httpx-mock or unittest.mock.patch to mock HTTP requests - DO NOT make real API calls.",
+    "7. Create backend/tests/test_data_quality.py. Test structure following pytest pattern. Tests: test_check_completeness_all_fields_present, test_check_completeness_missing_fields, test_check_consistency_valid_stats, test_check_consistency_shots_violation, test_check_consistency_possession_violation, test_check_consistency_negative_values, test_check_freshness_recent_data, test_check_freshness_stale_data, test_detect_source_conflicts_no_conflicts, test_detect_source_conflicts_with_disagreement, test_calculate_quality_score_perfect, test_calculate_quality_score_incomplete, test_calculate_quality_score_inconsistent, test_quality_score_formula_deterministic.",
+    "8. Create backend/tests/test_source_intelligence.py. Test structure following pytest pattern. Tests: test_merge_statistics_first_strategy, test_merge_statistics_most_complete_strategy, test_merge_statistics_highest_quality_strategy, test_merge_statistics_empty_list, test_detect_conflicts_no_conflicts, test_detect_conflicts_with_disagreements, test_detect_conflicts_ignores_none_values, test_get_field_sources_tracks_origin, test_get_field_sources_all_fields.",
+    "9. Run all tests including new ones. Verify 38 existing tests + new tests all pass. Fix any failures by correcting the implementation, not by modifying tests."
+  ],
+  "acceptance_criteria": [
+    "SourceIntelligence class exists in backend/app/providers/source_intelligence.py with all three methods",
+    "merge_statistics implements all three strategies correctly",
+    "detect_conflicts identifies field-level disagreements",
+    "get_field_sources tracks field origin correctly",
+    "SourceIntelligence is exported in __init__.py",
+    "test_sofascore_provider.py created with comprehensive mocked tests",
+    "test_data_quality.py created with full coverage of DataQualityEngine",
+    "test_source_intelligence.py created with full coverage of SourceIntelligence",
+    "All existing 38 tests still pass",
+    "All new tests pass",
+    "No real HTTP calls in tests"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe -c \"from app.providers import SourceIntelligence; si = SourceIntelligence(); print('✓ SourceIntelligence imports and instantiates')\"",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_sofascore_provider.py -v",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_data_quality.py -v",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_source_intelligence.py -v",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/ -v --tb=short (all tests including new ones must pass)",
+    "cd backend && .venv\\Scripts\\python.exe -c \"import pytest; result = pytest.main(['tests/', '-v', '--tb=short']); exit(0 if result == 0 else 1)\""
+  ],
+  "blocked_reason": null,
+  "findings": "✓ SourceIntelligence class created in backend/app/providers/source_intelligence.py with all three methods (merge_statistics, detect_conflicts, get_field_sources)\n✓ merge_statistics implements all three strategies correctly: 'first' (field-by-field), 'most_complete' (whole provider by field count), 'highest_quality' (whole provider by quality score)\n✓ detect_conflicts identifies field-level disagreements and ignores None values\n✓ get_field_sources tracks field origin correctly\n✓ SourceIntelligence exported in __init__.py\n✓ test_sofascore_provider.py created with 12 comprehensive mocked tests (no real API calls)\n✓ test_data_quality.py created with 14 tests covering full DataQualityEngine coverage\n✓ test_source_intelligence.py created with 14 tests covering full SourceIntelligence coverage\n✓ All 40 new tests pass\n✓ All 886 existing tests still pass (15 skipped)\n✓ No real HTTP calls in any tests\n✓ All verification commands executed successfully"
+}

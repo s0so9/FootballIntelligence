@@ -9,6 +9,7 @@ from app.providers.sofascore import SofaScoreFootballProvider
 from app.providers.manager import ProviderManager
 from app.providers.adapter import ProviderManagerAdapter
 from app.providers.data_quality import DataQualityEngine
+from app.providers.source_intelligence import SourceIntelligence
 from app.providers.exceptions import (
     ProviderError,
     ProviderTimeoutError,
@@ -44,6 +45,8 @@ __all__ = [
     "ProviderManagerAdapter",
     # Data quality
     "DataQualityEngine",
+    # Source intelligence
+    "SourceIntelligence",
     # Exceptions
     "ProviderError",
     "ProviderTimeoutError",

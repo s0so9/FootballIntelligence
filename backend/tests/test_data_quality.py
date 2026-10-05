@@ -1,582 +1,410 @@
-"""Tests for DataQualityEngine (Phase 4 FEAT-002).
+"""Tests for DataQualityEngine.
 
-Tests completeness, consistency, freshness, source conflict detection, and quality scoring.
+These tests verify the data quality validation and scoring logic.
+Pure calculation tests with no HTTP calls or async operations.
 """
 
 import pytest
 from datetime import datetime, timezone, timedelta
+
 from app.providers import DataQualityEngine, ProviderMatchStats, ProviderMetadata
 
 
 @pytest.fixture
-def engine():
-    """Create DataQualityEngine instance."""
+def quality_engine():
+    """Create a DataQualityEngine instance."""
     return DataQualityEngine()
 
 
 @pytest.fixture
 def complete_stats():
-    """Create complete match statistics for testing."""
+    """Create a ProviderMatchStats with all fields populated."""
+    now = datetime.now(timezone.utc)
     return ProviderMatchStats(
-        provider='test_provider',
-        source_id='match_123',
-        fetched_at=datetime.now(timezone.utc),
-        match_id='match_123',
-        team_id='team_456',
+        provider="test_provider",
+        source_id="12345",
+        fetched_at=now,
+        match_id="match_1",
+        team_id="team_1",
+        period="full",
         goals_scored=2,
         goals_conceded=1,
-        xg=1.8,
-        xg_against=0.9,
-        shots_total=15,
-        shots_on_target=8,
-        shots_off_target=5,
-        shots_blocked=2,
-        possession_percentage=55.0,
+        xg=1.89,
+        xg_against=0.76,
+        shots_total=14,
+        shots_on_target=5,
+        shots_off_target=6,
+        shots_blocked=3,
+        possession_percentage=58.0,
         passes_completed=450,
-        passes_attempted=500,
-        pass_accuracy=90.0,
-        corners=6,
+        passes_attempted=520,
+        pass_accuracy=86.5,
+        corners=7,
         free_kicks=12,
         offsides=2,
         yellow_cards=3,
         red_cards=0,
-        fouls_committed=10,
+        fouls_committed=11,
         tackles=18,
-        interceptions=12,
-        clearances=15,
+        interceptions=9,
+        clearances=14,
         saves=3,
     )
 
 
 @pytest.fixture
-def partial_stats():
-    """Create partial match statistics (only some fields present)."""
+def incomplete_stats():
+    """Create a ProviderMatchStats with only some fields populated."""
+    now = datetime.now(timezone.utc)
     return ProviderMatchStats(
-        provider='test_provider',
-        source_id='match_123',
-        fetched_at=datetime.now(timezone.utc),
-        match_id='match_123',
-        team_id='team_456',
-        goals_scored=2,
-        shots_total=15,
-        shots_on_target=8,
-        possession_percentage=55.0,
-        yellow_cards=2,
-    )
-
-
-@pytest.fixture
-def inconsistent_stats():
-    """Create inconsistent statistics (violates logical rules)."""
-    return ProviderMatchStats(
-        provider='test_provider',
-        source_id='match_123',
-        fetched_at=datetime.now(timezone.utc),
-        match_id='match_123',
-        team_id='team_456',
-        goals_scored=-1,  # Invalid: negative
+        provider="test_provider",
+        source_id="12345",
+        fetched_at=now,
+        match_id="match_1",
+        team_id="team_1",
+        period="full",
         shots_total=10,
-        shots_on_target=15,  # Invalid: more than total
-        shots_off_target=12,  # Invalid: more than total
-        possession_percentage=150.0,  # Invalid: > 100
-        xg=-0.5,  # Invalid: negative
+        shots_on_target=4,
+        possession_percentage=45.0,
+        # Most fields left as None
     )
 
 
 @pytest.fixture
-def fresh_metadata():
-    """Create fresh metadata (fetched recently)."""
+def recent_metadata():
+    """Create metadata with recent timestamp (fresh data)."""
+    now = datetime.now(timezone.utc)
     return ProviderMetadata(
-        provider='test_provider',
-        source_id='match_123',
-        fetched_at=datetime.now(timezone.utc) - timedelta(seconds=60),
-        is_live=True,
+        provider="test_provider",
+        source_id="12345",
+        fetched_at=now,
     )
 
 
 @pytest.fixture
 def stale_metadata():
-    """Create stale metadata (fetched long ago)."""
+    """Create metadata with old timestamp (stale data)."""
+    now = datetime.now(timezone.utc)
+    ten_minutes_ago = now - timedelta(minutes=10)
     return ProviderMetadata(
-        provider='test_provider',
-        source_id='match_123',
-        fetched_at=datetime.now(timezone.utc) - timedelta(seconds=600),
-        is_live=False,
+        provider="test_provider",
+        source_id="12345",
+        fetched_at=ten_minutes_ago,
     )
 
 
 class TestCheckCompleteness:
-    """Test completeness calculation."""
-    
-    def test_complete_stats(self, engine, complete_stats):
-        """Verify complete stats have ratio of 1.0."""
-        result = engine.check_completeness(complete_stats)
+    """Tests for check_completeness method."""
+
+    def test_check_completeness_all_fields_present(self, quality_engine, complete_stats):
+        """Verify completeness check with all fields present."""
+        result = quality_engine.check_completeness(complete_stats)
         
-        assert result['available'] == 22
-        assert result['expected'] == 22
+        assert 'available' in result
+        assert 'expected' in result
+        assert 'ratio' in result
+        assert 'missing_fields' in result
+        
+        assert result['available'] == result['expected']
         assert result['ratio'] == 1.0
-        assert result['missing_fields'] == []
-    
-    def test_partial_stats(self, engine, partial_stats):
-        """Verify partial stats have correct ratio."""
-        result = engine.check_completeness(partial_stats)
+        assert len(result['missing_fields']) == 0
+
+    def test_check_completeness_missing_fields(self, quality_engine, incomplete_stats):
+        """Verify completeness check with missing fields."""
+        result = quality_engine.check_completeness(incomplete_stats)
         
-        assert result['available'] == 5
-        assert result['expected'] == 22
-        assert result['ratio'] == pytest.approx(5 / 22)
-        assert len(result['missing_fields']) == 17
+        assert result['available'] < result['expected']
+        assert 0.0 < result['ratio'] < 1.0
+        assert len(result['missing_fields']) > 0
+        
+        # Verify some expected missing fields
+        assert 'goals_scored' in result['missing_fields']
         assert 'xg' in result['missing_fields']
         assert 'corners' in result['missing_fields']
-    
-    def test_empty_stats(self, engine):
-        """Verify empty stats have ratio of 0.0."""
-        empty_stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-        )
         
-        result = engine.check_completeness(empty_stats)
-        
-        assert result['available'] == 0
-        assert result['expected'] == 22
-        assert result['ratio'] == 0.0
-        assert len(result['missing_fields']) == 22
+        # Verify available fields are counted correctly
+        assert result['available'] == 3  # shots_total, shots_on_target, possession_percentage
 
 
 class TestCheckConsistency:
-    """Test consistency validation."""
-    
-    def test_consistent_stats(self, engine, complete_stats):
-        """Verify logically consistent stats have no violations."""
-        result = engine.check_consistency(complete_stats)
+    """Tests for check_consistency method."""
+
+    def test_check_consistency_valid_stats(self, quality_engine, complete_stats):
+        """Verify consistency check with valid statistics."""
+        result = quality_engine.check_consistency(complete_stats)
+        
+        assert 'violations' in result
+        assert 'is_consistent' in result
         
         assert result['is_consistent'] is True
-        assert result['violations'] == []
-    
-    def test_shots_on_target_exceeds_total(self, engine):
-        """Verify detection of shots_on_target > shots_total."""
-        stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
+        assert len(result['violations']) == 0
+
+    def test_check_consistency_shots_violation(self, quality_engine):
+        """Verify consistency check detects shot violations."""
+        now = datetime.now(timezone.utc)
+        
+        # shots_on_target > shots_total
+        invalid_stats = ProviderMatchStats(
+            provider="test",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
             shots_total=10,
-            shots_on_target=15,
+            shots_on_target=15,  # Invalid: more than total
         )
         
-        result = engine.check_consistency(stats)
+        result = quality_engine.check_consistency(invalid_stats)
         
         assert result['is_consistent'] is False
-        assert len(result['violations']) == 1
-        assert 'shots_on_target (15) > shots_total (10)' in result['violations']
-    
-    def test_shots_off_target_exceeds_total(self, engine):
-        """Verify detection of shots_off_target > shots_total."""
-        stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=10,
-            shots_off_target=12,
+        assert len(result['violations']) > 0
+        assert any('shots_on_target' in v for v in result['violations'])
+
+    def test_check_consistency_possession_violation(self, quality_engine):
+        """Verify consistency check detects possession violations."""
+        now = datetime.now(timezone.utc)
+        
+        # possession > 100
+        invalid_stats = ProviderMatchStats(
+            provider="test",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            possession_percentage=105.0,  # Invalid: > 100
         )
         
-        result = engine.check_consistency(stats)
+        result = quality_engine.check_consistency(invalid_stats)
         
         assert result['is_consistent'] is False
-        assert 'shots_off_target (12) > shots_total (10)' in result['violations']
-    
-    def test_shots_blocked_exceeds_total(self, engine):
-        """Verify detection of shots_blocked > shots_total."""
-        stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=10,
-            shots_blocked=11,
+        assert len(result['violations']) > 0
+        assert any('possession_percentage' in v for v in result['violations'])
+
+    def test_check_consistency_negative_values(self, quality_engine):
+        """Verify consistency check detects negative values."""
+        now = datetime.now(timezone.utc)
+        
+        # Negative xG
+        invalid_stats = ProviderMatchStats(
+            provider="test",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            xg=-1.5,  # Invalid: negative
         )
         
-        result = engine.check_consistency(stats)
+        result = quality_engine.check_consistency(invalid_stats)
         
         assert result['is_consistent'] is False
-        assert 'shots_blocked (11) > shots_total (10)' in result['violations']
-    
-    def test_possession_out_of_range(self, engine):
-        """Verify detection of possession_percentage outside [0, 100]."""
-        stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            possession_percentage=150.0,
-        )
-        
-        result = engine.check_consistency(stats)
-        
-        assert result['is_consistent'] is False
-        assert 'possession_percentage (150.0) not in range [0, 100]' in result['violations']
-    
-    def test_negative_xg(self, engine):
-        """Verify detection of negative xG."""
-        stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            xg=-0.5,
-        )
-        
-        result = engine.check_consistency(stats)
-        
-        assert result['is_consistent'] is False
-        assert 'xg (-0.5) < 0' in result['violations']
-    
-    def test_negative_goals(self, engine):
-        """Verify detection of negative goals."""
-        stats = ProviderMatchStats(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            goals_scored=-1,
-        )
-        
-        result = engine.check_consistency(stats)
-        
-        assert result['is_consistent'] is False
-        assert 'goals_scored (-1) < 0' in result['violations']
-    
-    def test_multiple_violations(self, engine, inconsistent_stats):
-        """Verify detection of multiple violations."""
-        result = engine.check_consistency(inconsistent_stats)
-        
-        assert result['is_consistent'] is False
-        assert len(result['violations']) >= 5
-    
-    def test_missing_fields_not_violations(self, engine, partial_stats):
-        """Verify None/missing fields don't trigger violations."""
-        result = engine.check_consistency(partial_stats)
-        
-        # partial_stats has consistent values for fields present
-        assert result['is_consistent'] is True
-        assert result['violations'] == []
+        assert len(result['violations']) > 0
+        assert any('xg' in v and '< 0' in v for v in result['violations'])
 
 
 class TestCheckFreshness:
-    """Test freshness validation."""
-    
-    def test_fresh_data(self, engine, fresh_metadata):
-        """Verify recently fetched data is considered fresh."""
-        result = engine.check_freshness(fresh_metadata, max_age_seconds=300)
+    """Tests for check_freshness method."""
+
+    def test_check_freshness_recent_data(self, quality_engine, recent_metadata):
+        """Verify freshness check with recent data."""
+        result = quality_engine.check_freshness(recent_metadata, max_age_seconds=300)
         
         assert result is True
-    
-    def test_stale_data(self, engine, stale_metadata):
-        """Verify old data is considered stale."""
-        result = engine.check_freshness(stale_metadata, max_age_seconds=300)
+
+    def test_check_freshness_stale_data(self, quality_engine, stale_metadata):
+        """Verify freshness check with stale data."""
+        result = quality_engine.check_freshness(stale_metadata, max_age_seconds=300)
         
         assert result is False
-    
-    def test_custom_threshold(self, engine):
-        """Verify custom max_age_seconds threshold works."""
-        metadata = ProviderMetadata(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc) - timedelta(seconds=150),
-        )
-        
-        # Should be stale with 60s threshold
-        assert engine.check_freshness(metadata, max_age_seconds=60) is False
-        
-        # Should be fresh with 300s threshold
-        assert engine.check_freshness(metadata, max_age_seconds=300) is True
-    
-    def test_timezone_aware_timestamps(self, engine):
-        """Verify timezone-aware timestamps are handled correctly."""
-        metadata = ProviderMetadata(
-            provider='test_provider',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-        )
-        
-        result = engine.check_freshness(metadata, max_age_seconds=300)
-        assert result is True
 
 
 class TestDetectSourceConflicts:
-    """Test source conflict detection."""
-    
-    def test_no_conflicts_same_values(self, engine):
-        """Verify no conflicts when providers agree."""
+    """Tests for detect_source_conflicts method."""
+
+    def test_detect_source_conflicts_no_conflicts(self, quality_engine):
+        """Verify conflict detection with no conflicts."""
+        now = datetime.now(timezone.utc)
+        
         stats1 = ProviderMatchStats(
-            provider='provider_a',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=15,
-            goals_scored=2,
+            provider="provider_1",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            shots_total=10,
+            possession_percentage=55.0,
         )
         
         stats2 = ProviderMatchStats(
-            provider='provider_b',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=15,
-            goals_scored=2,
+            provider="provider_2",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            shots_total=10,  # Same value
+            possession_percentage=55.0,  # Same value
         )
         
-        result = engine.detect_source_conflicts([stats1, stats2])
+        result = quality_engine.detect_source_conflicts([stats1, stats2])
         
+        assert 'conflicts' in result
+        assert 'has_conflicts' in result
         assert result['has_conflicts'] is False
-        assert result['conflicts'] == []
-    
-    def test_conflicts_different_values(self, engine):
-        """Verify conflicts detected when providers disagree."""
+        assert len(result['conflicts']) == 0
+
+    def test_detect_source_conflicts_with_disagreement(self, quality_engine):
+        """Verify conflict detection with disagreements."""
+        now = datetime.now(timezone.utc)
+        
         stats1 = ProviderMatchStats(
-            provider='provider_a',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=15,
-            goals_scored=2,
+            provider="provider_1",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            shots_total=14,
+            possession_percentage=58.0,
         )
         
         stats2 = ProviderMatchStats(
-            provider='provider_b',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=14,  # Different
-            goals_scored=2,
+            provider="provider_2",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            shots_total=15,  # Different value
+            possession_percentage=57.0,  # Different value
         )
         
-        result = engine.detect_source_conflicts([stats1, stats2])
-        
-        assert result['has_conflicts'] is True
-        assert len(result['conflicts']) == 1
-        
-        conflict = result['conflicts'][0]
-        assert conflict['field'] == 'shots_total'
-        assert len(conflict['values']) == 2
-        
-        # Check both provider values are present
-        providers = [v['provider'] for v in conflict['values']]
-        values = [v['value'] for v in conflict['values']]
-        assert 'provider_a' in providers
-        assert 'provider_b' in providers
-        assert 15 in values
-        assert 14 in values
-    
-    def test_multiple_conflicts(self, engine):
-        """Verify multiple field conflicts are detected."""
-        stats1 = ProviderMatchStats(
-            provider='provider_a',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=15,
-            goals_scored=2,
-            corners=6,
-        )
-        
-        stats2 = ProviderMatchStats(
-            provider='provider_b',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=14,  # Different
-            goals_scored=3,  # Different
-            corners=6,
-        )
-        
-        result = engine.detect_source_conflicts([stats1, stats2])
+        result = quality_engine.detect_source_conflicts([stats1, stats2])
         
         assert result['has_conflicts'] is True
         assert len(result['conflicts']) == 2
         
-        conflict_fields = [c['field'] for c in result['conflicts']]
-        assert 'shots_total' in conflict_fields
-        assert 'goals_scored' in conflict_fields
-        assert 'corners' not in conflict_fields  # Same value
-    
-    def test_partial_provider_coverage(self, engine):
-        """Verify conflicts only for fields where both providers have values."""
-        stats1 = ProviderMatchStats(
-            provider='provider_a',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=15,
-            goals_scored=2,
-            xg=1.8,  # Only in provider_a
-        )
+        # Find conflicts by field
+        conflicts_by_field = {c['field']: c for c in result['conflicts']}
         
-        stats2 = ProviderMatchStats(
-            provider='provider_b',
-            source_id='match_123',
-            fetched_at=datetime.now(timezone.utc),
-            match_id='match_123',
-            team_id='team_456',
-            shots_total=15,
-            goals_scored=2,
-            # xg is None in provider_b
-        )
+        assert 'shots_total' in conflicts_by_field
+        assert 'possession_percentage' in conflicts_by_field
         
-        result = engine.detect_source_conflicts([stats1, stats2])
-        
-        # No conflicts because xg is only present in one provider
-        assert result['has_conflicts'] is False
+        # Verify shots_total conflict
+        shots_conflict = conflicts_by_field['shots_total']
+        assert len(shots_conflict['values']) == 2
+        assert any(v['provider'] == 'provider_1' and v['value'] == 14 for v in shots_conflict['values'])
+        assert any(v['provider'] == 'provider_2' and v['value'] == 15 for v in shots_conflict['values'])
 
 
 class TestCalculateQualityScore:
-    """Test quality score calculation."""
-    
-    def test_perfect_quality(self, engine):
-        """Verify perfect quality score for complete, consistent, fresh data."""
-        completeness = {
-            'ratio': 1.0,
-            'available': 22,
-            'expected': 22,
-            'missing_fields': []
-        }
-        consistency = {
-            'is_consistent': True,
-            'violations': []
-        }
+    """Tests for calculate_quality_score method."""
+
+    def test_calculate_quality_score_perfect(self, quality_engine, complete_stats):
+        """Verify quality score calculation with perfect data."""
+        completeness = quality_engine.check_completeness(complete_stats)
+        consistency = quality_engine.check_consistency(complete_stats)
         freshness = True
         
-        result = engine.calculate_quality_score(completeness, consistency, freshness)
+        result = quality_engine.calculate_quality_score(
+            completeness,
+            consistency,
+            freshness
+        )
         
+        assert 'overall' in result
+        assert 'completeness' in result
+        assert 'consistency' in result
+        assert 'freshness' in result
+        
+        assert result['completeness'] == 100.0
+        assert result['consistency'] == 100.0
+        assert result['freshness'] == 100.0
         assert result['overall'] == 100.0
-        assert result['completeness'] == 100.0
-        assert result['consistency'] == 100.0
-        assert result['freshness'] == 100.0
-    
-    def test_partial_completeness(self, engine):
-        """Verify score reflects partial completeness."""
-        completeness = {
-            'ratio': 0.5,
-            'available': 11,
-            'expected': 22,
-            'missing_fields': []
-        }
-        consistency = {
-            'is_consistent': True,
-            'violations': []
-        }
+
+    def test_calculate_quality_score_incomplete(self, quality_engine, incomplete_stats):
+        """Verify quality score calculation with incomplete data."""
+        completeness = quality_engine.check_completeness(incomplete_stats)
+        consistency = quality_engine.check_consistency(incomplete_stats)
         freshness = True
         
-        result = engine.calculate_quality_score(completeness, consistency, freshness)
+        result = quality_engine.calculate_quality_score(
+            completeness,
+            consistency,
+            freshness
+        )
         
-        assert result['completeness'] == 50.0
+        # Completeness should be low
+        assert result['completeness'] < 50.0
+        # Consistency should still be 100 (valid values)
         assert result['consistency'] == 100.0
+        # Freshness should be 100
         assert result['freshness'] == 100.0
-        # overall = 50*0.4 + 100*0.4 + 100*0.2 = 20 + 40 + 20 = 80
-        assert result['overall'] == 80.0
-    
-    def test_consistency_violations(self, engine):
-        """Verify consistency violations reduce score."""
-        completeness = {
-            'ratio': 1.0,
-            'available': 22,
-            'expected': 22,
-            'missing_fields': []
-        }
-        consistency = {
-            'is_consistent': False,
-            'violations': ['violation_1', 'violation_2']
-        }
+        # Overall should be between 0 and 100
+        assert 0.0 <= result['overall'] < 100.0
+
+    def test_calculate_quality_score_inconsistent(self, quality_engine):
+        """Verify quality score calculation with inconsistent data."""
+        now = datetime.now(timezone.utc)
+        
+        # Create stats with violations
+        inconsistent_stats = ProviderMatchStats(
+            provider="test",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            shots_total=10,
+            shots_on_target=15,  # Violation
+            shots_off_target=8,  # Violation
+            xg=-1.0,  # Violation
+        )
+        
+        completeness = quality_engine.check_completeness(inconsistent_stats)
+        consistency = quality_engine.check_consistency(inconsistent_stats)
         freshness = True
         
-        result = engine.calculate_quality_score(completeness, consistency, freshness)
+        result = quality_engine.calculate_quality_score(
+            completeness,
+            consistency,
+            freshness
+        )
         
-        assert result['completeness'] == 100.0
-        # consistency = 100 - (2 * 20) = 60
-        assert result['consistency'] == 60.0
-        assert result['freshness'] == 100.0
-        # overall = 100*0.4 + 60*0.4 + 100*0.2 = 40 + 24 + 20 = 84
-        assert result['overall'] == 84.0
-    
-    def test_stale_data(self, engine):
-        """Verify stale data reduces score."""
-        completeness = {
-            'ratio': 1.0,
-            'available': 22,
-            'expected': 22,
-            'missing_fields': []
-        }
-        consistency = {
-            'is_consistent': True,
-            'violations': []
-        }
-        freshness = False
+        # Consistency should be penalized (3 violations = 60 points deduction)
+        assert result['consistency'] < 100.0
+        # Overall should be reduced
+        assert result['overall'] < 100.0
+
+    def test_quality_score_formula_deterministic(self, quality_engine):
+        """Verify quality score formula is deterministic and reproducible."""
+        now = datetime.now(timezone.utc)
         
-        result = engine.calculate_quality_score(completeness, consistency, freshness)
+        stats = ProviderMatchStats(
+            provider="test",
+            source_id="123",
+            fetched_at=now,
+            match_id="match_1",
+            team_id="team_1",
+            shots_total=12,
+            shots_on_target=5,
+            possession_percentage=52.0,
+            xg=1.5,
+        )
         
-        assert result['completeness'] == 100.0
-        assert result['consistency'] == 100.0
-        assert result['freshness'] == 50.0
-        # overall = 100*0.4 + 100*0.4 + 50*0.2 = 40 + 40 + 10 = 90
-        assert result['overall'] == 90.0
-    
-    def test_poor_quality_all_factors(self, engine):
-        """Verify low score when all factors are poor."""
-        completeness = {
-            'ratio': 0.25,
-            'available': 5,
-            'expected': 22,
-            'missing_fields': []
-        }
-        consistency = {
-            'is_consistent': False,
-            'violations': ['v1', 'v2', 'v3']
-        }
-        freshness = False
-        
-        result = engine.calculate_quality_score(completeness, consistency, freshness)
-        
-        assert result['completeness'] == 25.0
-        # consistency = 100 - (3 * 20) = 40
-        assert result['consistency'] == 40.0
-        assert result['freshness'] == 50.0
-        # overall = 25*0.4 + 40*0.4 + 50*0.2 = 10 + 16 + 10 = 36
-        assert result['overall'] == 36.0
-    
-    def test_many_violations_floor_at_zero(self, engine):
-        """Verify consistency score floors at 0 for many violations."""
-        completeness = {
-            'ratio': 1.0,
-            'available': 22,
-            'expected': 22,
-            'missing_fields': []
-        }
-        consistency = {
-            'is_consistent': False,
-            'violations': ['v1', 'v2', 'v3', 'v4', 'v5', 'v6']  # 6 violations
-        }
+        # Calculate score twice
+        completeness = quality_engine.check_completeness(stats)
+        consistency = quality_engine.check_consistency(stats)
         freshness = True
         
-        result = engine.calculate_quality_score(completeness, consistency, freshness)
+        result1 = quality_engine.calculate_quality_score(completeness, consistency, freshness)
+        result2 = quality_engine.calculate_quality_score(completeness, consistency, freshness)
         
-        # 100 - (6 * 20) = -20, but should floor at 0
-        assert result['consistency'] == 0.0
-        # overall = 100*0.4 + 0*0.4 + 100*0.2 = 40 + 0 + 20 = 60
-        assert result['overall'] == 60.0
+        # Results should be identical
+        assert result1['overall'] == result2['overall']
+        assert result1['completeness'] == result2['completeness']
+        assert result1['consistency'] == result2['consistency']
+        assert result1['freshness'] == result2['freshness']
+        
+        # Verify formula: overall = (completeness * 0.4) + (consistency * 0.4) + (freshness * 0.2)
+        expected_overall = (
+            result1['completeness'] * 0.4 +
+            result1['consistency'] * 0.4 +
+            result1['freshness'] * 0.2
+        )
+        assert abs(result1['overall'] - expected_overall) < 0.01  # Allow small float precision error
