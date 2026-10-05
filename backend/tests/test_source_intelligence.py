@@ -397,3 +397,168 @@ class TestInvalidStrategy:
                 [provider1_stats],
                 strategy='invalid_strategy'
             )
+
+
+class TestMergeBookmakerOdds:
+    """Tests for merge_bookmaker_odds method."""
+    
+    @pytest.fixture
+    def odds1(self):
+        """Create Odds from source 1."""
+        from app.domain.odds import Odds
+        now = datetime.now(timezone.utc)
+        return Odds(
+            id="odds_1",
+            match_id="match_123",
+            bookmaker="Bet365",
+            home_win_odds=2.10,
+            draw_odds=3.40,
+            away_win_odds=3.60,
+            over_under_line=2.5,
+            over_odds=1.90,
+            under_odds=1.95,
+            fetched_at=now,
+            source_provider="sofascore",
+            normalized_market_type="match_result",
+        )
+    
+    @pytest.fixture
+    def odds2(self):
+        """Create Odds from source 2 with different values."""
+        from app.domain.odds import Odds
+        now = datetime.now(timezone.utc)
+        return Odds(
+            id="odds_2",
+            match_id="match_123",
+            bookmaker="William Hill",
+            home_win_odds=2.15,  # Different
+            draw_odds=3.50,  # Different
+            away_win_odds=3.50,  # Different
+            btts_yes_odds=1.75,  # Additional field
+            btts_no_odds=2.05,  # Additional field
+            fetched_at=now,
+            source_provider="development",
+            normalized_market_type="match_result",
+        )
+    
+    @pytest.fixture
+    def odds3(self):
+        """Create Odds from source 3 with minimal data."""
+        from app.domain.odds import Odds
+        now = datetime.now(timezone.utc)
+        return Odds(
+            id="odds_3",
+            match_id="match_123",
+            bookmaker="Betfair",
+            home_win_odds=2.10,  # Same as odds1
+            draw_odds=3.40,  # Same as odds1
+            away_win_odds=3.60,  # Same as odds1
+            fetched_at=now,
+        )
+    
+    def test_merge_bookmaker_odds_first_strategy(self, source_intelligence, odds1, odds2):
+        """Verify 'first' strategy takes first non-None odds per field."""
+        result = source_intelligence.merge_bookmaker_odds([odds1, odds2], strategy='first')
+        
+        assert result is not None
+        assert result.bookmaker == 'merged'
+        assert result.source_provider == 'merged'
+        
+        # Fields from odds1 (first with value)
+        assert result.home_win_odds == 2.10
+        assert result.draw_odds == 3.40
+        assert result.away_win_odds == 3.60
+        assert result.over_under_line == 2.5
+        assert result.over_odds == 1.90
+        assert result.under_odds == 1.95
+        
+        # Fields only in odds2
+        assert result.btts_yes_odds == 1.75
+        assert result.btts_no_odds == 2.05
+    
+    def test_merge_bookmaker_odds_first_strategy_fills_gaps(self, source_intelligence, odds1, odds2):
+        """Verify 'first' strategy fills gaps from later providers."""
+        result = source_intelligence.merge_bookmaker_odds([odds1, odds2], strategy='first')
+        
+        # odds1 has over/under but not btts
+        # odds2 has btts but not over/under
+        assert result.over_odds == 1.90  # From odds1
+        assert result.under_odds == 1.95  # From odds1
+        assert result.btts_yes_odds == 1.75  # From odds2
+        assert result.btts_no_odds == 2.05  # From odds2
+    
+    def test_merge_bookmaker_odds_most_complete_strategy(
+        self,
+        source_intelligence,
+        odds1,
+        odds2,
+        odds3
+    ):
+        """Verify 'most_complete' strategy selects odds with most fields."""
+        result = source_intelligence.merge_bookmaker_odds(
+            [odds3, odds1, odds2],
+            strategy='most_complete'
+        )
+        
+        assert result is not None
+        
+        # odds1 has 6 odds fields, odds2 has 5 fields, odds3 has 3 fields
+        # Should select odds1
+        assert result.bookmaker == "Bet365"
+        assert result.home_win_odds == 2.10
+        assert result.over_odds == 1.90
+        assert result.under_odds == 1.95
+    
+    def test_merge_bookmaker_odds_most_complete_whole_provider(
+        self,
+        source_intelligence,
+        odds1,
+        odds2
+    ):
+        """Verify 'most_complete' returns entire odds, not field-by-field merge."""
+        result = source_intelligence.merge_bookmaker_odds(
+            [odds1, odds2],
+            strategy='most_complete'
+        )
+        
+        # Should return odds1 entirely (has more non-None fields)
+        assert result.bookmaker == "Bet365"
+        
+        # Should NOT have odds2's exclusive fields
+        assert result.btts_yes_odds is None
+        assert result.btts_no_odds is None
+    
+    def test_merge_bookmaker_odds_highest_quality_strategy(
+        self,
+        source_intelligence,
+        odds1,
+        odds2
+    ):
+        """Verify 'highest_quality' strategy delegates to most_complete for odds."""
+        result = source_intelligence.merge_bookmaker_odds(
+            [odds1, odds2],
+            strategy='highest_quality'
+        )
+        
+        assert result is not None
+        # Should behave like most_complete for odds
+        assert result.bookmaker == "Bet365"  # odds1 has more fields
+    
+    def test_merge_bookmaker_odds_empty_list(self, source_intelligence):
+        """Verify merge_bookmaker_odds returns None for empty list."""
+        result = source_intelligence.merge_bookmaker_odds([], strategy='first')
+        assert result is None
+    
+    def test_merge_bookmaker_odds_single_source(self, source_intelligence, odds1):
+        """Verify merge_bookmaker_odds works with single source."""
+        result = source_intelligence.merge_bookmaker_odds([odds1], strategy='first')
+        
+        assert result is not None
+        # Should return the single odds unchanged
+        assert result.bookmaker == "Bet365"
+        assert result.home_win_odds == 2.10
+    
+    def test_merge_bookmaker_odds_invalid_strategy(self, source_intelligence, odds1):
+        """Verify merge_bookmaker_odds raises ValueError for invalid strategy."""
+        with pytest.raises(ValueError, match="Unknown merge strategy"):
+            source_intelligence.merge_bookmaker_odds([odds1], strategy='invalid_strategy')

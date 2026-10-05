@@ -9,6 +9,7 @@ Pure calculation-based merging and conflict detection logic.
 
 from typing import List, Optional, Dict, Any
 
+from app.domain.odds import Odds
 from app.providers.models import ProviderMatchStats
 from app.providers.data_quality import DataQualityEngine
 
@@ -296,3 +297,131 @@ class SourceIntelligence:
                     break
         
         return field_sources
+    
+    def merge_bookmaker_odds(
+        self,
+        odds_list: List[Odds],
+        strategy: str = 'first'
+    ) -> Optional[Odds]:
+        """Merge bookmaker odds from multiple sources using specified strategy.
+        
+        Follows same merge patterns as merge_statistics():
+        - 'first': First non-None value per odds field wins (field-by-field merge)
+        - 'most_complete': Provider with most non-None odds fields wins entirely
+        - 'highest_quality': Provider with most non-None odds fields wins (uses completeness as quality proxy)
+        
+        Args:
+            odds_list: List of Odds to merge
+            strategy: Merge strategy ('first', 'most_complete', 'highest_quality')
+            
+        Returns:
+            Merged Odds, or None if odds_list is empty
+            
+        Raises:
+            ValueError: If strategy is not recognized
+        """
+        if not odds_list:
+            return None
+        
+        if strategy == 'first':
+            return self._merge_odds_first(odds_list)
+        elif strategy == 'most_complete':
+            return self._merge_odds_most_complete(odds_list)
+        elif strategy == 'highest_quality':
+            # For odds, we use completeness as quality proxy since DataQualityEngine
+            # is designed for ProviderMatchStats. Delegate to most_complete.
+            return self._merge_odds_most_complete(odds_list)
+        else:
+            raise ValueError(f"Unknown merge strategy: {strategy}")
+    
+    def _merge_odds_first(
+        self,
+        odds_list: List[Odds]
+    ) -> Odds:
+        """Merge odds using 'first' strategy: first non-None value per field wins.
+        
+        This is a field-by-field merge where each odds field is taken from the first
+        provider in the list that has a non-None value for that field.
+        
+        Args:
+            odds_list: List of Odds to merge (non-empty)
+            
+        Returns:
+            Merged Odds
+        """
+        # Start with a copy of the first odds
+        base = odds_list[0]
+        
+        # Create merged dict starting with base values
+        merged_data = base.model_dump()
+        
+        # Get all fields from Odds model
+        fields = base.model_fields.keys()
+        
+        # Odds fields that should be merged (not metadata)
+        odds_fields = [
+            'home_win_odds', 'draw_odds', 'away_win_odds',
+            'over_under_line', 'over_odds', 'under_odds',
+            'btts_yes_odds', 'btts_no_odds',
+            'asian_handicap_line', 'asian_handicap_home_odds', 'asian_handicap_away_odds',
+            # Phase 5 fields
+            'source_provider', 'normalized_market_type', 'selection_label', 'odds_timestamp'
+        ]
+        
+        # For each odds field, use first non-None value from odds_list
+        for field in odds_fields:
+            if field not in fields:
+                continue
+            
+            # Find first non-None value
+            for odds in odds_list:
+                value = getattr(odds, field, None)
+                if value is not None:
+                    merged_data[field] = value
+                    break
+        
+        # Update bookmaker to indicate merged source
+        if len(odds_list) > 1:
+            merged_data['bookmaker'] = 'merged'
+            merged_data['source_provider'] = 'merged'
+        
+        return Odds(**merged_data)
+    
+    def _merge_odds_most_complete(
+        self,
+        odds_list: List[Odds]
+    ) -> Odds:
+        """Merge odds using 'most_complete' strategy: provider with most non-None odds fields wins.
+        
+        This selects the entire Odds object with the most available odds data.
+        No field-by-field merging.
+        
+        Args:
+            odds_list: List of Odds to merge (non-empty)
+            
+        Returns:
+            The most complete Odds object
+        """
+        best_odds = None
+        best_count = -1
+        
+        # Odds fields to count for completeness
+        odds_fields = [
+            'home_win_odds', 'draw_odds', 'away_win_odds',
+            'over_under_line', 'over_odds', 'under_odds',
+            'btts_yes_odds', 'btts_no_odds',
+            'asian_handicap_line', 'asian_handicap_home_odds', 'asian_handicap_away_odds'
+        ]
+        
+        for odds in odds_list:
+            # Count non-None odds fields
+            count = sum(
+                1 for field in odds_fields
+                if getattr(odds, field, None) is not None
+            )
+            
+            if count > best_count:
+                best_count = count
+                best_odds = odds
+        
+        return best_odds
