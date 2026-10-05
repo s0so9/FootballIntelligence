@@ -2,8 +2,10 @@
 
 .app-header {
   height: var(--header-height);
-  background: var(--color-background-secondary);
-  border-bottom: 1px solid var(--color-border-subtle);
+  background: rgba(19, 19, 26, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.15);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -106,9 +108,9 @@
 }
 
 .header-icon-button:hover {
-  background: var(--color-card);
-  color: var(--color-accent-green-bright);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.06);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-accent-blue);
+  box-shadow: 0 0 8px rgba(14, 165, 233, 0.1);
 }
 
 .header-icon-button:focus-visible {
