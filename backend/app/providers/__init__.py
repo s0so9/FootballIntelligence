@@ -8,6 +8,7 @@ from app.providers.openligadb import OpenLigaDBFootballProvider
 from app.providers.sofascore import SofaScoreFootballProvider
 from app.providers.manager import ProviderManager
 from app.providers.adapter import ProviderManagerAdapter
+from app.providers.data_quality import DataQualityEngine
 from app.providers.exceptions import (
     ProviderError,
     ProviderTimeoutError,
@@ -41,6 +42,8 @@ __all__ = [
     "SofaScoreFootballProvider",
     "ProviderManager",
     "ProviderManagerAdapter",
+    # Data quality
+    "DataQualityEngine",
     # Exceptions
     "ProviderError",
     "ProviderTimeoutError",

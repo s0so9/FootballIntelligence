@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Implement DataQualityEngine for statistics validation and quality scoring",
+  "status": "completed",
+  "steps": [
+    "1. Create backend/app/providers/data_quality.py with DataQualityEngine class. This is a pure calculation class - NO HTTP calls, NO async, NO provider dependencies.",
+    "2. Define EXPECTED_STATS_FIELDS as class attribute listing all ProviderMatchStats fields that should be present for complete data: ['goals_scored', 'goals_conceded', 'xg', 'xg_against', 'shots_total', 'shots_on_target', 'shots_off_target', 'shots_blocked', 'possession_percentage', 'passes_completed', 'passes_attempted', 'pass_accuracy', 'corners', 'free_kicks', 'offsides', 'yellow_cards', 'red_cards', 'fouls_committed', 'tackles', 'interceptions', 'clearances', 'saves'].",
+    "3. Implement check_completeness(self, stats: ProviderMatchStats) -> Dict[str, Any]. Count non-None fields in EXPECTED_STATS_FIELDS. Return {'available': int, 'expected': int, 'ratio': float, 'missing_fields': List[str]}. Ratio = available / expected.",
+    "4. Implement check_consistency(self, stats: ProviderMatchStats) -> Dict[str, Any]. Check logical consistency rules: shots_on_target <= shots_total (if both present), shots_off_target <= shots_total (if both present), shots_blocked <= shots_total (if both present), 0 <= possession_percentage <= 100 (if present), xg >= 0 (if present), goals_scored >= 0 (if present), all count fields >= 0 (if present). Return {'violations': List[str], 'is_consistent': bool}. violations list contains human-readable descriptions like 'shots_on_target (15) > shots_total (12)'.",
+    "5. Implement check_freshness(self, metadata: ProviderMetadata, max_age_seconds: int = 300) -> bool. Compare (datetime.now(timezone.utc) - metadata.fetched_at).total_seconds() <= max_age_seconds. Return True if fresh.",
+    "6. Implement detect_source_conflicts(self, stats_list: List[ProviderMatchStats]) -> Dict[str, Any]. For each field in EXPECTED_STATS_FIELDS, collect values from all providers where field is not None. If values differ across providers, record conflict. Return {'conflicts': List[Dict], 'has_conflicts': bool}. Each conflict dict: {'field': str, 'values': [{'provider': str, 'value': Any}, ...]}.",
+    "7. Implement calculate_quality_score(self, completeness: Dict, consistency: Dict, freshness: bool) -> Dict[str, Any]. Use deterministic formula: completeness_score = completeness['ratio'] * 100 (0-100), consistency_score = 100 if consistency['is_consistent'] else max(0, 100 - len(consistency['violations']) * 20), freshness_score = 100 if freshness else 50, overall = (completeness_score * 0.4 + consistency_score * 0.4 + freshness_score * 0.2). Return {'overall': float, 'completeness': float, 'consistency': float, 'freshness': float}. Document formula in docstring.",
+    "8. Update backend/app/providers/__init__.py: add 'from app.providers.data_quality import DataQualityEngine' and add 'DataQualityEngine' to __all__ list."
+  ],
+  "acceptance_criteria": [
+    "DataQualityEngine class exists in backend/app/providers/data_quality.py",
+    "All five methods implemented: check_completeness, check_consistency, check_freshness, detect_source_conflicts, calculate_quality_score",
+    "check_completeness returns dict with available, expected, ratio, missing_fields",
+    "check_consistency detects all specified violation rules",
+    "check_freshness compares timestamps correctly",
+    "detect_source_conflicts identifies field-level disagreements across providers",
+    "calculate_quality_score uses documented deterministic formula",
+    "DataQualityEngine is exported in __init__.py",
+    "No HTTP calls or async operations in DataQualityEngine"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe -c \"from app.providers import DataQualityEngine; dqe = DataQualityEngine(); print('✓ DataQualityEngine imports and instantiates')\"",
+    "cd backend && .venv\\Scripts\\python.exe -c \"from app.providers import DataQualityEngine; import inspect; assert not inspect.iscoroutinefunction(DataQualityEngine.check_completeness); print('✓ DataQualityEngine is synchronous')\"",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/test_data_quality.py -v (new tests)",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/ -v --tb=short (all existing + new tests pass)"
+  ],
+  "blocked_reason": null,
+  "findings": "✓ DataQualityEngine implemented successfully with all 5 methods: check_completeness, check_consistency, check_freshness, detect_source_conflicts, calculate_quality_score. ✓ Pure calculation class with no HTTP calls, no async operations, no provider dependencies. ✓ Completeness calculation: tracks 22 expected statistics fields, calculates ratio (available/expected), returns missing fields list. ✓ Consistency validation: enforces 13+ logical rules (shots relationships, possession range, non-negative values, pass accuracy range). ✓ Freshness check: compares timezone-aware timestamps with configurable max_age_seconds threshold. ✓ Source conflict detection: identifies field-level disagreements across multiple providers with provider attribution. ✓ Quality score calculation: deterministic formula with documented weights (completeness 40%, consistency 40%, freshness 20%), consistency violations deduct 20 points each, floor at 0. ✓ Exported in app.providers.__init__. ✓ Comprehensive test suite: 26 tests covering all methods, edge cases, boundary conditions, multiple violations. ✓ All 872 backend tests pass (38 existing + 26 new for DataQualityEngine)."
+}
