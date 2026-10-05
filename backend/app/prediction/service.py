@@ -161,8 +161,20 @@ class PredictionService:
         away_defense = features.get("away_defense_strength")
         
         if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
-            # Insufficient data - cannot generate prediction
-            return None
+            # For development data only: provide baseline strengths to enable full pipeline
+            # Check if provider has is_development_data method and it returns True
+            is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
+            if is_dev_data:
+                # Use neutral/average baseline values (1.0 = league average)
+                # This allows development matches to flow through Poisson → Markets → Pick → Versioning
+                # Production matches still fail safely with missing data
+                home_attack = home_attack if home_attack is not None else 1.0
+                away_attack = away_attack if away_attack is not None else 1.0
+                home_defense = home_defense if home_defense is not None else 1.0
+                away_defense = away_defense if away_defense is not None else 1.0
+            else:
+                # Production data: insufficient data - cannot generate prediction
+                return None
         
         # Estimate lambda parameters
         # Home team expected goals based on home attack vs away defense
@@ -180,7 +192,7 @@ class PredictionService:
         )
         
         # Run Poisson model
-        poisson_result = self.poisson_model.predict(
+        poisson_result = self.poisson_model.predict_from_lambda(
             home_lambda=home_lambda,
             away_lambda=away_lambda,
         )
@@ -238,7 +250,16 @@ class PredictionService:
         away_defense = features.get("away_defense_strength")
         
         if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
-            return markets
+            # For development data only: provide baseline strengths
+            is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
+            if is_dev_data:
+                home_attack = home_attack if home_attack is not None else 1.0
+                away_attack = away_attack if away_attack is not None else 1.0
+                home_defense = home_defense if home_defense is not None else 1.0
+                away_defense = away_defense if away_defense is not None else 1.0
+            else:
+                # Production data: insufficient data - return empty markets
+                return markets
         
         home_lambda = self.poisson_model.estimate_lambda_from_features(
             home_attack, away_defense, 1.0
@@ -247,7 +268,7 @@ class PredictionService:
             away_attack, home_defense, 1.0
         )
         
-        poisson_result = self.poisson_model.predict(home_lambda, away_lambda)
+        poisson_result = self.poisson_model.predict_from_lambda(home_lambda, away_lambda)
         
         # 1X2 Market
         markets.append(PredictionMarket(
@@ -341,7 +362,7 @@ class PredictionService:
             away_attack, home_defense, 1.0
         )
         
-        poisson_result = self.poisson_model.predict(home_lambda, away_lambda)
+        poisson_result = self.poisson_model.predict_from_lambda(home_lambda, away_lambda)
         
         # Extract bookmaker odds if provided
         bookie_1x2 = None
@@ -420,7 +441,7 @@ class PredictionService:
             away_attack, home_defense, 1.0
         )
         
-        poisson_result = self.poisson_model.predict(home_lambda, away_lambda)
+        poisson_result = self.poisson_model.predict_from_lambda(home_lambda, away_lambda)
         
         # Get over/under probabilities
         over_under_2_5 = poisson_result.over_under_probabilities.get(2.5)

@@ -1,3 +1,5 @@
+/* AppLayout - MENSIONE Premium Structure */
+
 .app-layout {
   display: flex;
   min-height: 100vh;
@@ -19,8 +21,9 @@
 
 .app-layout__content {
   flex: 1;
-  padding: var(--spacing-6);
+  padding: 0; /* No padding - pages control their own padding */
   max-width: 100%;
+  background: var(--color-background);
 }
 
 .app-layout__overlay {
@@ -38,14 +41,14 @@
   }
 
   .app-layout__content {
-    padding: var(--spacing-4);
+    padding: 0;
   }
 
   .app-layout__overlay {
     display: block;
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: rgba(0, 0, 0, 0.8);
     z-index: 40;
     animation: fadeIn var(--transition-fast);
   }

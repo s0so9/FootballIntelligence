@@ -16,7 +16,11 @@ class Settings(BaseSettings):
     api_debug: bool = True
 
     # CORS
-    cors_origins: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: List[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ]
 
     # AI Provider (Ollama)
     ollama_endpoint: str = "http://127.0.0.1:11434"

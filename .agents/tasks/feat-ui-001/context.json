@@ -1,0 +1,31 @@
+{
+  "project_type": "React 18 + TypeScript + Vite frontend",
+  "language": "TypeScript + TSX",
+  "build_system": "Vite 5.0.8, npm scripts",
+  "test_framework": "vitest 1.0.4 with jsdom",
+  "build_command": "npm run build",
+  "test_command": "npm run test",
+  "verification_instructions": "Run `npm run type-check` for TypeScript validation, `npm run lint` for ESLint, `npm run test` for unit tests, `npm run build` for production build verification. Start dev server with `npm run dev` and manually verify UI changes at http://localhost:5173",
+  "snapshot_or_generated_files": "None - no snapshot tests or generated code checked in",
+  "environment_constraints": "Backend API runs on localhost:8000 (vite proxy configured at /api). Do NOT modify backend. Frontend uses React Router 6.21. No state management library (useState/useEffect only). All Turkish UI text. Accessibility required (keyboard nav, focus states, prefers-reduced-motion). Backend returns mensione_pick, prediction_version_id, predicted_score in MatchPredictionResponse but market_analysis is deprecated in favor of mensione_pick structure.",
+  "contribution_requirements": "From AGENTS.md: Always inspect files before editing. Work in small verifiable steps. Never claim implemented/tested without verification. Keep mock data labeled. Never invent statistics. AI Analyst is explanation layer only. Backend is Python+FastAPI (do not modify). Frontend is React+TypeScript+Vite. Keep code in English, UI text Turkish. Fix errors during verification instead of just reporting. Update docs/PROGRESS.md after completion.",
+  "key_patterns": "Pages in src/pages/*.tsx with matching *.css. Components in src/components/common/ and src/components/layout/. API client in src/api/client.ts with types in src/api/types.ts. Utilities in src/utils/. AppLayout wrapper provides Sidebar + Header. Turkish locale used throughout (tr-TR). ProbabilityDisplay, ConfidenceIndicator, ValueIndicator components exist but need replacement for MENSIONE green theme. Current theme: purple galaxy (--color-accent-purple, glow effects) - must be completely replaced. Design tokens defined in src/styles/global.css with CSS variables.",
+  "relevant_files": [
+    "frontend/src/styles/global.css (current purple theme to replace)",
+    "frontend/src/App.tsx (routing)",
+    "frontend/src/pages/Dashboard.tsx (transform to MENSIONE dashboard)",
+    "frontend/src/pages/MatchDetail.tsx (transform to Match Intelligence)",
+    "frontend/src/pages/Predictions.tsx (update styling)",
+    "frontend/src/components/common/ProbabilityDisplay.tsx (study pattern)",
+    "frontend/src/components/common/ConfidenceIndicator.tsx (replace)",
+    "frontend/src/components/layout/AppLayout.tsx (layout structure)",
+    "frontend/src/components/layout/Sidebar.tsx (update brand)",
+    "frontend/src/components/layout/Header.tsx (add notifications/profile)",
+    "frontend/src/api/types.ts (backend contract)",
+    "frontend/src/api/client.ts (API methods)",
+    "frontend/src/utils/formatters.ts (Turkish formatting)",
+    "backend/app/api/v1/schemas.py (response schemas)",
+    "backend/app/api/v1/endpoints/matches.py (endpoint behavior)"
+  ],
+  "directory_structure": "frontend/src/: api/ (client, types), components/ (common/, layout/), hooks/ (__init__ only), pages/ (Dashboard, Matches, MatchDetail, Predictions, EasyMatches, Analytics, Settings), styles/ (global.css), types/ (__init__), utils/ (formatters, visualization). Backend at c:/FootballIntelligence/backend/ - DO NOT MODIFY."
+}

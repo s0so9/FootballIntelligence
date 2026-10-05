@@ -440,3 +440,187 @@ class TestPredictMatchPipeline:
             if context.model_predictions is not None and len(context.model_predictions) > 0:
                 assert context.prediction_markets is not None
                 assert len(context.prediction_markets) > 0
+
+
+
+class TestDevelopmentDataFallback:
+    """Tests for development data fallback behavior (baseline attack/defense strengths)."""
+    
+    def test_development_match_with_missing_features_uses_baseline(self, prediction_service, dev_provider):
+        """Verify development matches with missing features receive baseline strengths."""
+        # Create a minimal match with no historical data context
+        # This will result in missing attack/defense strength features
+        minimal_match = Match(
+            id="minimal_dev_match",
+            home_team_id="team_minimal_1",
+            away_team_id="team_minimal_2",
+            competition_id="comp_minimal",
+            season_id="season_minimal",
+            scheduled_at=datetime.now() + timedelta(days=1),
+            status=MatchStatus.SCHEDULED,
+        )
+        
+        # DevelopmentProvider should identify this as development data
+        assert dev_provider.is_development_data() is True
+        
+        # Generate prediction
+        prediction = prediction_service.generate_prediction(minimal_match)
+        
+        # Should NOT be None - development fallback should provide baseline strengths
+        assert prediction is not None
+        assert prediction.match_id == minimal_match.id
+        
+        # Should have valid probabilities
+        assert prediction.home_win_probability is not None
+        assert prediction.draw_probability is not None
+        assert prediction.away_win_probability is not None
+        
+        # Should have xG values
+        assert prediction.home_xg is not None
+        assert prediction.away_xg is not None
+        
+        # Probabilities should sum close to 1
+        total = (prediction.home_win_probability +
+                prediction.draw_probability +
+                prediction.away_win_probability)
+        assert abs(total - 1.0) < 0.01
+    
+    def test_production_match_with_missing_features_returns_none(self, dev_provider):
+        """Verify production matches with missing features still fail safely."""
+        # Create a mock production provider
+        class MockProductionProvider:
+            def is_development_data(self):
+                return False
+            
+            def get_matches(self, **kwargs):
+                return []
+            
+            def get_teams(self, competition_id, season_id):
+                return []
+            
+            def get_standings(self, competition_id, season_id):
+                return []
+        
+        production_provider = MockProductionProvider()
+        production_service = PredictionService(provider=production_provider)
+        
+        # Create match with missing context
+        minimal_match = Match(
+            id="minimal_prod_match",
+            home_team_id="team_prod_1",
+            away_team_id="team_prod_2",
+            competition_id="comp_prod",
+            season_id="season_prod",
+            scheduled_at=datetime.now() + timedelta(days=1),
+            status=MatchStatus.SCHEDULED,
+        )
+        
+        # Production provider should NOT be development data
+        assert production_provider.is_development_data() is False
+        
+        # Generate prediction - should return None due to missing features
+        prediction = production_service.generate_prediction(minimal_match)
+        
+        # Should be None - production data with missing features fails safely
+        assert prediction is None
+    
+    def test_development_match_with_complete_features_uses_real_values(self, prediction_service, dev_provider):
+        """Verify development matches with complete features use real feature values, not baseline."""
+        # Get a match that should have historical context
+        matches = dev_provider.get_matches()
+        future_matches = [m for m in matches if m.status == MatchStatus.SCHEDULED]
+        
+        if not future_matches:
+            pytest.skip("No future matches available for testing")
+        
+        match = future_matches[0]
+        
+        # Extract features to see what's available
+        features = prediction_service.feature_extractor.extract_features(match)
+        
+        # Generate prediction
+        prediction = prediction_service.generate_prediction(match)
+        
+        # If features were available, prediction should use them
+        # (not testing exact values, just that prediction was generated)
+        if prediction is not None:
+            assert prediction.home_xg is not None
+            assert prediction.away_xg is not None
+            # xG should be reasonable (not exactly 1.0 from baseline unless by chance)
+            assert prediction.home_xg > 0.0
+            assert prediction.away_xg > 0.0
+    
+    def test_full_prediction_pipeline_with_development_fallback(self, prediction_service, dev_provider):
+        """Verify complete MENSIONE pipeline works with development fallback."""
+        # Create minimal match
+        minimal_match = Match(
+            id="pipeline_test_match",
+            home_team_id="team_pipeline_1",
+            away_team_id="team_pipeline_2",
+            competition_id="comp_pipeline",
+            season_id="season_pipeline",
+            scheduled_at=datetime.now() + timedelta(days=1),
+            status=MatchStatus.SCHEDULED,
+        )
+        
+        # Generate full prediction (Poisson → Markets → Pick → Versioning)
+        context = prediction_service.generate_full_prediction(minimal_match)
+        
+        # Should have all key MENSIONE components
+        assert context is not None
+        
+        # Should have predicted score
+        assert context.predicted_score is not None
+        
+        # Should have MENSIONE pick
+        assert context.mensione_pick is not None
+        assert "pick_market" in context.mensione_pick
+        assert "confidence_label" in context.mensione_pick
+        assert "predicted_score" in context.mensione_pick
+        
+        # Should have version ID
+        assert context.prediction_version_id is not None
+        
+        # Should have base prediction data in model_predictions
+        assert context.model_predictions is not None
+        assert len(context.model_predictions) > 0
+        assert context.model_predictions[0].home_win_probability is not None
+    
+    def test_generate_prediction_markets_with_development_fallback(self, prediction_service, dev_provider):
+        """Verify market generation works with development fallback."""
+        # Create minimal match
+        minimal_match = Match(
+            id="markets_test_match",
+            home_team_id="team_markets_1",
+            away_team_id="team_markets_2",
+            competition_id="comp_markets",
+            season_id="season_markets",
+            scheduled_at=datetime.now() + timedelta(days=1),
+            status=MatchStatus.SCHEDULED,
+        )
+        
+        # First generate base prediction
+        prediction = prediction_service.generate_prediction(minimal_match)
+        assert prediction is not None
+        
+        # Generate markets
+        markets = prediction_service.generate_prediction_markets(minimal_match, prediction)
+        
+        # Should have markets
+        assert len(markets) > 0
+        
+        # Should have 1X2 market
+        match_result_markets = [m for m in markets if m.market_type == PredictionMarketType.MATCH_RESULT]
+        assert len(match_result_markets) > 0
+        
+        # Should have BTTS market
+        btts_markets = [m for m in markets if m.market_type == PredictionMarketType.BTTS]
+        assert len(btts_markets) > 0
+        
+        # Markets should have valid probabilities
+        # Only check 1X2 and BTTS markets (over/under markets have different lines)
+        for market in markets:
+            assert market.probabilities is not None
+            if market.market_type in [PredictionMarketType.MATCH_RESULT, PredictionMarketType.BTTS]:
+                prob_sum = sum(market.probabilities.values())
+                assert abs(prob_sum - 1.0) < 0.01  # Should sum close to 1

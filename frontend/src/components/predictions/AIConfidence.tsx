@@ -95,9 +95,6 @@ export default function AIConfidence({
   
   return (
     <div className={`ai-confidence ${sizeClass}`} role="status" aria-label={`Yapay zeka güveni: ${label}, ${normalizedConfidence.toFixed(0)}%`}>
-      {/* Title */}
-      <div className="ai-confidence__title">Yapay Zeka Güveni</div>
-      
       {/* Money-bag icons */}
       <div className="ai-confidence__icons" aria-hidden="true">
         {icons.map(({ active, key }) => (
@@ -107,11 +104,14 @@ export default function AIConfidence({
               active ? `ai-confidence__icon--active ${glowClass}` : 'ai-confidence__icon--inactive'
             }`}
           >
-            {/* SVG money bag icon */}
+            {/* Enhanced money bag SVG - classic money sack silhouette 💰 */}
             <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L8 6H16L12 2Z"/>
-              <path d="M7 7C6.44772 7 6 7.44772 6 8V18C6 19.6569 7.34315 21 9 21H15C16.6569 21 18 19.6569 18 18V8C18 7.44772 17.5523 7 17 7H7Z"/>
-              <circle cx="12" cy="14" r="3" opacity="0.6"/>
+              {/* Gathered neck/tie at top */}
+              <path d="M10 3C10 3 11 2 12 2C13 2 14 3 14 3L15 5H9L10 3Z" opacity="0.85"/>
+              {/* Main rounded money sack body */}
+              <path d="M8 5C7.5 5 7 5.5 7 6C7 6.5 6.5 8 6.5 10C6.5 12 6 15 7 17C8 19 9.5 21 12 21C14.5 21 16 19 17 17C18 15 17.5 12 17.5 10C17.5 8 17 6.5 17 6C17 5.5 16.5 5 16 5H8Z"/>
+              {/* Currency symbol */}
+              <text x="12" y="14.5" fontSize="7" fontWeight="900" textAnchor="middle" fill="currentColor" opacity="0.75">$</text>
             </svg>
           </div>
         ))}
@@ -130,7 +130,7 @@ export default function AIConfidence({
       {/* Percentage */}
       {showPercentage && (
         <div className="ai-confidence__percentage">
-          %{normalizedConfidence.toFixed(0)}
+          {normalizedConfidence.toFixed(1)}%
         </div>
       )}
     </div>

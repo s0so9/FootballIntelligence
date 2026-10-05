@@ -111,14 +111,14 @@ export function MatchDetail() {
   };
 
   // Handle combine toggle
-  const handleToggleCombine = (matchId: string, marketName: string, confidence: number, odds: number) => {
+  const handleToggleCombine = (matchId: string, marketName: string, confidence: number, marketOdds: number | null) => {
     if (!match) return;
     
     toggleCombine({
       matchId,
       marketName,
       outcome: '', // Will be parsed from market name
-      odds,
+      marketOdds,
       confidence,
       homeTeam,
       awayTeam

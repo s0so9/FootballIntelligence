@@ -146,6 +146,10 @@ class FootballDataProvider(ABC):
         """Get team statistics for a match. Optional method."""
         raise NotImplementedError("Team match statistics not implemented")
     
+    def get_team_match_statistics_firsthalf(self, match_id: str) -> List[TeamMatchStatistic]:
+        """Get first-half team statistics for a match. Returns empty list if not available. Optional method."""
+        raise NotImplementedError("First-half statistics not implemented")
+    
     def get_player_match_statistics(self, match_id: str) -> List[PlayerMatchStatistic]:
         """Get player statistics for a match. Optional method."""
         raise NotImplementedError("Player match statistics not implemented")

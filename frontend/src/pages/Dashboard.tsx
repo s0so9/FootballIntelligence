@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { getUpcomingMatches, getMatchPrediction } from '../api/client';
-import type { MatchResponse, MensionePickResponse } from '../api/types';
+import type { MatchResponse, MatchPredictionResponse } from '../api/types';
 import MensionePickCard from '../components/predictions/MensionePickCard';
 import LiveMatchesPanel from '../components/dashboard/LiveMatchesPanel';
+import CombinePanel from '../components/combine/CombinePanel';
 import type { LiveMatch } from '../components/dashboard/LiveMatchesPanel';
 import { useFavorites } from '../hooks/useFavorites';
 import { useCombine } from '../hooks/useCombine';
@@ -10,7 +11,7 @@ import './Dashboard.css';
 
 interface MensionePickData {
   match: MatchResponse;
-  pick: MensionePickResponse;
+  prediction: MatchPredictionResponse;
 }
 
 /**
@@ -62,7 +63,7 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   
   const { isFavorite, toggleFavorite } = useFavorites();
-  const { isInCombine, toggleCombine } = useCombine();
+  const { isInCombine, toggleCombine, combineItems, removeFromCombine, clearCombine } = useCombine();
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -84,7 +85,7 @@ export function Dashboard() {
             if (prediction.mensione_pick) {
               picksData.push({
                 match,
-                pick: prediction.mensione_pick,
+                prediction, // Store full prediction, not just pick
               });
             }
           } catch (err) {
@@ -112,19 +113,19 @@ export function Dashboard() {
     return (
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1>MENSIONE PICKS</h1>
-          <p className="dashboard-subtitle">Yapay zeka destekli tahmin önerileri</p>
+          <h1 className="dashboard-title">MENSIONE PICKS</h1>
+          <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
         </div>
         <div className="dashboard-layout">
-          <aside className="dashboard-live-panel">
-            <LiveMatchesPanel liveMatches={[]} isLoading={true} />
-          </aside>
           <main className="dashboard-main">
             <div className="loading-state">
               <div className="loading-spinner"></div>
               <p>Veriler yükleniyor...</p>
             </div>
           </main>
+          <aside className="dashboard-live-panel">
+            <LiveMatchesPanel liveMatches={[]} isLoading={true} />
+          </aside>
         </div>
       </div>
     );
@@ -134,8 +135,8 @@ export function Dashboard() {
     return (
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1>MENSIONE PICKS</h1>
-          <p className="dashboard-subtitle">Yapay zeka destekli tahmin önerileri</p>
+          <h1 className="dashboard-title">MENSIONE PICKS</h1>
+          <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
         </div>
         <div className="error-state">
           <p className="error-message">❌ {error}</p>
@@ -147,21 +148,22 @@ export function Dashboard() {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h1>MENSIONE PICKS</h1>
-        <p className="dashboard-subtitle">Yapay zeka destekli tahmin önerileri</p>
+        <h1 className="dashboard-title">MENSIONE PICKS</h1>
+        <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
+        
+        <div className="dashboard-filters">
+          <button className="filter-btn filter-btn--active">Tümü</button>
+          <button className="filter-btn">Yaklaşan</button>
+          <button className="filter-btn">Tamamlanan</button>
+        </div>
       </div>
 
       <div className="dashboard-layout">
-        {/* Left panel - Live matches (desktop only) */}
-        <aside className="dashboard-live-panel">
-          <LiveMatchesPanel liveMatches={liveMatches} isLoading={false} />
-        </aside>
-
         {/* Main area - MENSIONE picks */}
         <main className="dashboard-main">
           {mensionePicksData.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">🎯</div>
+              <div className="empty-icon">⚽</div>
               <p className="empty-title">Şu anda MENSIONE seçimi yok</p>
               <p className="empty-description">
                 Yeni tahmin önerileri modeller tarafından analiz edildiğinde burada görünecektir.
@@ -169,7 +171,8 @@ export function Dashboard() {
             </div>
           ) : (
             <div className="mensione-picks-grid">
-              {mensionePicksData.map(({ match, pick }) => {
+              {mensionePicksData.map(({ match, prediction }) => {
+                const pick = prediction.mensione_pick!; // Already filtered for non-null
                 const { marketName, outcome } = parsePickMarket(pick.pick_market);
                 
                 return (
@@ -180,28 +183,56 @@ export function Dashboard() {
                     marketName={marketName}
                     outcome={outcome}
                     confidence={pick.confidence_score}
-                    realOdds={pick.fair_odds}
+                    realOdds={pick.market_odds ?? 0} // Real bookmaker odds (or 0 if null)
                     isFavorite={isFavorite(match.id)}
                     onToggleFavorite={() => toggleFavorite(match.id)}
                     inCombine={isInCombine(match.id)}
                     onToggleCombine={() => {
+                      // For combine calculation: use ONLY real market odds
+                      // Never use confidence, fair odds, or fabricated values
                       toggleCombine({
                         matchId: match.id,
                         marketName,
                         outcome,
-                        odds: pick.fair_odds,
+                        marketOdds: pick.market_odds,  // null if unavailable
                         confidence: pick.confidence_score,
                         homeTeam: match.home_team_id,
                         awayTeam: match.away_team_id,
                       });
                     }}
+                    // === Backend fields for testing/preview ===
+                    predictedScore={pick.predicted_score}
+                    homeXg={prediction.home_xg}
+                    awayXg={prediction.away_xg}
+                    bttsProbability={prediction.btts_probability}
+                    homeWinProbability={prediction.home_win_probability}
+                    drawProbability={prediction.draw_probability}
+                    awayWinProbability={prediction.away_win_probability}
+                    pickProbability={pick.pick_probability}
+                    reasoningFactors={pick.reasoning_factors}
+                    scoreDistributionTop5={pick.score_distribution_top5}
+                    fairOdds={pick.fair_odds}
+                    marketOdds={pick.market_odds}
+                    predictionVersionId={prediction.prediction_version_id}
                   />
                 );
               })}
             </div>
           )}
         </main>
+        
+        {/* Right panel - Live matches (desktop only) */}
+        <aside className="dashboard-live-panel">
+          <LiveMatchesPanel liveMatches={liveMatches} isLoading={false} />
+        </aside>
       </div>
+      
+      {/* Combine Panel - Bottom Right Fixed */}
+      <CombinePanel
+        combineItems={combineItems}
+        onRemoveItem={removeFromCombine}
+        onClearAll={clearCombine}
+      />
     </div>
   );
 }

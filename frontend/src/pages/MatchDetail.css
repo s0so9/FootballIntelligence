@@ -9,13 +9,13 @@
 }
 
 .breadcrumb-link {
-  color: var(--color-primary);
+  color: var(--color-accent-green);
   text-decoration: none;
-  transition: color 0.2s ease;
+  transition: color var(--transition-fast);
 }
 
 .breadcrumb-link:hover {
-  color: var(--color-primary-light);
+  color: var(--color-accent-green-light);
 }
 
 .breadcrumb-separator {
@@ -29,16 +29,16 @@
 .back-link {
   display: inline-flex;
   align-items: center;
-  margin-top: var(--spacing-md);
-  color: var(--color-primary);
+  margin-top: var(--spacing-4);
+  color: var(--color-accent-green);
   text-decoration: none;
   font-size: 0.9375rem;
   font-weight: 500;
-  transition: color 0.2s ease;
+  transition: color var(--transition-fast);
 }
 
 .back-link:hover {
-  color: var(--color-primary-light);
+  color: var(--color-accent-green-light);
 }
 
 /* Match Intelligence Header */
@@ -106,7 +106,7 @@
 .team-display__score {
   font-size: 3rem;
   font-weight: 700;
-  color: var(--color-primary);
+  color: var(--color-accent-green);
   line-height: 1;
 }
 
@@ -150,8 +150,8 @@
 }
 
 .prediction-card--highlight {
-  border-color: var(--color-primary);
-  background: rgba(139, 92, 246, 0.05);
+  border-color: var(--color-border-accent);
+  background: rgba(0, 255, 136, 0.05);
 }
 
 .prediction-card__title {
@@ -453,7 +453,7 @@
 .match-outcome__value {
   font-size: 1.25rem;
   font-weight: 600;
-  color: var(--color-primary);
+  color: var(--color-accent-green);
 }
 
 /* Tabs Navigation */

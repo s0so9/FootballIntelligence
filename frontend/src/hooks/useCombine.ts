@@ -16,9 +16,9 @@ export interface CombineItem {
   marketName: string;
   /** Outcome/selection */
   outcome: string;
-  /** Real/fair odds */
-  odds: number;
-  /** AI confidence score (0-1) */
+  /** Real market odds ONLY - never confidence, fair odds, or fabricated values */
+  marketOdds: number | null;
+  /** AI confidence score (0-1) for display only, NOT for calculation */
   confidence: number;
   /** Team names for display */
   homeTeam: string;

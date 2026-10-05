@@ -129,8 +129,7 @@ export default function LiveMatchCard({
 export function EmptyLiveMatchCard() {
   return (
     <div className="live-match-card live-match-card--empty">
-      <div className="live-match-card__empty-icon">⚽</div>
-      <div className="live-match-card__empty-text">Şu anda canlı maç yok</div>
+      <div className="live-match-card__empty-text">Şu anda canlı maç bulunmuyor</div>
     </div>
   )
 }

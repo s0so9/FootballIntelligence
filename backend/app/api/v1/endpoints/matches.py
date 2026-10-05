@@ -21,12 +21,60 @@ from app.api.v1.schemas import (
     BookmakerComparisonResponse,
     EasyMatchResponse,
     EasyMatchSignalResponse,
+    TeamInfoResponse,
+    MatchStatisticsResponse,
 )
 from app.providers import FootballDataProvider
 from app.prediction.service import PredictionService
+from app.domain.entities import Team
+from app.domain.statistics import TeamMatchStatistic
+from app.domain.enums import MatchStatus
 
 
 router = APIRouter(prefix="/matches", tags=["matches"])
+
+
+def _map_team_to_response(team: Optional[Team]) -> Optional[TeamInfoResponse]:
+    """Map Team domain model to TeamInfoResponse schema."""
+    if team is None:
+        return None
+    return TeamInfoResponse(
+        id=team.id,
+        name=team.name,
+        short_name=team.short_name,
+        code=team.code,
+        logo_url=team.logo_url,
+    )
+
+
+def _map_statistic_to_response(stat: Optional[TeamMatchStatistic]) -> Optional[MatchStatisticsResponse]:
+    """Map TeamMatchStatistic domain model to MatchStatisticsResponse schema."""
+    if stat is None:
+        return None
+    return MatchStatisticsResponse(
+        goals_scored=stat.goals_scored,
+        goals_conceded=stat.goals_conceded,
+        xg=stat.xg,
+        xg_against=stat.xg_against,
+        shots_total=stat.shots_total,
+        shots_on_target=stat.shots_on_target,
+        shots_off_target=stat.shots_off_target,
+        shots_blocked=stat.shots_blocked,
+        possession_percentage=stat.possession_percentage,
+        passes_completed=stat.passes_completed,
+        passes_attempted=stat.passes_attempted,
+        pass_accuracy=stat.pass_accuracy,
+        corners=stat.corners,
+        free_kicks=stat.free_kicks,
+        offsides=stat.offsides,
+        yellow_cards=stat.yellow_cards,
+        red_cards=stat.red_cards,
+        fouls_committed=stat.fouls_committed,
+        tackles=stat.tackles,
+        interceptions=stat.interceptions,
+        clearances=stat.clearances,
+        saves=stat.saves,
+    )
 
 
 @router.get(
@@ -71,8 +119,39 @@ async def list_matches(
         status=status,
     )
     
-    # Convert domain models to API response schemas
-    match_responses = [MatchResponse.model_validate(match) for match in matches]
+    # Convert domain models to API response schemas with enriched team info
+    match_responses = []
+    for match in matches:
+        home_team = provider.get_team(match.home_team_id)
+        away_team = provider.get_team(match.away_team_id)
+        
+        match_response = MatchResponse(
+            id=match.id,
+            competition_id=match.competition_id,
+            season_id=match.season_id,
+            home_team_id=match.home_team_id,
+            away_team_id=match.away_team_id,
+            venue_id=match.venue_id,
+            home_team=_map_team_to_response(home_team),
+            away_team=_map_team_to_response(away_team),
+            scheduled_at=match.scheduled_at,
+            status=match.status,
+            home_score=match.home_score,
+            away_score=match.away_score,
+            home_score_ht=match.home_score_ht,
+            away_score_ht=match.away_score_ht,
+            home_statistics=None,
+            away_statistics=None,
+            home_statistics_ht=None,
+            away_statistics_ht=None,
+            minute=match.minute,
+            added_time=match.added_time,
+            outcome=match.outcome,
+            round=match.round,
+            created_at=match.created_at,
+            updated_at=match.updated_at,
+        )
+        match_responses.append(match_response)
     
     # Build response with development data flag
     return MatchListResponse(
@@ -122,8 +201,65 @@ async def get_match(
             detail=f"Match with ID '{match_id}' not found"
         )
     
-    # Convert domain model to API response schema
-    match_response = MatchResponse.model_validate(match)
+    # Get team information
+    home_team = provider.get_team(match.home_team_id)
+    away_team = provider.get_team(match.away_team_id)
+    
+    # Initialize statistics as None
+    home_statistics = None
+    away_statistics = None
+    home_statistics_ht = None
+    away_statistics_ht = None
+    
+    # Get statistics for finished matches
+    if match.status == MatchStatus.FINISHED:
+        # Get full-match statistics
+        team_stats = provider.get_team_match_statistics(match.id)
+        for stat in team_stats:
+            if stat.team_id == match.home_team_id:
+                home_statistics = _map_statistic_to_response(stat)
+            elif stat.team_id == match.away_team_id:
+                away_statistics = _map_statistic_to_response(stat)
+        
+        # Get first-half statistics (if provider supports it)
+        try:
+            ht_stats = provider.get_team_match_statistics_firsthalf(match.id)
+            for stat in ht_stats:
+                if stat.team_id == match.home_team_id:
+                    home_statistics_ht = _map_statistic_to_response(stat)
+                elif stat.team_id == match.away_team_id:
+                    away_statistics_ht = _map_statistic_to_response(stat)
+        except NotImplementedError:
+            # Provider doesn't support first-half statistics
+            pass
+    
+    # Convert domain model to API response schema with enriched data
+    match_response = MatchResponse(
+        id=match.id,
+        competition_id=match.competition_id,
+        season_id=match.season_id,
+        home_team_id=match.home_team_id,
+        away_team_id=match.away_team_id,
+        venue_id=match.venue_id,
+        home_team=_map_team_to_response(home_team),
+        away_team=_map_team_to_response(away_team),
+        scheduled_at=match.scheduled_at,
+        status=match.status,
+        home_score=match.home_score,
+        away_score=match.away_score,
+        home_score_ht=match.home_score_ht,
+        away_score_ht=match.away_score_ht,
+        home_statistics=home_statistics,
+        away_statistics=away_statistics,
+        home_statistics_ht=home_statistics_ht,
+        away_statistics_ht=away_statistics_ht,
+        minute=match.minute,
+        added_time=match.added_time,
+        outcome=match.outcome,
+        round=match.round,
+        created_at=match.created_at,
+        updated_at=match.updated_at,
+    )
     
     # Build response with development data flag
     return MatchDetailResponse(

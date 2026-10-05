@@ -14,6 +14,39 @@ export type MatchStatus =
 
 export type MatchOutcome = 'home_win' | 'draw' | 'away_win';
 
+export interface TeamInfoResponse {
+  id: string;
+  name: string;
+  short_name: string | null;
+  code: string | null;
+  logo_url: string | null;
+}
+
+export interface MatchStatisticsResponse {
+  goals_scored: number | null;
+  goals_conceded: number | null;
+  xg: number | null;
+  xg_against: number | null;
+  shots_total: number | null;
+  shots_on_target: number | null;
+  shots_off_target: number | null;
+  shots_blocked: number | null;
+  possession_percentage: number | null;
+  passes_completed: number | null;
+  passes_attempted: number | null;
+  pass_accuracy: number | null;
+  corners: number | null;
+  free_kicks: number | null;
+  offsides: number | null;
+  yellow_cards: number | null;
+  red_cards: number | null;
+  fouls_committed: number | null;
+  tackles: number | null;
+  interceptions: number | null;
+  clearances: number | null;
+  saves: number | null;
+}
+
 export interface MatchResponse {
   id: string;
   competition_id: string;
@@ -21,12 +54,18 @@ export interface MatchResponse {
   home_team_id: string;
   away_team_id: string;
   venue_id: string | null;
+  home_team: TeamInfoResponse | null;
+  away_team: TeamInfoResponse | null;
   scheduled_at: string;
   status: MatchStatus;
   home_score: number | null;
   away_score: number | null;
   home_score_ht: number | null;
   away_score_ht: number | null;
+  home_statistics: MatchStatisticsResponse | null;
+  away_statistics: MatchStatisticsResponse | null;
+  home_statistics_ht: MatchStatisticsResponse | null;
+  away_statistics_ht: MatchStatisticsResponse | null;
   minute: number | null;
   added_time: number | null;
   outcome: MatchOutcome | null;

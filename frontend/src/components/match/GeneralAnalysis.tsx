@@ -85,11 +85,25 @@ export default function GeneralAnalysis({
             marketName={mensioneMarket}
             outcome={mensioneOutcome}
             confidence={mensione_pick.confidence_score}
-            realOdds={mensione_pick.fair_odds}
+            realOdds={mensione_pick.market_odds ?? 0}
             isFavorite={isFavorite}
             onToggleFavorite={onToggleFavorite}
             inCombine={inCombine}
             onToggleCombine={onToggleCombine}
+            // Pass all backend fields for testing/preview
+            predictedScore={mensione_pick.predicted_score}
+            homeXg={prediction.home_xg}
+            awayXg={prediction.away_xg}
+            bttsProbability={prediction.btts_probability}
+            homeWinProbability={prediction.home_win_probability}
+            drawProbability={prediction.draw_probability}
+            awayWinProbability={prediction.away_win_probability}
+            pickProbability={mensione_pick.pick_probability}
+            reasoningFactors={mensione_pick.reasoning_factors}
+            scoreDistributionTop5={mensione_pick.score_distribution_top5}
+            fairOdds={mensione_pick.fair_odds}
+            marketOdds={mensione_pick.market_odds}
+            predictionVersionId={prediction.prediction_version_id}
           />
         </section>
       )}

@@ -3,15 +3,15 @@
 .predictions-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-xl);
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-8);
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-lg);
+  gap: var(--spacing-2);
+  padding: var(--spacing-6);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -33,7 +33,7 @@
 .predictions-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: var(--spacing-6);
 }
 
 .prediction-card {
@@ -41,15 +41,15 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
+  padding: var(--spacing-6);
   text-decoration: none;
   color: inherit;
-  transition: all 0.2s ease;
+  transition: all var(--transition-base);
 }
 
 .prediction-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
+  border-color: var(--color-border-accent);
+  box-shadow: var(--glow-green-hover);
   transform: translateY(-2px);
 }
 
@@ -58,9 +58,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-md);
-  padding-bottom: var(--spacing-md);
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+  padding-bottom: var(--spacing-4);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -72,7 +72,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-2);
 }
 
 .prediction-card__datetime {
@@ -98,9 +98,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-  padding: var(--spacing-md) 0;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-6);
+  padding: var(--spacing-4) 0;
 }
 
 .team-name {
@@ -117,8 +117,8 @@
 
 /* Main Prediction */
 .prediction-card__main {
-  margin-bottom: var(--spacing-lg);
-  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-6);
+  padding: var(--spacing-6);
   background: var(--color-background);
   border-radius: var(--radius-md);
 }
@@ -127,7 +127,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-4);
 }
 
 .prediction-market-label {
@@ -141,15 +141,15 @@
 .prediction-outcomes {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--spacing-md);
+  gap: var(--spacing-4);
 }
 
 .prediction-outcome-compact {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-2);
   align-items: center;
-  padding: var(--spacing-md);
+  padding: var(--spacing-4);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -166,22 +166,22 @@
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-text-tertiary);
-  margin-top: var(--spacing-xs);
+  margin-top: var(--spacing-2);
 }
 
 /* Additional Markets */
 .prediction-card__markets {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-6);
 }
 
 .market-item {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-md);
+  gap: var(--spacing-2);
+  padding: var(--spacing-4);
   background: var(--color-background);
   border-radius: var(--radius-sm);
 }
@@ -197,7 +197,7 @@
 .market-item__value {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-3);
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--color-text-primary);
@@ -214,12 +214,12 @@
 .prediction-card__value {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-  background: rgba(139, 92, 246, 0.05);
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  background: rgba(0, 255, 136, 0.05);
+  border: 1px solid rgba(0, 255, 136, 0.2);
   border-radius: var(--radius-sm);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-4);
 }
 
 .value-label {
@@ -233,14 +233,14 @@
 .value-indicators {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-4);
   flex: 1;
 }
 
 .value-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-2);
 }
 
 .value-item__label {
@@ -253,9 +253,9 @@
 .prediction-card__warning {
   font-size: 0.75rem;
   font-weight: 500;
-  color: #f59e0b;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(251, 191, 36, 0.1);
+  color: var(--color-warning);
+  padding: var(--spacing-2) var(--spacing-3);
+  background: var(--color-warning-glow);
   border: 1px solid rgba(251, 191, 36, 0.3);
   border-radius: var(--radius-sm);
   text-align: center;
@@ -265,7 +265,7 @@
 @media (max-width: 1024px) {
   .prediction-outcomes {
     grid-template-columns: 1fr;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-3);
   }
 
   .prediction-card__markets {
@@ -285,7 +285,7 @@
 
   .prediction-card__teams {
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: var(--spacing-2);
   }
 
   .prediction-card__markets {

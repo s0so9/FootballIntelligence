@@ -1,0 +1,7 @@
+{
+  "task_id": "task-feat-ui-001-mensione-dashboard",
+  "task_description": "Implement MENSIONE Green Glow Dashboard & Match Intelligence UI - replace purple/galaxy theme with MENSIONE green identity, build dashboard with live matches panel, AI confidence indicators, prediction cards, and match intelligence page",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
+  "blocked_reason": null
+}

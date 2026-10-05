@@ -42,8 +42,10 @@ export default function LiveMatchesPanel({
     <aside className="live-matches-panel" aria-label="Canlı maçlar">
       <div className="live-matches-panel__header">
         <h2 className="live-matches-panel__title">
-          <span className="live-matches-panel__icon">🔴</span>
-          <span>CANLI MAÇLAR</span>
+          <span className="live-indicator">
+            <span className="live-indicator__dot"></span>
+            <span className="live-indicator__text">CANLI</span>
+          </span>
         </h2>
         {liveMatches.length > 0 && (
           <span className="live-matches-panel__count">{liveMatches.length}</span>

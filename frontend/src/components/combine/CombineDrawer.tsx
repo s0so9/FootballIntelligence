@@ -28,13 +28,13 @@ export default function CombineDrawer({
   const [stake, setStake] = useState(10)
 
   // Calculate total odds (product of all odds)
-  const totalOdds = items.reduce((product, item) => product * item.odds, 1)
+  const totalOdds = items.reduce((product, item) => product * (item.marketOdds || 0), 1)
   
   // Calculate potential return (totalOdds × stake)
   const potentialReturn = totalOdds * stake
 
   // Check if any item has no odds
-  const hasInvalidOdds = items.some(item => !item.odds || item.odds <= 0)
+  const hasInvalidOdds = items.some(item => !item.marketOdds || item.marketOdds <= 0)
 
   return (
     <>
@@ -94,7 +94,7 @@ export default function CombineDrawer({
                       {item.outcome && ` - ${item.outcome}`}
                     </div>
                     <div className="combine-item__odds">
-                      Oran: {item.odds > 0 ? item.odds.toFixed(2) : 'Yok'}
+                      Oran: {item.marketOdds && item.marketOdds > 0 ? item.marketOdds.toFixed(2) : 'Yok'}
                     </div>
                     <button
                       type="button"

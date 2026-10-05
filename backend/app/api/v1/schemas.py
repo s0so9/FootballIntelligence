@@ -110,6 +110,58 @@ class MatchPredictionResponse(BaseModel):
     is_development_data: bool = Field(..., description="Whether this is development/mock data")
 
 
+class TeamInfoResponse(BaseModel):
+    """Team information response schema."""
+    
+    id: str = Field(..., description="Team identifier")
+    name: str = Field(..., description="Team name")
+    short_name: Optional[str] = Field(None, description="Team short name")
+    code: Optional[str] = Field(None, description="Team code")
+    logo_url: Optional[str] = Field(None, description="Team logo URL")
+
+
+class MatchStatisticsResponse(BaseModel):
+    """Match statistics response schema."""
+    
+    # Goals
+    goals_scored: Optional[int] = Field(None, description="Goals scored")
+    goals_conceded: Optional[int] = Field(None, description="Goals conceded")
+    
+    # Expected goals
+    xg: Optional[float] = Field(None, description="Expected goals")
+    xg_against: Optional[float] = Field(None, description="Expected goals against")
+    
+    # Shots
+    shots_total: Optional[int] = Field(None, description="Total shots")
+    shots_on_target: Optional[int] = Field(None, description="Shots on target")
+    shots_off_target: Optional[int] = Field(None, description="Shots off target")
+    shots_blocked: Optional[int] = Field(None, description="Shots blocked")
+    
+    # Possession
+    possession_percentage: Optional[float] = Field(None, description="Possession percentage")
+    
+    # Passing
+    passes_completed: Optional[int] = Field(None, description="Passes completed")
+    passes_attempted: Optional[int] = Field(None, description="Passes attempted")
+    pass_accuracy: Optional[float] = Field(None, description="Pass accuracy percentage")
+    
+    # Set pieces
+    corners: Optional[int] = Field(None, description="Corners")
+    free_kicks: Optional[int] = Field(None, description="Free kicks")
+    offsides: Optional[int] = Field(None, description="Offsides")
+    
+    # Discipline
+    yellow_cards: Optional[int] = Field(None, description="Yellow cards")
+    red_cards: Optional[int] = Field(None, description="Red cards")
+    fouls_committed: Optional[int] = Field(None, description="Fouls committed")
+    
+    # Defensive
+    tackles: Optional[int] = Field(None, description="Tackles")
+    interceptions: Optional[int] = Field(None, description="Interceptions")
+    clearances: Optional[int] = Field(None, description="Clearances")
+    saves: Optional[int] = Field(None, description="Goalkeeper saves")
+
+
 class MatchResponse(BaseModel):
     """Match response schema for API v1."""
 
@@ -120,6 +172,10 @@ class MatchResponse(BaseModel):
     away_team_id: str = Field(..., description="Away team identifier")
     venue_id: Optional[str] = Field(None, description="Venue identifier")
     
+    # Team information
+    home_team: Optional[TeamInfoResponse] = Field(None, description="Home team information")
+    away_team: Optional[TeamInfoResponse] = Field(None, description="Away team information")
+    
     scheduled_at: datetime = Field(..., description="Scheduled kickoff time")
     status: MatchStatus = Field(..., description="Match status")
     
@@ -127,6 +183,12 @@ class MatchResponse(BaseModel):
     away_score: Optional[int] = Field(None, description="Away team score")
     home_score_ht: Optional[int] = Field(None, description="Home team half-time score")
     away_score_ht: Optional[int] = Field(None, description="Away team half-time score")
+    
+    # Match statistics
+    home_statistics: Optional[MatchStatisticsResponse] = Field(None, description="Home team statistics")
+    away_statistics: Optional[MatchStatisticsResponse] = Field(None, description="Away team statistics")
+    home_statistics_ht: Optional[MatchStatisticsResponse] = Field(None, description="Home team first-half statistics")
+    away_statistics_ht: Optional[MatchStatisticsResponse] = Field(None, description="Away team first-half statistics")
     
     minute: Optional[int] = Field(None, description="Current match minute")
     added_time: Optional[int] = Field(None, description="Added time in minutes")
@@ -147,6 +209,20 @@ class MatchResponse(BaseModel):
                 "season_id": "season_456",
                 "home_team_id": "team_home",
                 "away_team_id": "team_away",
+                "home_team": {
+                    "id": "team_home",
+                    "name": "Home Team",
+                    "short_name": "Home",
+                    "code": "HOM",
+                    "logo_url": "https://example.com/logo_home.png"
+                },
+                "away_team": {
+                    "id": "team_away",
+                    "name": "Away Team",
+                    "short_name": "Away",
+                    "code": "AWA",
+                    "logo_url": "https://example.com/logo_away.png"
+                },
                 "venue_id": "venue_789",
                 "scheduled_at": "2026-10-05T15:00:00",
                 "status": "scheduled",
@@ -154,6 +230,10 @@ class MatchResponse(BaseModel):
                 "away_score": None,
                 "home_score_ht": None,
                 "away_score_ht": None,
+                "home_statistics": None,
+                "away_statistics": None,
+                "home_statistics_ht": None,
+                "away_statistics_ht": None,
                 "minute": None,
                 "added_time": None,
                 "outcome": None,

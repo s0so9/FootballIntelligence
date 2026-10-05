@@ -1,83 +1,38 @@
 /**
- * AIConfidence Component Styles
+ * AIConfidence Component - Premium Money-Bag Indicators
  * 
- * Custom money-bag icons with MENSIONE green glow that scales by confidence level.
- * Glow hierarchy: 1/6 minimal → 6/6 strongest (premium, not casino)
+ * Custom CSS/SVG money-bag confidence visualization
+ * MENSIONE green with controlled glow intensity by level
+ * Restrained gold accent for highest confidence
  */
 
 .ai-confidence {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-3);
-  padding: var(--spacing-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-}
-
-/* Size variants */
-.ai-confidence--sm {
-  padding: var(--spacing-3);
-  gap: var(--spacing-2);
-}
-
-.ai-confidence--md {
-  padding: var(--spacing-4);
-  gap: var(--spacing-3);
-}
-
-.ai-confidence--lg {
-  padding: var(--spacing-6);
-  gap: var(--spacing-4);
-}
-
-/* Title */
-.ai-confidence__title {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-secondary);
-}
-
-.ai-confidence--lg .ai-confidence__title {
-  font-size: var(--text-sm);
-}
-
-/* Icons container */
-.ai-confidence__icons {
-  display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  justify-content: flex-start;
+  gap: 12px;
+  padding: 4px 0;
 }
 
-.ai-confidence--sm .ai-confidence__icons {
-  gap: var(--spacing-1);
+/* ========================================
+   MONEY-BAG ICONS GRID
+   ======================================== */
+
+.ai-confidence__icons {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  justify-items: center;
+  align-items: center;
 }
 
-.ai-confidence--lg .ai-confidence__icons {
-  gap: var(--spacing-3);
-}
-
-/* Individual icon */
 .ai-confidence__icon {
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  transition: all var(--transition-base);
-}
-
-.ai-confidence--sm .ai-confidence__icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.ai-confidence--lg .ai-confidence__icon {
-  width: 2rem;
-  height: 2rem;
+  transition: all 0.3s ease;
 }
 
 .ai-confidence__icon svg {
@@ -86,110 +41,198 @@
   display: block;
 }
 
-/* Inactive icon - muted gray */
+/* Inactive state - muted dark gray, no glow */
 .ai-confidence__icon--inactive {
-  color: var(--color-text-tertiary);
-  opacity: 0.4;
+  color: rgba(104, 115, 108, 0.25);
+  opacity: 0.5;
+  filter: grayscale(80%);
 }
 
-/* Active icon - MENSIONE green with glow */
+/* Active state - controlled green with data-driven glow */
 .ai-confidence__icon--active {
-  color: var(--color-accent-green);
+  color: var(--match-light-green);
 }
 
-/* Glow levels - scaling by confidence 1/6 to 6/6 */
+/* ========================================
+   GLOW INTENSITY BY LEVEL (1-6)
+   Progressive illumination from subtle to strong
+   ======================================== */
 
-/* 1/6 - Çok düşük - very subtle glow */
+/* Level 1/6 - Very subtle, barely visible glow */
 .ai-confidence__icon--glow-1 {
-  filter: drop-shadow(0 0 2px rgba(0, 255, 136, 0.1));
+  filter: drop-shadow(0 0 2px rgba(34, 197, 94, 0.2));
 }
 
-/* 2/6 - Düşük - minimal glow */
+/* Level 2/6 - Subtle presence */
 .ai-confidence__icon--glow-2 {
-  filter: drop-shadow(0 0 3px rgba(0, 255, 136, 0.15));
+  filter: drop-shadow(0 0 3px rgba(34, 197, 94, 0.3));
 }
 
-/* 3/6 - Orta - moderate glow */
+/* Level 3/6 - Moderate glow, noticeable */
 .ai-confidence__icon--glow-3 {
-  filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.2)) 
-          drop-shadow(0 0 8px rgba(0, 255, 136, 0.1));
+  filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.4));
+  color: #4ADE80;
 }
 
-/* 4/6 - İyi - noticeable glow */
+/* Level 4/6 - Strong glow, confident */
 .ai-confidence__icon--glow-4 {
-  filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.25)) 
-          drop-shadow(0 0 10px rgba(0, 255, 136, 0.12));
+  filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.5));
+  color: #4ADE80;
 }
 
-/* 5/6 - Yüksek - strong premium glow */
+/* Level 5/6 - Very strong glow with brightness */
 .ai-confidence__icon--glow-5 {
-  filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.3)) 
-          drop-shadow(0 0 12px rgba(0, 255, 136, 0.15))
-          drop-shadow(0 0 16px rgba(0, 255, 136, 0.08));
+  filter: drop-shadow(0 0 8px rgba(74, 222, 128, 0.6)) brightness(1.1);
+  color: #4ADE80;
 }
 
-/* 6/6 - Çok yüksek - strongest controlled glow */
+/* Level 6/6 - Maximum confidence with gold accent */
 .ai-confidence__icon--glow-6 {
-  filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.4)) 
-          drop-shadow(0 0 16px rgba(0, 255, 136, 0.2))
-          drop-shadow(0 0 20px rgba(0, 255, 136, 0.1));
+  filter: drop-shadow(0 0 10px rgba(74, 222, 128, 0.7)) 
+          drop-shadow(0 0 4px rgba(212, 175, 55, 0.3))
+          brightness(1.15);
+  color: #5EE88A;
 }
 
-/* Info section - level and label */
+/* ========================================
+   INFO SECTION (Level + Label)
+   ======================================== */
+
 .ai-confidence__info {
   display: flex;
   align-items: center;
-  gap: var(--spacing-2);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.ai-confidence--lg .ai-confidence__info {
-  font-size: var(--text-base);
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .ai-confidence__level {
-  color: var(--color-text-primary);
-  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--match-light-text);
+  letter-spacing: 0.02em;
 }
 
 .ai-confidence__label {
-  color: var(--color-text-secondary);
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--match-light-text-secondary);
+  letter-spacing: 0.01em;
   text-transform: capitalize;
 }
 
-/* Percentage display */
+/* ========================================
+   PERCENTAGE DISPLAY
+   ======================================== */
+
 .ai-confidence__percentage {
-  font-size: var(--text-xl);
+  font-size: 18px;
   font-weight: 700;
-  color: var(--color-text-primary);
-  font-variant-numeric: tabular-nums;
+  color: var(--match-light-green);
+  letter-spacing: -0.01em;
+}
+
+/* ========================================
+   SIZE VARIANTS
+   ======================================== */
+
+/* Small - compact display */
+.ai-confidence--sm .ai-confidence__icon {
+  width: 20px;
+  height: 20px;
+}
+
+.ai-confidence--sm .ai-confidence__icons {
+  gap: 6px;
+}
+
+.ai-confidence--sm .ai-confidence__level {
+  font-size: 12px;
+}
+
+.ai-confidence--sm .ai-confidence__label {
+  font-size: 11px;
 }
 
 .ai-confidence--sm .ai-confidence__percentage {
-  font-size: var(--text-lg);
+  font-size: 14px;
+}
+
+/* Medium - default, balanced */
+.ai-confidence--md .ai-confidence__icon {
+  width: 28px;
+  height: 28px;
+}
+
+.ai-confidence--md .ai-confidence__icons {
+  gap: 8px;
+}
+
+.ai-confidence--md .ai-confidence__level {
+  font-size: 14px;
+}
+
+.ai-confidence--md .ai-confidence__label {
+  font-size: 13px;
+}
+
+.ai-confidence--md .ai-confidence__percentage {
+  font-size: 18px;
+}
+
+/* Large - prominent hero display */
+.ai-confidence--lg .ai-confidence__icon {
+  width: 36px;
+  height: 36px;
+}
+
+.ai-confidence--lg .ai-confidence__icons {
+  gap: 12px;
+}
+
+.ai-confidence--lg .ai-confidence__level {
+  font-size: 16px;
+}
+
+.ai-confidence--lg .ai-confidence__label {
+  font-size: 14px;
 }
 
 .ai-confidence--lg .ai-confidence__percentage {
-  font-size: var(--text-2xl);
+  font-size: 24px;
 }
 
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  .ai-confidence__icon {
-    transition: none;
-  }
+/* ========================================
+   HOVER ENHANCEMENT
+   ======================================== */
+
+.ai-confidence__icon--active:hover {
+  transform: scale(1.1);
+  transition: transform 0.15s ease;
 }
 
-/* High contrast mode support */
-@media (prefers-contrast: more) {
-  .ai-confidence__icon--active {
-    color: #00ff88;
-    font-weight: bold;
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 768px) {
+  .ai-confidence__icons {
+    gap: 6px;
   }
   
-  .ai-confidence__icon--inactive {
-    opacity: 0.6;
+  .ai-confidence__icon {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .ai-confidence__level {
+    font-size: 13px;
+  }
+  
+  .ai-confidence__label {
+    font-size: 12px;
+  }
+  
+  .ai-confidence__percentage {
+    font-size: 16px;
   }
 }
