@@ -414,6 +414,9 @@ class TrackRecordManager:
         total_stake = len(results_with_odds)  # 1 unit per bet
         total_return = 0.0
         
+        # Invariant: total_stake > 0 (guaranteed by early return above)
+        assert total_stake > 0, "total_stake must be > 0 after filtering"
+        
         for result in results_with_odds:
             # Find most probable outcome
             probs = {

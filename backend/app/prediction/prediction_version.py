@@ -8,6 +8,11 @@ Tracks prediction evolution through match lifecycle stages:
 - live: During match (if live predictions enabled)
 
 Once written, a prediction version is NEVER modified (immutable).
+
+DATABASE REQUIREMENT:
+The persistence layer MUST enforce a unique constraint on (match_id, stage)
+to prevent concurrent processes from creating duplicate stage versions.
+This is the final enforcement layer for immutability with concurrent writers.
 """
 
 import copy
@@ -155,7 +160,8 @@ class PredictionVersionManager:
             Created PredictionVersion
         
         Raises:
-            ValueError: If stage already exists and allow_stage_overwrite=False
+            ValueError: If stage already exists and allow_stage_overwrite=False,
+                       or if database constraint violation occurs
         """
         # Check for existing version at this stage
         if not allow_stage_overwrite:
@@ -181,7 +187,20 @@ class PredictionVersionManager:
         
         # Persist version
         if self.persistence_service:
-            self.persistence_service.save_version(version)
+            try:
+                self.persistence_service.save_version(version)
+            except Exception as e:
+                # Handle database-level unique constraint violations
+                # This catches concurrent writers that passed the check above
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ['unique', 'constraint', 'duplicate', 'integrity']):
+                    raise ValueError(
+                        f"Database constraint violation: version already exists for "
+                        f"match {match_id} at stage {stage.value}. "
+                        f"Another process created this version concurrently."
+                    ) from e
+                # Re-raise other exceptions
+                raise
         else:
             # Fallback to in-memory
             if match_id not in self._memory_store:

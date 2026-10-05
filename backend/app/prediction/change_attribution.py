@@ -178,6 +178,13 @@ class ChangeAttributionEngine:
             if total_magnitude > 0:
                 for factor in factors:
                     factor.magnitude /= total_magnitude
+            else:
+                # Edge case: all factors have zero magnitude
+                # Should not happen due to fallback in _detect_factors, but guard anyway
+                raise ValueError(
+                    f"Cannot normalize factors: total magnitude is zero. "
+                    f"Factors: {[(f.factor_type, f.magnitude) for f in factors]}"
+                )
         
         attribution = ChangeAttribution(
             version_from=version_from.version_id,
