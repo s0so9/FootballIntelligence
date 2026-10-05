@@ -25,6 +25,8 @@ from app.prediction.form_adjusted import FormAdjustedModel
 from app.prediction.logistic_regression import LogisticRegressionModel
 from app.prediction.ensemble_engine import EnsembleEngine, ReliabilityWeights
 from app.prediction.calibration_engine import IsotonicCalibration
+from app.prediction.confidence_engine import ConfidenceEngine, ConfidenceComponents, ConfidenceAssessment
+from app.prediction.feature_snapshot import MatchFeatureSnapshot, LineupStatus
 
 
 logger = logging.getLogger(__name__)
@@ -540,3 +542,146 @@ class CalibrationIntegration:
             CalibrationIntegration with new unfitted Calibrator1X2
         """
         return CalibrationIntegration()
+
+
+class ConfidenceIntegration:
+    """Integration layer for confidence assessment.
+    
+    Extracts real values from pipeline components and feeds them to ConfidenceEngine.
+    NO HARDCODED VALUES - all inputs derived from actual pipeline outputs.
+    """
+    
+    def __init__(self, engine: Optional[ConfidenceEngine] = None):
+        """Initialize confidence integration.
+        
+        Args:
+            engine: ConfidenceEngine instance (creates default if None)
+        """
+        if engine is None:
+            engine = ConfidenceEngine()
+        self.engine = engine
+    
+    def assess_confidence(
+        self,
+        snapshot: MatchFeatureSnapshot,
+        orchestration_result: ModelOrchestrationResult,
+        ensemble_prediction: ModelPrediction,
+        calibration_metadata: Optional[Dict[str, Any]] = None,
+    ) -> ConfidenceAssessment:
+        """Assess confidence from actual pipeline outputs.
+        
+        Args:
+            snapshot: Feature snapshot with data quality
+            orchestration_result: Model orchestration result
+            ensemble_prediction: Ensemble prediction with model agreement
+            calibration_metadata: Calibration metadata (brier_score if available)
+            
+        Returns:
+            ConfidenceAssessment with real values from pipeline
+        """
+        # Extract model agreement from ensemble metadata
+        model_agreement = ensemble_prediction.metadata.get("model_agreement", 0.0)
+        
+        # Extract data quality from snapshot
+        data_quality_score = 0.5  # Default fallback
+        if snapshot.data_quality_report:
+            data_quality_score = snapshot.data_quality_report.overall_score
+        
+        # Calculate n_matches from form data
+        n_matches = self._extract_n_matches(snapshot)
+        
+        # Extract brier_score from calibration metadata
+        brier_score = None
+        if calibration_metadata:
+            brier_score = calibration_metadata.get("brier_score")
+        
+        # Extract lineup status
+        lineup_status = self._extract_lineup_status_string(snapshot)
+        
+        # Call ConfidenceEngine.assess with correct signature
+        assessment = self.engine.assess(
+            model_agreement=model_agreement,
+            data_quality_score=data_quality_score,
+            n_matches=n_matches,
+            brier_score=brier_score,
+            lineup_status=lineup_status,
+            recent_predictions=None  # Not calculating stability yet
+        )
+        
+        logger.info(
+            f"Confidence assessed: {assessment.overall_confidence:.3f} "
+            f"(agreement={model_agreement:.3f}, data_quality={data_quality_score:.3f})"
+        )
+        
+        return assessment
+    
+    def _extract_n_matches(
+        self,
+        snapshot: MatchFeatureSnapshot
+    ) -> int:
+        """Extract number of matches from snapshot form data.
+        
+        Args:
+            snapshot: Feature snapshot
+            
+        Returns:
+            Minimum of home/away matches analyzed
+        """
+        home_matches = 0
+        away_matches = 0
+        
+        if snapshot.home_form and snapshot.home_form.matches_analyzed:
+            home_matches = snapshot.home_form.matches_analyzed
+        
+        if snapshot.away_form and snapshot.away_form.matches_analyzed:
+            away_matches = snapshot.away_form.matches_analyzed
+        
+        # Use minimum of the two teams
+        return min(home_matches, away_matches) if (home_matches and away_matches) else max(home_matches, away_matches)
+    
+    def _extract_lineup_status_string(
+        self,
+        snapshot: MatchFeatureSnapshot
+    ) -> str:
+        """Extract lineup status as string for ConfidenceEngine.
+        
+        Args:
+            snapshot: Feature snapshot
+            
+        Returns:
+            "confirmed", "expected", or "unknown"
+        """
+        # Check both teams' lineup status and return the less certain one
+        home_status = "expected"
+        away_status = "expected"
+        
+        if snapshot.home_player_availability:
+            status = snapshot.home_player_availability.lineup_status
+            if status == LineupStatus.CONFIRMED:
+                home_status = "confirmed"
+            elif status == LineupStatus.UNAVAILABLE:
+                home_status = "unknown"
+        
+        if snapshot.away_player_availability:
+            status = snapshot.away_player_availability.lineup_status
+            if status == LineupStatus.CONFIRMED:
+                away_status = "confirmed"
+            elif status == LineupStatus.UNAVAILABLE:
+                away_status = "unknown"
+        
+        # Return the less certain status
+        if "unknown" in [home_status, away_status]:
+            return "unknown"
+        elif "expected" in [home_status, away_status]:
+            return "expected"
+        else:
+            return "confirmed"
+    
+    @staticmethod
+    def create_default() -> "ConfidenceIntegration":
+        """Create confidence integration with default engine.
+        
+        Returns:
+            ConfidenceIntegration with default ConfidenceEngine
+        """
+        return ConfidenceIntegration()
