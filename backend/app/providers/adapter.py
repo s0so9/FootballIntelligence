@@ -60,7 +60,7 @@ class ProviderManagerAdapter(FootballDataProvider):
         """
         return False
     
-    def _exec(self, coro):
+    async def _exec_async(self, coro):
         """Execute async coroutine and extract result and metadata.
         
         This helper runs an async coroutine, unpacks the (result, metadata) tuple,
@@ -72,7 +72,34 @@ class ProviderManagerAdapter(FootballDataProvider):
         Returns:
             The result from the coroutine
         """
-        result, metadata = asyncio.run(coro)
+        result, metadata = await coro
+        self._last_metadata = metadata
+        return result
+    
+    def _exec(self, coro):
+        """Execute async coroutine synchronously.
+        
+        Used for legacy sync code paths.
+        
+        Args:
+            coro: Async coroutine that returns (result, metadata) tuple
+            
+        Returns:
+            The result from the coroutine
+        """
+        # Check if we're already in an event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context - but this is a sync method
+            # Run in a new thread with its own event loop
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, coro)
+                result, metadata = future.result()
+        except RuntimeError:
+            # No running loop - safe to use asyncio.run()
+            result, metadata = asyncio.run(coro)
+        
         self._last_metadata = metadata
         return result
     
@@ -158,6 +185,66 @@ class ProviderManagerAdapter(FootballDataProvider):
     
     # === Matches ===
     
+    async def get_matches_async(
+        self,
+        competition_id: Optional[str] = None,
+        season_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+        status: Optional[str] = None,
+    ) -> List[Match]:
+        """Async version of get_matches for use from async contexts.
+        
+        Args:
+            Same as get_matches
+            
+        Returns:
+            List of matching fixtures
+        """
+        if from_date is None:
+            raise NotImplementedError(
+                "Date filter required - provide at least from_date parameter"
+            )
+        
+        # Determine query type
+        if to_date is None or to_date == from_date:
+            # Single date query
+            logger.debug(f"Fetching matches for single date: {from_date}")
+            provider_matches = await self._exec_async(
+                self._manager.get_matches_by_date(from_date)
+            )
+        else:
+            # Date range query
+            logger.debug(f"Fetching matches for range: {from_date} to {to_date}")
+            provider_matches = await self._exec_async(
+                self._manager.get_matches_by_range(from_date, to_date)
+            )
+        
+        # Map ProviderMatch list to domain Match list
+        matches = []
+        for pm in provider_matches:
+            try:
+                match = self._map_provider_match_to_domain(pm)
+                matches.append(match)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to map provider match {pm.source_id} to domain: {e}"
+                )
+        
+        # Apply status filter if provided
+        if status:
+            matches = [m for m in matches if m.status.value == status]
+            logger.debug(f"Filtered to {len(matches)} matches with status={status}")
+        
+        # Log result
+        logger.info(
+            f"Returning {len(matches)} matches for date range "
+            f"{from_date} to {to_date or from_date}"
+        )
+        
+        return matches
+    
     def get_matches(
         self,
         competition_id: Optional[str] = None,
@@ -167,7 +254,7 @@ class ProviderManagerAdapter(FootballDataProvider):
         to_date: Optional[date] = None,
         status: Optional[str] = None,
     ) -> List[Match]:
-        """Get matches with optional filters.
+        """Get matches with optional filters (sync version).
         
         Supports:
         - Single date query: from_date provided, to_date None or equal to from_date
@@ -188,6 +275,7 @@ class ProviderManagerAdapter(FootballDataProvider):
         Returns:
             List of matching fixtures
         """
+        # Use sync _exec for backward compatibility
         if from_date is None:
             raise NotImplementedError(
                 "Date filter required - provide at least from_date parameter"
@@ -234,18 +322,99 @@ class ProviderManagerAdapter(FootballDataProvider):
     def get_match(self, match_id: str) -> Optional[Match]:
         """Get a specific match by ID.
         
+        Supports prefixed match IDs in format "{provider}_{source_id}" 
+        (e.g., "fotmob_5181855") by routing directly to the specific provider.
+        Falls back to ProviderManager routing for unprefixed IDs.
+        
         Args:
-            match_id: Match ID
+            match_id: Match ID (prefixed like "fotmob_5181855" or unprefixed)
             
         Returns:
             Match if found, None otherwise
         """
+        # Check if match_id has format "{provider}_{source_id}"
+        if '_' in match_id:
+            parts = match_id.split('_', 1)
+            if len(parts) == 2:
+                provider_name, source_id = parts
+                # Check if this is a known provider
+                known_providers = ['fotmob', 'ryzellx', 'openligadb', 'sofascore']
+                if provider_name in known_providers and provider_name in self._manager._providers:
+                    # Route directly to specific provider
+                    logger.debug(
+                        f"Prefixed match ID detected: routing {match_id} to "
+                        f"provider '{provider_name}' with source_id '{source_id}'"
+                    )
+                    try:
+                        # Call provider directly with numeric ID
+                        # Note: providers return just result, not (result, metadata) tuple
+                        provider_match = self._exec_direct_provider(
+                            provider_name, 
+                            source_id
+                        )
+                        
+                        if provider_match is None:
+                            logger.debug(
+                                f"Provider '{provider_name}' returned None for "
+                                f"source_id '{source_id}'"
+                            )
+                            return None
+                        
+                        # Store metadata for this direct provider call
+                        self._last_metadata = {
+                            'selected_provider': provider_name,
+                            'attempted_providers': [provider_name],
+                            'routing_type': 'direct_prefixed_id'
+                        }
+                        
+                        return self._map_provider_match_to_domain(provider_match)
+                    
+                    except Exception as e:
+                        logger.warning(
+                            f"Direct provider call failed for {match_id}: {e}, "
+                            f"falling back to ProviderManager routing"
+                        )
+                        # Fall through to ProviderManager fallback
+        
+        # Fall back to ProviderManager routing for unprefixed IDs or if direct routing failed
+        logger.debug(f"Using ProviderManager routing for match_id: {match_id}")
         provider_match = self._exec(self._manager.get_match(match_id))
         
         if provider_match is None:
             return None
         
         return self._map_provider_match_to_domain(provider_match)
+    
+    def _exec_direct_provider(self, provider_name: str, source_id: str):
+        """Execute a direct provider call synchronously.
+        
+        Calls a specific provider's get_match() method directly.
+        Unlike ProviderManager methods, individual providers return just the result,
+        not a (result, metadata) tuple.
+        
+        Args:
+            provider_name: Name of the provider (e.g., 'fotmob')
+            source_id: The numeric source ID for the match
+            
+        Returns:
+            ProviderMatch if found, None otherwise
+        """
+        provider = self._manager._providers[provider_name]
+        coro = provider.get_match(source_id)
+        
+        # Check if we're already in an event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # We're in an async context - run in a new thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, coro)
+                result = future.result()
+        except RuntimeError:
+            # No running loop - safe to use asyncio.run()
+            result = asyncio.run(coro)
+        
+        return result
     
     def _map_provider_match_to_domain(self, pm) -> Match:
         """Map ProviderMatch to domain Match.
