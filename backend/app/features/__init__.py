@@ -29,6 +29,12 @@ from app.features.opponent_adjustment import (
     OpponentAdjustedMetrics,
     OpponentAdjustmentCalculator,
 )
+from app.features.temporal_intelligence import (
+    TemporalWeighting,
+    RegimeChange,
+    TemporalIntelligenceMetrics,
+    TemporalIntelligenceCalculator,
+)
 
 __all__ = [
     # Base (existing)
@@ -56,4 +62,9 @@ __all__ = [
     "OpponentStrengthAtTime",
     "OpponentAdjustedMetrics",
     "OpponentAdjustmentCalculator",
+    # Temporal Intelligence (Phase 10 Group 1)
+    "TemporalWeighting",
+    "RegimeChange",
+    "TemporalIntelligenceMetrics",
+    "TemporalIntelligenceCalculator",
 ]
