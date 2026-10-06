@@ -19,6 +19,11 @@ from app.features.team_form import TeamFormFeatureCalculator, TeamFormFeatures
 from app.features.attack_defence import AttackDefenceFeatureCalculator, AttackDefenceFeatures
 from app.features.data_quality import DataQualityFeatureCalculator, DataQualityFeatures
 from app.features.aggregator import FeatureAggregator, FeatureSet
+from app.features.advanced_team_intelligence import (
+    MatchWithStatistics,
+    AdvancedTeamMetrics,
+    AdvancedTeamIntelligenceCalculator,
+)
 
 __all__ = [
     # Base (existing)
@@ -38,4 +43,8 @@ __all__ = [
     "DataQualityFeatures",
     "FeatureAggregator",
     "FeatureSet",
+    # Advanced Team Intelligence (Phase 10)
+    "MatchWithStatistics",
+    "AdvancedTeamMetrics",
+    "AdvancedTeamIntelligenceCalculator",
 ]

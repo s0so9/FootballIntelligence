@@ -1,0 +1,37 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Implement Advanced Team Intelligence (10A): Create MatchWithStatistics wrapper, AdvancedTeamMetrics dataclass, and AdvancedTeamIntelligenceCalculator to extract xG, shots, possession metrics from historical TeamMatchStatistic data with temporal validity enforcement",
+  "status": "completed",
+  "steps": [
+    "Read design.md v2.0 section 3.2.1 and existing team_strength.py to understand patterns",
+    "Create c:/FootballIntelligence/backend/app/features/advanced_team_intelligence.py with MatchWithStatistics dataclass that pairs Match with home/away TeamMatchStatistic objects, includes helper methods: is_home_team(), get_team_statistics(), is_finished()",
+    "Add AdvancedTeamMetrics dataclass with ALL Optional fields: xg_for_per_match, xg_against_per_match, shots_per_match, shots_on_target_per_match, xg_per_shot, possession_avg (AVAILABLE from TeamMatchStatistic) and UNAVAILABLE fields set to None: non_penalty_xg_per_match, shots_inside_box_per_match, box_shot_percentage, ppda, field_tilt, progressive_passes_per_match, big_chances_per_match, set_piece_xg_per_match. Include home/away venue splits, provenance fields (provider, provider_timestamp, sample_size, matches_with_xg, matches_with_shots, matches_with_possession, data_quality_score, window_type)",
+    "Implement AdvancedTeamIntelligenceCalculator class with __init__(session, recent_window=5, medium_window=10, season_window=38, min_matches=3)",
+    "Implement calculate_advanced_metrics(team_id, matches_with_stats, window_type, before_datetime) method: (1) Filter to finished matches (status==FINISHED), (2) CRITICAL: Filter matches where match.scheduled_at < before_datetime (strict less-than), (3) Apply window size based on window_type, (4) For each match extract team_statistics for team_id, (5) Calculate per-match averages for AVAILABLE fields only (xg from TeamMatchStatistic.xg, shots from shots_total, possession from possession_percentage), (6) Skip fields that are None in TeamMatchStatistic, (7) Set UNAVAILABLE fields to None (ppda, field_tilt, progressive_passes, shots_inside_box, big_chances, etc.), (8) Calculate home/away venue splits when sample >= min_matches, (9) Calculate data_quality_score based on field completeness (0.0-1.0), (10) Return AdvancedTeamMetrics with provenance",
+    "Add to backend/app/features/__init__.py: import and export MatchWithStatistics, AdvancedTeamMetrics, AdvancedTeamIntelligenceCalculator",
+    "Create c:/FootballIntelligence/backend/tests/features/test_advanced_team_intelligence.py with tests: test_match_with_statistics_wrapper, test_advanced_team_metrics_structure, test_calculate_with_available_data, test_calculate_with_missing_statistics, test_calculate_with_partial_data, test_unavailable_metrics_remain_none, test_temporal_filtering_strict_less_than, test_home_away_split, test_insufficient_sample_size, test_data_quality_score, test_window_types (recent/medium/season)",
+    "Run python -m pytest backend/tests/features/test_advanced_team_intelligence.py -v and fix all failures",
+    "Verify import works: python -c 'from app.features import AdvancedTeamIntelligenceCalculator; print(\"success\")' from backend directory"
+  ],
+  "acceptance_criteria": [
+    "MatchWithStatistics correctly pairs Match with home/away TeamMatchStatistic objects",
+    "AdvancedTeamMetrics has all fields Optional, UNAVAILABLE metrics explicitly None",
+    "Calculator correctly extracts AVAILABLE metrics from TeamMatchStatistic: xg, xg_against, shots_total, shots_on_target, possession_percentage",
+    "Calculator never fabricates UNAVAILABLE metrics: PPDA, Field Tilt, progressive passes, box shots, big chances always return None",
+    "Temporal validity enforced: before_datetime filter uses strict < comparison, excludes future matches",
+    "Home/away venue splits calculated when sample_size >= min_matches",
+    "Data quality score calculated based on field completeness (0.0-1.0 range)",
+    "Provenance tracked: sample_size, matches_with_xg, matches_with_shots, matches_with_possession, window_type",
+    "All tests pass: pytest backend/tests/features/test_advanced_team_intelligence.py",
+    "Calculator importable from app.features module",
+    "Zero temporal leakage: only uses matches before prediction timestamp"
+  ],
+  "verification": [
+    "cd c:/FootballIntelligence/backend && python -m pytest backend/tests/features/test_advanced_team_intelligence.py -v",
+    "cd c:/FootballIntelligence/backend && python -c 'from app.features import AdvancedTeamIntelligenceCalculator, MatchWithStatistics, AdvancedTeamMetrics; print(\"Import successful\")'",
+    "Manually inspect test output confirms: AVAILABLE metrics calculated, UNAVAILABLE metrics are None, temporal filtering enforced"
+  ],
+  "blocked_reason": null,
+  "findings": "FEAT-001 successfully implemented. Key findings for FEAT-002:\n\n1. **Data Contract Established**: MatchWithStatistics wrapper cleanly separates Match metadata from TeamMatchStatistic data, preventing confusion about where statistics reside.\n\n2. **Temporal Validity**: Strict < comparison enforced in before_datetime filtering. Added explicit test (test_temporal_filtering_with_sufficient_sample) proving matches at exact cutoff timestamp are excluded.\n\n3. **AVAILABLE vs UNAVAILABLE Metrics**: Clear distinction maintained:\n   - AVAILABLE: xg, xg_against, shots_total, shots_on_target, possession_percentage (from current TeamMatchStatistic model)\n   - UNAVAILABLE: ppda, field_tilt, progressive_passes, shots_inside_box, big_chances, non_penalty_xg, set_piece_xg (require future provider integration)\n\n4. **Home/Away Splits**: Implemented as scalar fields (home_xg_for_per_match, away_xg_for_per_match) not nested objects, matching design v2.0 Section 2.1 requirement.\n\n5. **Data Quality Score**: Weighted combination (70% field completeness, 30% sample quality) provides 0.0-1.0 metric for downstream confidence assessment.\n\n6. **Min Matches Threshold**: When sample_size < min_matches (default 3), calculator returns metrics with None values and data_quality_score=0.0. This prevents unstable metrics from small samples.\n\n7. **Window Types**: recent/medium/season windows correctly implemented and tested with configurable sizes (5/10/38 matches).\n\n8. **All 15 Tests Pass**: Comprehensive test coverage including edge cases (missing stats, partial data, temporal filtering, venue splits, insufficient samples).\n\n9. **Integration Point**: Classes exported from app.features module, ready for integration with opponent_adjustment.py (FEAT-002) and temporal_intelligence.py (FEAT-003).\n\n10. **No Fabrication**: Zero synthetic data generation - all None values preserved where data unavailable, following REAL DATA > NULL > FABRICATED hierarchy."
+}
