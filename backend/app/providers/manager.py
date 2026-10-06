@@ -203,6 +203,36 @@ class ProviderManager:
         # Return empty list if no provider succeeded
         return (result if result is not None else [], metadata)
     
+    async def get_matches_by_range(
+        self,
+        start_date: date,
+        end_date: date
+    ) -> Tuple[List, Dict]:
+        """Get matches in date range.
+        
+        Uses NORMAL_ORDER: ryzellx → openligadb
+        
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+            
+        Returns:
+            Tuple of (matches_list, metadata_dict)
+        """
+        provider_method_map = {
+            'ryzellx': lambda: self._providers['ryzellx'].get_matches_by_range(start_date, end_date),
+            # Note: openligadb doesn't implement range queries, will fall through
+        }
+        
+        result, metadata = await self._try_providers(
+            operation_name='get_matches_by_range',
+            provider_order=self.NORMAL_ORDER,
+            provider_method_map=provider_method_map
+        )
+        
+        # Return empty list if no provider succeeded
+        return (result if result is not None else [], metadata)
+    
     async def get_match(self, match_id: str) -> Tuple[Optional[Any], Dict]:
         """Get detailed match information.
         

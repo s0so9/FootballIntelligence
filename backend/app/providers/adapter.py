@@ -169,50 +169,67 @@ class ProviderManagerAdapter(FootballDataProvider):
     ) -> List[Match]:
         """Get matches with optional filters.
         
-        Currently only supports from_date filter (single date).
-        Other filters not yet implemented.
+        Supports:
+        - Single date query: from_date provided, to_date None or equal to from_date
+        - Date range query: both from_date and to_date provided
+        - Status filtering: applied after fetching matches
+        
+        NOT YET SUPPORTED:
+        - competition_id, season_id, team_id filtering
         
         Args:
             competition_id: NOT IMPLEMENTED
             season_id: NOT IMPLEMENTED
             team_id: NOT IMPLEMENTED
-            from_date: Fetch matches for this date
-            to_date: NOT IMPLEMENTED (must equal from_date if provided)
-            status: NOT IMPLEMENTED
+            from_date: Fetch matches from this date
+            to_date: Fetch matches up to this date (inclusive)
+            status: Filter by match status (scheduled, live, finished, etc.)
             
         Returns:
             List of matching fixtures
         """
-        # Only support single-date queries for now
-        if from_date is not None:
-            if to_date is not None and to_date != from_date:
-                raise NotImplementedError(
-                    "Date range queries not yet implemented - "
-                    "only single date (from_date == to_date) supported"
-                )
-            
+        if from_date is None:
+            raise NotImplementedError(
+                "Date filter required - provide at least from_date parameter"
+            )
+        
+        # Determine query type
+        if to_date is None or to_date == from_date:
+            # Single date query
+            logger.debug(f"Fetching matches for single date: {from_date}")
             provider_matches = self._exec(
                 self._manager.get_matches_by_date(from_date)
             )
-            
-            # Map ProviderMatch list to domain Match list
-            matches = []
-            for pm in provider_matches:
-                try:
-                    match = self._map_provider_match_to_domain(pm)
-                    matches.append(match)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to map provider match {pm.source_id} to domain: {e}"
-                    )
-            
-            return matches
+        else:
+            # Date range query
+            logger.debug(f"Fetching matches for range: {from_date} to {to_date}")
+            provider_matches = self._exec(
+                self._manager.get_matches_by_range(from_date, to_date)
+            )
         
-        # Other filter combinations not implemented
-        raise NotImplementedError(
-            "Only date-based match queries implemented - "
-            "provide from_date parameter"
+        # Map ProviderMatch list to domain Match list
+        matches = []
+        for pm in provider_matches:
+            try:
+                match = self._map_provider_match_to_domain(pm)
+                matches.append(match)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to map provider match {pm.source_id} to domain: {e}"
+                )
+        
+        # Apply status filter if provided
+        if status:
+            matches = [m for m in matches if m.status.value == status]
+            logger.debug(f"Filtered to {len(matches)} matches with status={status}")
+        
+        # Log result
+        logger.info(
+            f"Returning {len(matches)} matches for date range "
+            f"{from_date} to {to_date or from_date}"
         )
+        
+        return matches
     
     def get_match(self, match_id: str) -> Optional[Match]:
         """Get a specific match by ID.
