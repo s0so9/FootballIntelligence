@@ -259,39 +259,70 @@ class TestResultTrackingFields:
         assert version.settled_at is None
     
     def test_settle_prediction_raises_not_implemented(self):
-        """Test that settle_prediction() raises NotImplementedError."""
+        """Test that settle_prediction() raises ValueError when result is missing."""
+        # This test was updated after Phase 6 implementation
+        # Settlement is now implemented, but we test error handling
         manager = PredictionVersionManager()
+        
+        best_tip = {
+            "market": "HOME_WIN",
+            "selection": "Home Win",
+            "probability": 0.55,
+            "confidence": 0.60,
+            "bookmaker_odds": 2.50,
+            "fair_odds": 1.82,
+            "edge": 0.15,
+            "value_classification": "VALUE",
+            "risk_level": "MEDIUM"
+        }
         
         version = manager.create_version(
             match_id="match_settle",
             stage=PredictionStage.KICKOFF,
             prediction_data={"home_win_prob": 0.50},
-            confidence_score=0.60
+            confidence_score=0.60,
+            mensione_pick=best_tip
         )
         
-        # Attempt to settle prediction should raise NotImplementedError
-        with pytest.raises(NotImplementedError) as exc_info:
+        # Attempt to settle without provider should raise ValueError
+        from app.providers.base import FootballDataProvider
+        
+        class MockProvider(FootballDataProvider):
+            def get_provider_name(self): return "mock"
+            def is_development_data(self): return True
+            def get_competitions(self): return []
+            def get_competition(self, competition_id): return None
+            def get_seasons(self, competition_id): return []
+            def get_current_season(self, competition_id): return None
+            def get_teams(self, competition_id, season_id): return []
+            def get_team(self, team_id): return None
+            def get_matches(self, **kwargs): return []
+            def get_match(self, match_id): return None
+        
+        provider = MockProvider()
+        
+        # Should raise ValueError because match not found
+        with pytest.raises(ValueError, match="not found"):
             manager.settle_prediction(
                 version_id=version.version_id,
-                actual_result="WON",
-                profit_loss=0.85
+                provider=provider,
+                stake=1.0
             )
-        
-        assert "result ingestion not yet implemented" in str(exc_info.value).lower()
     
     def test_get_settled_picks_by_market_raises_not_implemented(self):
-        """Test that get_settled_picks_by_market() raises NotImplementedError."""
+        """Test that get_settled_picks_by_market() returns empty list."""
+        # This test was updated after Phase 7 implementation
+        # Method is now implemented
         manager = PredictionVersionManager()
         
-        # Attempt to get settled picks should raise NotImplementedError
-        with pytest.raises(NotImplementedError) as exc_info:
-            manager.get_settled_picks_by_market(
-                market_type="HOME_WIN",
-                start_date=datetime(2026, 1, 1),
-                end_date=datetime(2026, 12, 31)
-            )
+        # Should return empty list, not raise error
+        result = manager.get_settled_picks_by_market(
+            market_type="HOME_WIN",
+            start_date=datetime(2026, 1, 1),
+            end_date=datetime(2026, 12, 31)
+        )
         
-        assert "track record analysis not yet implemented" in str(exc_info.value).lower()
+        assert result == []
 
 
 class TestFrozenPickIntegration:

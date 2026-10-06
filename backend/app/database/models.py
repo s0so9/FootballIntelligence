@@ -425,10 +425,28 @@ class PredictionVersionDB(BaseModel, Base):
     # Notes
     notes = Column(JSON, nullable=True)  # List of strings
     
+    # Frozen MENSIONE Pick (immutable after creation)
+    selected_market = Column(String(50), nullable=True)
+    selection_text = Column(String(200), nullable=True)
+    selection_probability = Column(Float, nullable=True)
+    selection_confidence = Column(Float, nullable=True)
+    selection_odds = Column(Float, nullable=True)
+    selection_fair_odds = Column(Float, nullable=True)
+    selection_edge = Column(Float, nullable=True)
+    value_classification = Column(String(50), nullable=True)
+    risk_level = Column(String(50), nullable=True)
+    
+    # Settlement (populated after match finishes)
+    actual_result = Column(String(20), nullable=True)  # 'WIN', 'LOSS', 'VOID'
+    profit_loss = Column(Float, nullable=True)
+    settled_at = Column(DateTime(timezone=True), nullable=True)
+    
     # Indexes
     __table_args__ = (
         Index("ix_prediction_version_match", "match_id", "stage"),
         Index("ix_prediction_version_created", "created_at"),
+        Index("ix_prediction_version_actual_result", "actual_result"),
+        Index("ix_prediction_version_settled_at", "settled_at"),
     )
 
 

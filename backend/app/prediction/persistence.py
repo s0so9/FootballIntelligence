@@ -55,7 +55,21 @@ class PredictionPersistenceService:
             model_versions=version.model_versions,
             data_quality_score=version.data_quality_score,
             confidence_score=version.confidence_score,
-            notes=version.notes if version.notes else []
+            notes=version.notes if version.notes else [],
+            # Frozen pick fields
+            selected_market=version.selected_market,
+            selection_text=version.selection_text,
+            selection_probability=version.selection_probability,
+            selection_confidence=version.selection_confidence,
+            selection_odds=version.selection_odds,
+            selection_fair_odds=version.selection_fair_odds,
+            selection_edge=version.selection_edge,
+            value_classification=version.value_classification,
+            risk_level=version.risk_level,
+            # Settlement fields (None at creation)
+            actual_result=version.actual_result,
+            profit_loss=version.profit_loss,
+            settled_at=version.settled_at,
         )
         
         self.session.add(db_version)
@@ -142,7 +156,21 @@ class PredictionPersistenceService:
             model_versions=db_version.model_versions or {},
             data_quality_score=db_version.data_quality_score,
             confidence_score=db_version.confidence_score,
-            notes=db_version.notes or []
+            notes=db_version.notes or [],
+            # Frozen pick fields
+            selected_market=db_version.selected_market,
+            selection_text=db_version.selection_text,
+            selection_probability=db_version.selection_probability,
+            selection_confidence=db_version.selection_confidence,
+            selection_odds=db_version.selection_odds,
+            selection_fair_odds=db_version.selection_fair_odds,
+            selection_edge=db_version.selection_edge,
+            value_classification=db_version.value_classification,
+            risk_level=db_version.risk_level,
+            # Settlement fields
+            actual_result=db_version.actual_result,
+            profit_loss=db_version.profit_loss,
+            settled_at=db_version.settled_at,
         )
     
     # ===== Track Record Operations =====

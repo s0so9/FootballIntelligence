@@ -525,3 +525,172 @@ class TrackRecordManager:
             curve.append((avg_predicted, avg_actual))
         
         return curve
+    
+    def get_settled_summary(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        market_type: Optional[str] = None
+    ) -> Dict[str, any]:
+        """Get summary of settled predictions.
+        
+        Args:
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+            market_type: Optional market type filter
+        
+        Returns:
+            Dict with settlement metrics
+        """
+        # Get settled predictions from persistence layer
+        if self.persistence_service:
+            from app.database.models import PredictionVersionDB
+            
+            query = self.persistence_service.session.query(PredictionVersionDB).filter(
+                PredictionVersionDB.actual_result.isnot(None)
+            )
+            
+            if start_date:
+                query = query.filter(PredictionVersionDB.settled_at >= start_date)
+            
+            if end_date:
+                query = query.filter(PredictionVersionDB.settled_at <= end_date)
+            
+            if market_type:
+                query = query.filter(
+                    PredictionVersionDB.selected_market.ilike(f'%{market_type.upper()}%')
+                )
+            
+            settled_versions = query.all()
+        else:
+            # Fallback to memory (not implemented in base TrackRecordManager)
+            settled_versions = []
+        
+        if not settled_versions:
+            return {
+                'total_predictions': 0,
+                'settled_predictions': 0,
+                'wins': 0,
+                'losses': 0,
+                'voids': 0,
+                'win_rate': 0.0,
+                'roi': 0.0,
+                'total_profit_loss': 0.0,
+                'average_odds': 0.0,
+                'average_confidence': 0.0,
+                'average_probability': 0.0
+            }
+        
+        # Calculate metrics
+        total = len(settled_versions)
+        wins = sum(1 for v in settled_versions if v.actual_result == 'WIN')
+        losses = sum(1 for v in settled_versions if v.actual_result == 'LOSS')
+        voids = sum(1 for v in settled_versions if v.actual_result == 'VOID')
+        
+        # Win rate (exclude voids)
+        non_void = wins + losses
+        win_rate = wins / non_void if non_void > 0 else 0.0
+        
+        # Profit/loss
+        total_pl = sum(v.profit_loss for v in settled_versions if v.profit_loss is not None)
+        total_stake = sum(1.0 for v in settled_versions if v.actual_result in ('WIN', 'LOSS'))
+        roi = total_pl / total_stake if total_stake > 0 else 0.0
+        
+        # Averages
+        odds_list = [v.selection_odds for v in settled_versions if v.selection_odds is not None]
+        avg_odds = sum(odds_list) / len(odds_list) if odds_list else 0.0
+        
+        conf_list = [v.selection_confidence for v in settled_versions if v.selection_confidence is not None]
+        avg_confidence = sum(conf_list) / len(conf_list) if conf_list else 0.0
+        
+        prob_list = [v.selection_probability for v in settled_versions if v.selection_probability is not None]
+        avg_probability = sum(prob_list) / len(prob_list) if prob_list else 0.0
+        
+        return {
+            'total_predictions': total,
+            'settled_predictions': total,
+            'wins': wins,
+            'losses': losses,
+            'voids': voids,
+            'win_rate': win_rate,
+            'roi': roi,
+            'total_profit_loss': total_pl,
+            'average_odds': avg_odds,
+            'average_confidence': avg_confidence,
+            'average_probability': avg_probability
+        }
+
+    def get_market_performance(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[Dict[str, any]]:
+        """Get performance breakdown by market type.
+        
+        Args:
+            start_date: Optional start date filter
+            end_date: Optional end date filter
+        
+        Returns:
+            List of per-market performance dicts
+        """
+        if not self.persistence_service:
+            return []
+        
+        from app.database.models import PredictionVersionDB
+        from sqlalchemy import func
+        import sqlalchemy as sa
+        
+        query = self.persistence_service.session.query(
+            PredictionVersionDB.selected_market,
+            func.count(PredictionVersionDB.id).label('total'),
+            func.sum(
+                sa.case((PredictionVersionDB.actual_result == 'WIN', 1), else_=0)
+            ).label('wins'),
+            func.sum(
+                sa.case((PredictionVersionDB.actual_result == 'LOSS', 1), else_=0)
+            ).label('losses'),
+            func.sum(
+                sa.case((PredictionVersionDB.actual_result == 'VOID', 1), else_=0)
+            ).label('voids'),
+            func.sum(PredictionVersionDB.profit_loss).label('total_pl'),
+            func.avg(PredictionVersionDB.selection_odds).label('avg_odds'),
+            func.avg(PredictionVersionDB.selection_confidence).label('avg_confidence'),
+        ).filter(
+            PredictionVersionDB.actual_result.isnot(None),
+            PredictionVersionDB.selected_market.isnot(None)
+        )
+        
+        if start_date:
+            query = query.filter(PredictionVersionDB.settled_at >= start_date)
+        
+        if end_date:
+            query = query.filter(PredictionVersionDB.settled_at <= end_date)
+        
+        query = query.group_by(PredictionVersionDB.selected_market)
+        
+        results = query.all()
+        
+        performance = []
+        for row in results:
+            non_void = (row.wins or 0) + (row.losses or 0)
+            win_rate = (row.wins or 0) / non_void if non_void > 0 else 0.0
+            
+            total_stake = non_void  # 1 unit per bet
+            roi = (row.total_pl or 0.0) / total_stake if total_stake > 0 else 0.0
+            
+            performance.append({
+                'market_type': row.selected_market,
+                'sample_size': row.total,
+                'wins': row.wins or 0,
+                'losses': row.losses or 0,
+                'voids': row.voids or 0,
+                'win_rate': win_rate,
+                'roi': roi,
+                'total_profit_loss': row.total_pl or 0.0,
+                'average_odds': row.avg_odds or 0.0,
+                'average_confidence': row.avg_confidence or 0.0,
+            })
+        
+        return performance
+

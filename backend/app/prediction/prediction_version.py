@@ -297,6 +297,25 @@ class PredictionVersionManager:
         versions = self.get_versions(match_id)
         return versions[-1] if versions else None
     
+    def get_version_by_id(self, version_id: str) -> Optional[PredictionVersion]:
+        """Get specific prediction version by ID.
+        
+        Args:
+            version_id: Version identifier
+        
+        Returns:
+            PredictionVersion or None if not found
+        """
+        if self.persistence_service:
+            return self.persistence_service.get_version_by_id(version_id)
+        else:
+            # Memory store fallback
+            for match_versions in self._memory_store.values():
+                for version in match_versions:
+                    if version.version_id == version_id:
+                        return version
+            return None
+    
     def get_version_by_stage(
         self,
         match_id: str,
@@ -375,50 +394,190 @@ class PredictionVersionManager:
     def settle_prediction(
         self,
         version_id: str,
-        actual_result: str,  # "WON", "LOST", "PUSH", "VOID"
-        profit_loss: Optional[float] = None
+        provider: 'FootballDataProvider',
+        stake: float = 1.0
     ) -> Optional[PredictionVersion]:
         """Settle a prediction with actual match result.
         
-        This method will be called after matches finish to record outcomes.
-        Foundation for future track record calculation.
-        Result ingestion is not yet implemented.
-        
         Args:
             version_id: Version identifier to settle
-            actual_result: Outcome - "WON", "LOST", "PUSH", "VOID"
-            profit_loss: Profit/loss in units (e.g. +0.85, -1.00)
+            provider: Football data provider for fetching results
+            stake: Betting stake in units (default: 1.0)
         
         Returns:
-            Updated PredictionVersion (future implementation)
+            Updated PredictionVersion with settlement data
         
         Raises:
-            NotImplementedError: Result ingestion not yet implemented
+            ValueError: If version not found, already settled, or result not available
         """
-        # TODO: implement when result ingestion pipeline is ready
-        raise NotImplementedError("Result ingestion not yet implemented")
+        from app.prediction.result_ingestion import ResultIngestionService
+        from app.prediction.settlement import SettlementEngine
+        
+        # Get version
+        version = self.get_version_by_id(version_id) if self.persistence_service else None
+        
+        if version is None:
+            # Try memory store
+            for match_versions in self._memory_store.values():
+                for v in match_versions:
+                    if v.version_id == version_id:
+                        version = v
+                        break
+                if version:
+                    break
+        
+        if version is None:
+            raise ValueError(f"Version {version_id} not found")
+        
+        # Check if already settled
+        if version.actual_result is not None:
+            raise ValueError(f"Version {version_id} is already settled: {version.actual_result}")
+        
+        # Check if version has frozen pick
+        if version.selected_market is None or version.selection_text is None or version.selection_odds is None:
+            raise ValueError(
+                f"Version {version_id} has no frozen pick data. "
+                f"Cannot settle predictions without selected_market, selection_text, and selection_odds."
+            )
+        
+        # Fetch match result
+        ingestion = ResultIngestionService(provider)
+        match_result = ingestion.get_match_result(version.match_id)
+        
+        if match_result is None:
+            raise ValueError(f"Match {version.match_id} not found in provider")
+        
+        if not match_result.is_settleable():
+            raise ValueError(
+                f"Match {version.match_id} is not settleable: "
+                f"status={match_result.status}"
+            )
+        
+        # Settle prediction
+        engine = SettlementEngine(stake=stake)
+        outcome, profit_loss = engine.settle_prediction(
+            selected_market=version.selected_market,
+            selection_text=version.selection_text,
+            selection_odds=version.selection_odds,
+            match_result=match_result
+        )
+        
+        # Update version (create new object to maintain immutability principle)
+        settled_version = PredictionVersion(
+            version_id=version.version_id,
+            match_id=version.match_id,
+            stage=version.stage,
+            created_at=version.created_at,
+            prediction_data=version.prediction_data,
+            model_versions=version.model_versions,
+            data_quality_score=version.data_quality_score,
+            confidence_score=version.confidence_score,
+            notes=version.notes,
+            # Frozen pick fields (unchanged)
+            selected_market=version.selected_market,
+            selection_text=version.selection_text,
+            selection_probability=version.selection_probability,
+            selection_confidence=version.selection_confidence,
+            selection_odds=version.selection_odds,
+            selection_fair_odds=version.selection_fair_odds,
+            selection_edge=version.selection_edge,
+            value_classification=version.value_classification,
+            risk_level=version.risk_level,
+            # Settlement fields (NEW)
+            actual_result=outcome.value,
+            profit_loss=profit_loss,
+            settled_at=datetime.utcnow()
+        )
+        
+        # Persist settlement
+        if self.persistence_service:
+            # Update database record (ONLY settlement fields)
+            from app.database.models import PredictionVersionDB
+            db_version = self.persistence_service.session.query(PredictionVersionDB).filter(
+                PredictionVersionDB.id == version_id
+            ).first()
+            
+            if db_version:
+                db_version.actual_result = outcome.value
+                db_version.profit_loss = profit_loss
+                db_version.settled_at = settled_version.settled_at
+                self.persistence_service.session.commit()
+        else:
+            # Update memory store
+            for match_id, versions in self._memory_store.items():
+                for i, v in enumerate(versions):
+                    if v.version_id == version_id:
+                        self._memory_store[match_id][i] = settled_version
+                        break
+        
+        return settled_version
     
     def get_settled_picks_by_market(
         self,
         market_type: str,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
-    ) -> list:
+    ) -> List[PredictionVersion]:
         """Get all settled picks for a specific market type.
         
-        Future use: calculate historical accuracy per market.
-        Example: get_settled_picks_by_market("HOME_WIN") returns all settled home win bets.
-        
         Args:
-            market_type: Market identifier (e.g. "HOME_WIN", "OVER_2_5")
-            start_date: Optional start date filter
-            end_date: Optional end date filter
+            market_type: Market identifier (e.g. 'HOME_WIN', 'OVER_2_5', 'BTTS_YES')
+            start_date: Optional start date filter (settled_at >= start_date)
+            end_date: Optional end date filter (settled_at <= end_date)
         
         Returns:
-            List of settled predictions (future implementation)
-        
-        Raises:
-            NotImplementedError: Track record analysis not yet implemented
+            List of settled PredictionVersion objects for the market
         """
-        # TODO: implement when track record analysis is built
-        raise NotImplementedError("Track record analysis not yet implemented")
+        if self.persistence_service:
+            from app.database.models import PredictionVersionDB
+            
+            query = self.persistence_service.session.query(PredictionVersionDB).filter(
+                PredictionVersionDB.actual_result.isnot(None),  # Only settled
+                PredictionVersionDB.selected_market.isnot(None)  # Only with picks
+            )
+            
+            # Filter by market type (flexible matching)
+            market_upper = market_type.upper()
+            query = query.filter(
+                PredictionVersionDB.selected_market.ilike(f'%{market_upper}%')
+            )
+            
+            # Date filtering
+            if start_date:
+                query = query.filter(PredictionVersionDB.settled_at >= start_date)
+            
+            if end_date:
+                query = query.filter(PredictionVersionDB.settled_at <= end_date)
+            
+            # Order by settlement date
+            query = query.order_by(PredictionVersionDB.settled_at.desc())
+            
+            db_versions = query.all()
+            
+            return [self.persistence_service._to_domain_version(v) for v in db_versions]
+        else:
+            # Memory store fallback
+            settled = []
+            for match_versions in self._memory_store.values():
+                for version in match_versions:
+                    # Check if settled
+                    if version.actual_result is None or version.selected_market is None:
+                        continue
+                    
+                    # Check market match
+                    if market_type.upper() not in version.selected_market.upper():
+                        continue
+                    
+                    # Check date filters
+                    if start_date and version.settled_at < start_date:
+                        continue
+                    
+                    if end_date and version.settled_at > end_date:
+                        continue
+                    
+                    settled.append(version)
+            
+            # Sort by settlement date
+            settled.sort(key=lambda v: v.settled_at, reverse=True)
+            
+            return settled
