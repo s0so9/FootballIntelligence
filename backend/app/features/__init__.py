@@ -60,6 +60,15 @@ from app.features.common_opponent_intelligence import (
     CommonOpponentIntelligence,
     CommonOpponentCalculator,
 )
+from app.features.advanced_feature_engineering import (
+    FeatureAvailability,
+    AdvancedFeatureMetadata,
+    InteractionFeature,
+    AdvancedFeatureSet,
+    AdvancedFeatureEngineer,
+    ADVANCED_FEATURE_VERSION,
+    CANDIDATE_INTERACTIONS,
+)
 
 __all__ = [
     # Base (existing)
@@ -112,4 +121,12 @@ __all__ = [
     "CommonOpponentEvidence",
     "CommonOpponentIntelligence",
     "CommonOpponentCalculator",
+    # Advanced Feature Engineering (Phase 10 Group 4)
+    "FeatureAvailability",
+    "AdvancedFeatureMetadata",
+    "InteractionFeature",
+    "AdvancedFeatureSet",
+    "AdvancedFeatureEngineer",
+    "ADVANCED_FEATURE_VERSION",
+    "CANDIDATE_INTERACTIONS",
 ]

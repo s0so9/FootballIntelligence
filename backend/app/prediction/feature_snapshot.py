@@ -7,11 +7,14 @@ without fabrication - missing data remains explicitly None.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from enum import Enum
 
 from app.prediction.data_quality import DataQualityReport
 from app.features.common_opponent_intelligence import CommonOpponentIntelligence
+
+if TYPE_CHECKING:
+    from app.features.advanced_feature_engineering import AdvancedFeatureSet
 
 
 class LineupStatus(str, Enum):
@@ -208,6 +211,11 @@ class MatchFeatureSnapshot:
     
     # Common Opponent Intelligence (Phase 10 Group 3)
     common_opponent_intel: Optional[CommonOpponentIntelligence] = None
+    
+    # Advanced Feature Engineering (Phase 10 Group 4)
+    # OPTIONAL: Contains unified engineered features from Groups 1-3
+    # If None, snapshot uses existing fields only (backward compatible)
+    advanced_feature_set: Optional['AdvancedFeatureSet'] = None
     
     # Snapshot metadata
     snapshot_created_at: datetime = field(default_factory=datetime.utcnow)

@@ -12148,3 +12148,234 @@ Common Opponent Intelligence calculator successfully implemented, tested, and ve
 **Architecture**: Preserved and extended  
 **Ready for**: Group 4 implementation (Advanced Feature Engineering)
 
+
+---
+
+## Phase 10 Group 4 — Advanced Feature Engineering (10H)
+
+**Status**: COMPLETE
+**Date**: 2026-10-06
+**Tests**: 172/172 passing (44 new Group 4 tests, 128 existing tests maintained)
+
+### What was implemented
+
+**Core Module**: ackend/app/features/advanced_feature_engineering.py
+
+**Architecture**:
+```
+Groups 1-3 Calculators (8 calculators, unchanged)
+    ?
+AdvancedFeatureEngineer (new, Group 4)
+    ?
+MatchFeatureSnapshot.advanced_feature_set (optional field, backward compatible)
+    ?
+7 existing models (unchanged)
+```
+
+**Components Implemented**:
+
+1. **FeatureAvailability enum**: RAW, DERIVED, INTERACTION, MODEL_READY, UNAVAILABLE
+2. **AdvancedFeatureMetadata dataclass**:
+   - Feature name, source module, source/prediction timestamps
+   - Historical window, home/away context, competition context
+   - Availability status, data quality score (0.0-1.0)
+   - Feature version (1.0.0), transformation applied
+   - alidate_temporal_consistency() method (strict < enforcement)
+3. **InteractionFeature dataclass**:
+   - feature_a, feature_b, operation (difference, ratio, multiply, divide), name
+   - compute() method with None handling, div-by-zero protection
+4. **AdvancedFeatureSet dataclass**:
+   - features: Dict[str, Optional[float]] (flat feature dict for models)
+   - feature_metadata: Dict[str, AdvancedFeatureMetadata] (provenance per feature)
+   - interaction_features: List[str] (interaction feature names)
+   - redundancy_flags: Dict[str, List[str]] (overlapping feature groups)
+   - overall_data_quality: float (weighted mean across all feature groups)
+   - feature_version: str (semantic versioning)
+   - snapshot_timestamp: datetime (prediction timestamp)
+   - temporal_validity_checked: bool
+   - alidate_no_leakage() method
+5. **AdvancedFeatureEngineer class**:
+   - __init__(create_interactions, interactions) constructor
+   - engineer_features() — main feature engineering pipeline
+   - alidate_no_leakage() — temporal validation
+   - lag_redundant_features() — redundancy detection (no auto-removal)
+   - Private extraction methods for each calculator group
+6. **CANDIDATE_INTERACTIONS list** (7 candidate interactions, disabled by default)
+7. **ADVANCED_FEATURE_VERSION constant** ("1.0.0")
+
+**Feature Engineering Pipeline** (engineer_features() method):
+
+1. Call all 8 Groups 1-3 calculators with efore_datetime:
+   - AdvancedTeamIntelligenceCalculator (home + away)
+   - OpponentAdjustmentCalculator (home + away)
+   - TemporalIntelligenceCalculator (home + away)
+   - LineupIntelligenceCalculator (home + away)
+   - TacticalMatchupCalculator (home + away profiles ? matchup)
+   - ShotIntelligenceCalculator (home + away)
+   - ShotProductionCalculator (home + away)
+   - CommonOpponentCalculator (home vs away)
+2. Extract raw features from all calculator outputs
+3. Create derived features (differentials, shares, rates):
+   - shot_differential = home_shots - away_shots
+   - xg_differential = home_xg - away_xg
+   - xga_differential = home_xga - away_xga
+   - 	emporal_form_differential = home_form - away_form
+   - possession_differential = home_poss - away_poss
+   - shots_on_target_share_home = home_sot / (home_sot + away_sot)
+   - xg_share_home = home_xg / (home_xg + away_xg)
+4. Create interaction features (if create_interactions=True):
+   - home_attack_vs_away_defense = home_xg_for * away_xg_against
+   - away_attack_vs_home_defense = away_xg_for * home_xg_against
+   - shot_volume_edge, adj_xg_differential, temporal_form_edge
+   - xg_share_home, shot_share_home
+5. Track provenance for every feature (source, timestamp, transformation)
+6. Calculate overall data quality:
+   - Weighted mean: team_intel (0.25), opponent_adj (0.15), temporal (0.15), lineup (0.10), tactical (0.10), shot_intel (0.15), common_opp (0.10)
+   - Weight redistribution when groups unavailable
+7. Flag redundant features (identify overlapping xG, shots, form metrics — NO removal)
+8. Validate temporal validity (all features pass alidate_temporal_consistency())
+
+**Feature Normalization** (statistically justified):
+
+- **Differentials**: shot_differential, xg_differential, xga_differential, form_differential, possession_differential
+- **Shares**: shots_on_target_share_home, xg_share_home (proportion, 0-1)
+- **Rates**: xg_per_shot, shot_on_target_rate (already on calculators, surfaced)
+- **Opponent-Relative**: adj_xg_for, adj_shots (already calculated by OpponentAdjustmentCalculator)
+- **Common-Opponent Index**: points_differential * comparison_confidence (confidence-weighted)
+
+**Missing Data Handling**:
+
+- All unavailable features ? None (never 0, never fabricated)
+- Unavailable metrics ? FeatureAvailability.UNAVAILABLE
+- Partial availability preserved (one missing metric doesn't drop entire set)
+- Each feature has data_quality_score tracking source completeness
+
+**Feature Versioning**:
+
+- ADVANCED_FEATURE_VERSION = "1.0.0"
+- Every feature includes eature_version in metadata
+- Semantic versioning for future evolution
+
+**Redundancy Flagging**:
+
+- Identifies conceptually overlapping feature groups:
+  - xg_metrics: xg_for_per_match, adj_xg_for, xg_per_match_weighted
+  - shot_metrics: shots_per_match, adj_shots, shots_per_match_weighted
+  - orm_metrics: points_per_match, recent_form_weighted, post_regime_form
+- **Does NOT remove features** — only flags for model selection review
+
+**MatchFeatureSnapshot Extension**:
+
+- Added dvanced_feature_set: Optional[AdvancedFeatureSet] = None field
+- Backward compatible (defaults to None)
+- No changes to existing get_feature_dict() method
+- No changes to 7 existing prediction models
+
+**ackend/app/features/__init__.py Updates**:
+
+- Exported: FeatureAvailability, AdvancedFeatureMetadata, InteractionFeature, AdvancedFeatureSet, AdvancedFeatureEngineer, ADVANCED_FEATURE_VERSION, CANDIDATE_INTERACTIONS
+
+### Test Coverage
+
+**New Tests**: ackend/tests/features/test_advanced_feature_engineering.py (35 tests)
+
+- FeatureAvailability enum values
+- AdvancedFeatureMetadata structure, temporal validation (valid, invalid, None source)
+- InteractionFeature computation (difference, ratio, multiply, divide, None handling, div-by-zero, ratio zero-sum)
+- AdvancedFeatureSet structure, temporal leakage validation (valid, detects future)
+- AdvancedFeatureEngineer initialization, engineer_features() integration
+- Temporal validity enforcement (excludes future matches, exact boundary excluded)
+- No fabrication (empty matches ? no fabricated values)
+- Partial availability preserved
+- Interaction features (disabled by default, enabled via flag)
+- Feature versioning constant
+- Data quality aggregation
+- Provenance tracking (source module, timestamps, availability per feature)
+- Deterministic behavior (same inputs ? same outputs)
+- Redundancy flagging returns dict
+- CANDIDATE_INTERACTIONS list exists, all are InteractionFeature instances
+- ADVANCED_FEATURE_VERSION constant exists
+
+**Integration Tests**: ackend/tests/features/test_feature_snapshot_integration.py (9 tests)
+
+- MatchFeatureSnapshot has dvanced_feature_set field
+- Field defaults to None (backward compatible)
+- Can assign AdvancedFeatureSet to snapshot
+- Backward compatibility without advanced features
+- extract_feature_snapshot() backward compatible
+- 	o_dict() includes advanced_feature_set
+- get_feature_dict() unchanged (existing functionality)
+- Full round-trip with advanced features
+- Multiple snapshots independent
+- alidate_no_fabricated_data() still works
+
+### Verification Result
+
+**Feature Test Suite (Groups 1-4)**:
+```
+172 tests passed in 1.39s
+```
+
+**Test Breakdown**:
+- Group 1 (Advanced Team Intelligence, Opponent Adjustment, Temporal Intelligence): 68 tests
+- Group 2 (Lineup, Tactical, Shot Intelligence, Shot Production): 31 tests
+- Group 3 (Common Opponent Intelligence): 29 tests
+- **Group 4 (Advanced Feature Engineering)**: 44 tests
+- **Regression**: All 128 existing tests continue passing
+
+**Architecture Validation**:
+- ? Temporal validity enforced (strict < before_datetime for all calculators)
+- ? No fabricated data (REAL > NULL > FABRICATED principle maintained)
+- ? Provenance tracking (source, timestamp, transformation per feature)
+- ? Data quality scoring (weighted mean across all Groups 1-3 outputs)
+- ? Partial availability preserved (missing metrics ? None, not dropped)
+- ? Redundancy flagging (no auto-removal)
+- ? Feature versioning (semantic versioning: 1.0.0)
+- ? Interaction features (disabled by default, enabled via flag)
+- ? Backward compatible (MatchFeatureSnapshot.advanced_feature_set optional)
+- ? Zero breaking changes to existing Groups 1-3 or 7 models
+- ? Deterministic (same inputs ? same outputs)
+
+**Import Validation**:
+```python
+from app.features.advanced_feature_engineering import (
+    AdvancedFeatureEngineer,
+    AdvancedFeatureSet,
+    ADVANCED_FEATURE_VERSION
+)
+print('Import OK:', ADVANCED_FEATURE_VERSION)
+# Output: Import OK: 1.0.0
+```
+
+### Completion Criteria — ALL MET ?
+
+- [x] advanced_feature_engineering.py created with all required components
+- [x] FeatureAvailability enum (5 values)
+- [x] AdvancedFeatureMetadata dataclass with temporal validation
+- [x] InteractionFeature dataclass with compute() method
+- [x] AdvancedFeatureSet dataclass with validate_no_leakage()
+- [x] AdvancedFeatureEngineer class with engineer_features()
+- [x] Feature normalization (differentials, shares, rates)
+- [x] Interaction features (CANDIDATE_INTERACTIONS, disabled by default)
+- [x] Feature versioning (ADVANCED_FEATURE_VERSION = "1.0.0")
+- [x] Missing data handling (None, FeatureAvailability.UNAVAILABLE)
+- [x] Temporal validity (all calculators pass before_datetime)
+- [x] Redundancy flagging (no auto-removal)
+- [x] Data quality aggregation (weighted mean)
+- [x] MatchFeatureSnapshot extended (backward compatible)
+- [x] __init__.py updated with Group 4 exports
+- [x] 44 new tests created and passing
+- [x] Full feature regression (172 tests) passing
+- [x] Zero breaking changes
+- [x] Documentation updated
+
+### Summary
+
+**PHASE 10 GROUP 4 COMPLETE** ?
+
+Advanced Feature Engineering successfully implemented, tested, and verified. The system now provides a unified feature engineering layer that transforms Groups 1-3 intelligence outputs into clean, auditable, production-ready features. All features include full provenance (source, timestamp, transformation), temporal validity guarantees (strict < before_datetime), missing data handling (None, never fabricated), data quality scoring (weighted mean), and redundancy flagging (no auto-removal). Interaction features available but disabled by default. MatchFeatureSnapshot extended with optional dvanced_feature_set field (backward compatible). Zero breaking changes to existing Groups 1-3 or 7 prediction models.
+
+**Implementation**: Production-ready  
+**Test Coverage**: 172/172 passing (44 new Group 4 tests, 128 existing tests maintained)  
+**Architecture**: Preserved and extended (backward compatible)  
+**Ready for**: Groups 5-7 implementation (Market-Specific Modeling, Walk-Forward Validation, Self-Evaluation)
