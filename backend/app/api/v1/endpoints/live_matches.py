@@ -223,7 +223,7 @@ async def get_live_matches(
             },
             "fotmob": {
                 "base_url": settings.fotmob_base_url,
-                "test_endpoints": ["/matches"],
+                "test_endpoints": [f"/api/data/matches?date={datetime.utcnow().strftime('%Y%m%d')}"],
             },
             "openligadb": {
                 "base_url": settings.openligadb_base_url,

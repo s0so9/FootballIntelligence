@@ -103,13 +103,13 @@ class TestProviderSourceRepository:
         repo = ProviderSourceRepository(db_session)
         source = repo.get_or_create_by_name(
             name="fotmob",
-            base_url="https://fotmob.com"
+            base_url="https://www.fotmob.com"
         )
         db_session.commit()
         
         assert source.id is not None
         assert source.name == "fotmob"
-        assert source.base_url == "https://fotmob.com"
+        assert source.base_url == "https://www.fotmob.com"
         assert source.is_active is True
     
     def test_get_or_create_by_name_gets_existing(self, db_session):

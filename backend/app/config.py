@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     ryzellx_base_url: str = "http://localhost:3001"
     
     # FotMob (FAST/LIVE provider)
-    fotmob_base_url: str = "https://www.fotmob.com/api"
+    # Correct base URL: endpoints are /api/data/matches, /api/data/matchDetails
+    fotmob_base_url: str = "https://www.fotmob.com"
     
     # OpenLigaDB (INDEPENDENT FALLBACK provider)
     openligadb_base_url: str = "https://api.openligadb.de"

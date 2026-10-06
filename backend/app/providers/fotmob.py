@@ -479,9 +479,9 @@ class FotMobFootballProvider:
                 logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
                 return cached
         
-        # Fetch from API - FotMob typically uses YYYYMMDD format
+        # Fetch from API - FotMob uses YYYYMMDD format
         date_str = date_obj.strftime("%Y%m%d")
-        endpoint = "/api/matches"
+        endpoint = "/api/data/matches"
         params = {"date": date_str}
         
         try:
@@ -565,7 +565,7 @@ class FotMobFootballProvider:
         
         # Fetch from API
         try:
-            endpoint = "/api/matchDetails"
+            endpoint = "/api/data/matchDetails"
             params = {"matchId": match_id}
             data = await self._request("GET", endpoint, params=params)
             
@@ -616,22 +616,17 @@ class FotMobFootballProvider:
                 logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
                 return cached
         
-        # Fetch from API - try common FotMob live endpoints
+        # Fetch from API - FotMob doesn't have a dedicated live endpoint
+        # Get today's matches and filter for live ones
         try:
-            # Try primary live endpoint
-            endpoint = "/api/matches/live"
-            data = await self._request("GET", endpoint)
+            today = date.today()
+            date_str = today.strftime("%Y%m%d")
+            endpoint = "/api/data/matches"
+            params = {"date": date_str}
+            data = await self._request("GET", endpoint, params=params)
         except ProviderError:
-            try:
-                # Fallback: try getting today's matches and filter for live ones
-                today = date.today()
-                date_str = today.strftime("%Y%m%d")
-                endpoint = "/api/matches"
-                params = {"date": date_str}
-                data = await self._request("GET", endpoint, params=params)
-            except ProviderError:
-                # If both fail, raise error (never invent data)
-                raise
+            # If request fails, raise error (never invent data)
+            raise
         
         # Parse response
         now = datetime.now(timezone.utc)

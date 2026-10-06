@@ -1092,7 +1092,7 @@ class TestFotMobProvider:
             ]
         }
         
-        respx.get(f"{provider.base_url}/api/matches").mock(
+        respx.get(f"{provider.base_url}/api/data/matches").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         
@@ -1141,7 +1141,7 @@ class TestFotMobProvider:
             }
         }
         
-        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+        respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         
@@ -1167,7 +1167,7 @@ class TestFotMobProvider:
         """Test get_match returns None for 404."""
         match_id = "nonexistent"
         
-        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+        respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
             return_value=httpx.Response(404, json={"error": "Not found"})
         )
         
@@ -1212,7 +1212,13 @@ class TestFotMobProvider:
             ]
         }
         
-        respx.get(f"{provider.base_url}/api/matches/live").mock(
+        # FotMob doesn't have /live endpoint - it queries today's matches
+        # Mock today's date endpoint
+        from datetime import date
+        today = date.today()
+        date_str = today.strftime("%Y%m%d")
+        
+        respx.get(f"{provider.base_url}/api/data/matches").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         
@@ -1236,7 +1242,7 @@ class TestFotMobProvider:
         """Test that timeout raises ProviderTimeoutError."""
         test_date = date(2024, 1, 15)
         
-        respx.get(f"{provider.base_url}/api/matches").mock(
+        respx.get(f"{provider.base_url}/api/data/matches").mock(
             side_effect=httpx.TimeoutException("Timeout")
         )
         
@@ -1252,7 +1258,7 @@ class TestFotMobProvider:
         """Test that HTTP errors raise ProviderHTTPError."""
         match_id = "bad_id"
         
-        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+        respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
             return_value=httpx.Response(400, json={"error": "Bad request"})
         )
         
@@ -1277,7 +1283,7 @@ class TestFotMobProvider:
         """Test that invalid JSON raises ProviderInvalidDataError."""
         test_date = date(2024, 1, 15)
         
-        respx.get(f"{provider.base_url}/api/matches").mock(
+        respx.get(f"{provider.base_url}/api/data/matches").mock(
             return_value=httpx.Response(200, text="This is not JSON")
         )
         
@@ -1311,7 +1317,7 @@ class TestFotMobProvider:
             # No venue, no score, no minute, etc.
         }
         
-        respx.get(f"{provider.base_url}/api/matchDetails").mock(
+        respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         
@@ -1341,7 +1347,7 @@ class TestFotMobProvider:
             "status": {"type": "scheduled"}
         }
         
-        route = respx.get(f"{provider.base_url}/api/matchDetails").mock(
+        route = respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         
@@ -1408,7 +1414,7 @@ class TestFotMobProvider:
             ]
         }
         
-        respx.get(f"{provider.base_url}/api/matches").mock(
+        respx.get(f"{provider.base_url}/api/data/matches").mock(
             return_value=httpx.Response(200, json=mock_response)
         )
         

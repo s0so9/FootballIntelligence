@@ -10138,3 +10138,130 @@ setLiveMatches([]);
 - ✅ No breaking changes
 
 The live matches endpoint is now **production-ready** and correctly integrated with local Ryzellx provider.
+
+
+---
+
+## Entry: 2026-10-05
+
+### Completed Work: Phase 10A-FIX — FotMob Provider Recovery
+
+**Task**: Restore FotMob provider to operational status
+
+**Root Cause Identified**: Incorrect API endpoint paths causing HTTP 404 errors
+
+- FotMob base URL included `/api` causing double `/api/api/` prefix
+- Missing `/data/` segment in endpoint paths
+- Health check using invalid endpoint without required date parameter
+
+**Changes Implemented**:
+
+1. **Configuration Fix** (`backend/app/config.py`):
+   - Updated base URL: `https://www.fotmob.com/api` → `https://www.fotmob.com`
+
+2. **Provider Implementation Fixes** (`backend/app/providers/fotmob.py`):
+   - Fixed `get_matches_by_date()`: `/api/matches` → `/api/data/matches`
+   - Fixed `get_match()`: `/api/matchDetails` → `/api/data/matchDetails`
+   - Fixed `get_live_matches()`: Removed non-existent `/api/matches/live`, now uses `/api/data/matches?date={today}`
+
+3. **Health Check Configuration** (`backend/app/api/v1/endpoints/live_matches.py`):
+   - Updated test endpoint: `/matches` → `/api/data/matches?date={YYYYMMDD}`
+
+4. **Test Updates**:
+   - `backend/tests/providers/test_health.py`: Updated base URL and endpoints
+   - `backend/tests/test_database.py`: Updated base URL
+   - `backend/tests/test_providers_multi.py`: Updated all FotMob mock endpoints (13 tests)
+   - Created `backend/tests/providers/test_fotmob_live.py`: Real API integration tests
+
+**Files Changed**: 6 files, 35 insertions(+), 33 deletions(-)
+
+### Verification Commands
+
+```bash
+# Run FotMob provider tests
+cd backend
+python -m pytest tests/test_providers_multi.py::TestFotMobProvider -v
+
+# Run real API integration tests
+python -m pytest tests/providers/test_fotmob_live.py -v
+
+# Run complete test suite
+python -m pytest tests/ -v --tb=line -q
+
+# Verify provider health
+curl http://127.0.0.1:8000/api/v1/matches/live
+```
+
+### Verification Results
+
+**Provider Status**:
+```json
+{
+  "provider_health": {
+    "fotmob": {
+      "is_available": true,
+      "availability_code": "AVAILABLE",
+      "consecutive_failures": 0,
+      "error_detail": null
+    }
+  }
+}
+```
+
+**Test Results**:
+- ✅ FotMob provider tests: 13/13 passing
+- ✅ Real API integration tests: 3/3 passing
+- ✅ Complete backend test suite: **1053 passed, 14 skipped, 0 failures**
+- ✅ No regressions in other providers or components
+
+**Real API Validation**:
+- ✅ HTTP 200 responses from FotMob endpoints
+- ✅ Valid JSON structure with 30 leagues returned
+- ✅ Response normalization working correctly
+- ✅ Cache integration functional
+- ✅ Conservative retry behavior maintained
+
+**Provider Capabilities Validated**:
+- ✅ Match lists by date (`/api/data/matches?date=YYYYMMDD`)
+- ✅ Match details (`/api/data/matchDetails?matchId={id}`)
+- ✅ Live match data (today's matches filtered by status)
+- ✅ Match scores, status, timing, teams, leagues
+
+**Integration Status**:
+- ✅ ProviderManager routing: FotMob prioritized for live/fast data
+- ✅ Health monitoring: Integrated and functional
+- ✅ Provider abstraction: All responses normalized to canonical models
+- ✅ Graceful failover: Works correctly in provider chain
+
+### Provider Status Summary
+
+| Provider | Status | Availability Code | Notes |
+|----------|--------|-------------------|-------|
+| Ryzellx | ✅ AVAILABLE | AVAILABLE | Local service operational |
+| **FotMob** | ✅ **AVAILABLE** | **AVAILABLE** | **RESTORED - HTTP 200** |
+| OpenLigaDB | ✅ AVAILABLE | AVAILABLE | Independent fallback operational |
+| SofaScore | ⚪ NOT_VALIDATED | NOT_VALIDATED | Not configured |
+
+### Documentation Created
+
+- `.agents/tasks/fotmob-recovery/root-cause-analysis.md`: Detailed problem investigation
+- `.agents/tasks/fotmob-recovery/capability-report.md`: Comprehensive capability matrix and API documentation
+- `.agents/tasks/fotmob-recovery/IMPLEMENTATION-REPORT.md`: Complete implementation summary
+
+### Next Steps
+
+**Phase 10A-FIX is COMPLETE**. FotMob provider is now operational and validated.
+
+**Recommended Next Step**: Phase 10B - Capability Audit
+- Validate match details with real active matches
+- Test xG data extraction and parsing
+- Validate match events and lineup normalization
+- Document any advanced statistics availability
+
+**Parallel Work**: Phase 6/7 (Result Settlement, Track Record) can continue in separate session without conflict.
+
+### Conclusion
+
+FotMob provider has been successfully restored from ENDPOINT_INVALID (HTTP 404) to AVAILABLE (HTTP 200) status. The root cause was incorrect endpoint paths, which have been corrected and validated with both mocked and real API tests. All 1053 backend tests pass with no regressions.
+
+The provider is now correctly integrated into the multi-provider routing system and is prioritized for live/fast data as designed.

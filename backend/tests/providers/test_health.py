@@ -49,8 +49,8 @@ async def test_fotmob_404_maps_to_endpoint_invalid():
     service = ProviderHealthService(
         provider_configs={
             "fotmob": {
-                "base_url": "https://www.fotmob.com/api",
-                "test_endpoints": ["/matches"],
+                "base_url": "https://www.fotmob.com",
+                "test_endpoints": ["/api/data/matches?date=20261005"],
             }
         },
         timeout_seconds=10.0,
