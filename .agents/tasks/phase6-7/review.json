@@ -1,0 +1,30 @@
+{
+  "verdict": "APPROVED",
+  "findings": [
+    {
+      "severity": "MEDIUM",
+      "confidence": "likely",
+      "title": "Over/Under line extraction brittleness",
+      "description": "_extract_line() in settlement.py uses regex (\\d+)[_.](\\d+) which assumes line format like 'OVER_2_5' or 'OVER_2.5'. If a market identifier uses a different pattern (e.g., 'OVER2.5' with no separator, or 'OVER_TWO_HALF'), extraction fails with ValueError. Add fallback patterns or validate market identifiers at prediction creation time."
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "likely",
+      "title": "Handicap extraction assumes specific format",
+      "description": "_extract_handicap() splits on underscore and looks for parts starting with +/-. Format like 'HANDICAP-1.5HOME' (no underscores) or 'HOME_HANDICAP_-1.5' (reversed order) would fail. This may not occur with current Smart Market Selector output, but the parser is fragile."
+    },
+    {
+      "severity": "MEDIUM",
+      "confidence": "confirmed",
+      "title": "No test for settlement frozen pick integrity",
+      "description": "Test suite in test_settlement.py covers all market types and void scenarios but doesn't verify that settle_prediction() never modifies the nine frozen pick fields. The verification.md claims this was tested, but no test exists in the code. Add a test that creates a version with frozen pick, settles it, and asserts all nine fields remain unchanged."
+    },
+    {
+      "severity": "LOW",
+      "confidence": "confirmed",
+      "title": "win_rate returns 0.0 instead of None for empty datasets",
+      "description": "get_settled_summary() returns win_rate = 0.0 when non_void == 0, but comment/docstring intent suggests None to distinguish 'no data' from '0% win rate'. Current code treats them the same. This is minor but could confuse consumers expecting None for empty datasets."
+    }
+  ],
+  "reviewDoc": "c:\\FootballIntelligence\\.agents\\tasks\\phase6-7\\2025-01-05-190000-review.md"
+}

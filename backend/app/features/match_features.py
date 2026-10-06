@@ -5,7 +5,7 @@ It combines team strength and form calculations with proper data leakage prevent
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.domain.match import Match
 from app.domain.statistics import Standing
@@ -97,10 +97,18 @@ class MatchFeatureExtractor:
         Returns:
             MatchContext with historical data
         """
-        # Get all matches in competition/season
+        # Calculate date range for historical matches
+        # Fetch matches from 90 days before target match up to (but not including) match day
+        # This provides sufficient data for feature calculation while limiting API load
+        from datetime import timedelta
+        match_date = match.scheduled_at.date()
+        from_date = match_date - timedelta(days=90)  # 90-day window for balance of data quality and performance
+        to_date = match_date - timedelta(days=1)     # Exclude match day to prevent data leakage
+        
+        # Get all matches in date range
         all_matches = self.provider.get_matches(
-            competition_id=match.competition_id,
-            season_id=match.season_id
+            from_date=from_date,
+            to_date=to_date
         )
         
         # Filter to only matches before target match (prevent data leakage)

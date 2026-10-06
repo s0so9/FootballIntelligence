@@ -1,0 +1,26 @@
+{
+  "project_type": "Python FastAPI backend with React TypeScript frontend, SQLAlchemy ORM, football prediction platform",
+  "language": "Python 3.11+ (backend), TypeScript (frontend)",
+  "build_system": "pip + requirements.txt (no poetry/pyproject.toml), npm for frontend",
+  "test_framework": "pytest 7.4.4",
+  "build_command": "No build step for Python (interpreted), backend runs with: uvicorn app.main:app --reload",
+  "test_command": "python -m pytest backend/tests/features/ -v",
+  "verification_instructions": "Run pytest for each feature module after implementation. Verify imports work with: python -c 'from app.features import AdvancedTeamIntelligenceCalculator; print(\"success\")'",
+  "snapshot_or_generated_files": "None - no build artifacts checked in",
+  "environment_constraints": "Windows development environment. PostgreSQL-ready architecture but SQLite used for development (backend/football_intelligence.db). Local Ollama for AI (not relevant for this task). Never modify existing elo.py, team_strength.py, feature_snapshot.py unless explicitly required for historical rating support.",
+  "contribution_requirements": "From AGENTS.md: (1) Read files before editing, (2) Never delete working code without reason, (3) Work in small verifiable steps, (4) Run tests after each step, (5) Never claim 'implemented' without verification, (6) Never fabricate numerical data, (7) Backend uses Python+FastAPI+Pydantic+SQLAlchemy, (8) Keep identifiers in English, UI in Turkish, (9) Fix errors during verification instead of reporting",
+  "key_patterns": "Features inherit from FeatureCalculator base class (app/features/base.py). Use MatchContext for historical data. Repository pattern for DB access (app/database/repository.py). Domain models are Pydantic (app/domain/*.py). ORM models separate (app/database/models.py). All features return Optional values - None for missing data, never fabricate. Existing team_strength.py calculates basic goals/match metrics. New advanced_team_intelligence.py extends with xG/shots/possession when available.",
+  "relevant_files": [
+    "c:/FootballIntelligence/.agents/tasks/phase10-advanced-intelligence/design.md",
+    "c:/FootballIntelligence/backend/app/features/base.py",
+    "c:/FootballIntelligence/backend/app/features/team_strength.py",
+    "c:/FootballIntelligence/backend/app/domain/match.py",
+    "c:/FootballIntelligence/backend/app/domain/statistics.py",
+    "c:/FootballIntelligence/backend/app/prediction/elo.py",
+    "c:/FootballIntelligence/backend/app/prediction/feature_snapshot.py",
+    "c:/FootballIntelligence/backend/app/database/repository.py",
+    "c:/FootballIntelligence/AGENTS.md",
+    "c:/FootballIntelligence/PROJECT_SPEC.md"
+  ],
+  "directory_structure": "backend/app/features/ - feature calculators, backend/app/prediction/ - models and prediction engine, backend/app/domain/ - Pydantic domain entities (Match, TeamMatchStatistic, etc.), backend/app/database/ - SQLAlchemy ORM models and repositories, backend/tests/features/ - feature tests"
+}

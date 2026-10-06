@@ -92,7 +92,7 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onCloseMobile }: Si
         <div className="sidebar__logo">
           <div className="sidebar__logo-image-container">
             <img 
-              src="/nicopaz.jpg" 
+              src="/torres.jpg" 
               alt="MENSIONE" 
               className="sidebar__logo-image"
             />

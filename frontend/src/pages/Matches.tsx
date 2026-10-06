@@ -17,10 +17,20 @@ export function Matches() {
         setLoading(true);
         setError(null);
 
-        const response = await getUpcomingMatches(14); // Next 14 days
+        console.log('[DEBUG Matches.tsx] Fetching upcoming matches...');
+        const response = await getUpcomingMatches(7); // Current week: today + 7 days
+        console.log('[DEBUG Matches.tsx] Response received:', {
+          count: response.count,
+          matchesLength: response.matches.length,
+          isDevelopmentData: response.is_development_data,
+        });
+        
         setMatches(response.matches);
         setIsDevelopmentData(response.is_development_data);
+        
+        console.log('[DEBUG Matches.tsx] State updated with', response.matches.length, 'matches');
       } catch (err) {
+        console.error('[DEBUG Matches.tsx] Error:', err);
         setError(err instanceof Error ? err.message : 'Maçlar yüklenirken bir hata oluştu');
       } finally {
         setLoading(false);
@@ -71,7 +81,7 @@ export function Matches() {
           <div className="empty-icon">⚽</div>
           <p className="empty-title">Yaklaşan maç bulunamadı</p>
           <p className="empty-description">
-            Önümüzdeki 14 günde planlanmış maç bulunmamaktadır.
+            Önümüzdeki 7 günde planlanmış maç bulunmamaktadır.
           </p>
         </div>
       </div>

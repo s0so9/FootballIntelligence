@@ -24,6 +24,17 @@ from app.features.advanced_team_intelligence import (
     AdvancedTeamMetrics,
     AdvancedTeamIntelligenceCalculator,
 )
+from app.features.opponent_adjustment import (
+    OpponentStrengthAtTime,
+    OpponentAdjustedMetrics,
+    OpponentAdjustmentCalculator,
+)
+from app.features.temporal_intelligence import (
+    TemporalWeighting,
+    RegimeChange,
+    TemporalIntelligenceMetrics,
+    TemporalIntelligenceCalculator,
+)
 
 __all__ = [
     # Base (existing)
@@ -47,4 +58,13 @@ __all__ = [
     "MatchWithStatistics",
     "AdvancedTeamMetrics",
     "AdvancedTeamIntelligenceCalculator",
+    # Opponent Adjustment (Phase 10 Group 1)
+    "OpponentStrengthAtTime",
+    "OpponentAdjustedMetrics",
+    "OpponentAdjustmentCalculator",
+    # Temporal Intelligence (Phase 10 Group 1)
+    "TemporalWeighting",
+    "RegimeChange",
+    "TemporalIntelligenceMetrics",
+    "TemporalIntelligenceCalculator",
 ]
