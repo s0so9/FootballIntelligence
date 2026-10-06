@@ -35,6 +35,25 @@ from app.features.temporal_intelligence import (
     TemporalIntelligenceMetrics,
     TemporalIntelligenceCalculator,
 )
+from app.features.lineup_intelligence import (
+    PlayerAvailabilityStatus,
+    PlayerAvailability,
+    LineupImpactEstimate,
+    LineupIntelligenceCalculator,
+)
+from app.features.tactical_matchup import (
+    TacticalProfile,
+    TacticalMatchup,
+    TacticalMatchupCalculator,
+)
+from app.features.shot_intelligence import (
+    ShotIntelligenceMetrics,
+    ShotIntelligenceCalculator,
+)
+from app.features.shot_production import (
+    ShotProduction,
+    ShotProductionCalculator,
+)
 
 __all__ = [
     # Base (existing)
@@ -67,4 +86,19 @@ __all__ = [
     "RegimeChange",
     "TemporalIntelligenceMetrics",
     "TemporalIntelligenceCalculator",
+    # Lineup Intelligence (Phase 10 Group 2)
+    "PlayerAvailabilityStatus",
+    "PlayerAvailability",
+    "LineupImpactEstimate",
+    "LineupIntelligenceCalculator",
+    # Tactical Matchup (Phase 10 Group 2)
+    "TacticalProfile",
+    "TacticalMatchup",
+    "TacticalMatchupCalculator",
+    # Shot Intelligence (Phase 10 Group 2)
+    "ShotIntelligenceMetrics",
+    "ShotIntelligenceCalculator",
+    # Shot Production (Phase 10 Group 2)
+    "ShotProduction",
+    "ShotProductionCalculator",
 ]
