@@ -8,6 +8,7 @@ import type {
   MatchListResponse,
   MatchDetailResponse,
   MatchPredictionResponse,
+  LiveMatchesResponse,
 } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -125,4 +126,11 @@ export async function getMatch(matchId: string): Promise<MatchDetailResponse> {
  */
 export async function getMatchPrediction(matchId: string): Promise<MatchPredictionResponse> {
   return request<MatchPredictionResponse>(`/matches/${matchId}/prediction`);
+}
+
+/**
+ * Get live matches with provider health and data quality information.
+ */
+export async function getLiveMatches(): Promise<LiveMatchesResponse> {
+  return request<LiveMatchesResponse>('/matches/live');
 }

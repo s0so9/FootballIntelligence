@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getUpcomingMatches, getMatchPrediction } from '../api/client';
+import { getUpcomingMatches, getMatchPrediction, getLiveMatches } from '../api/client';
 import type { MatchResponse, MatchPredictionResponse } from '../api/types';
 import MensionePickCard from '../components/predictions/MensionePickCard';
 import LiveMatchesPanel from '../components/dashboard/LiveMatchesPanel';
@@ -64,6 +64,7 @@ function parsePickMarket(market: string | undefined, selection: string | undefin
 export function Dashboard() {
   const [mensionePicksData, setMensionePicksData] = useState<MensionePickData[]>([]);
   const [liveMatches, setLiveMatches] = useState<LiveMatch[]>([]);
+  const [liveMatchesLoading, setLiveMatchesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -100,10 +101,6 @@ export function Dashboard() {
         }
 
         setMensionePicksData(picksData);
-
-        // TODO: Fetch live matches when backend live intelligence available
-        // For now, leave empty (will show empty state)
-        setLiveMatches([]);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu');
       } finally {
@@ -112,6 +109,46 @@ export function Dashboard() {
     }
 
     fetchDashboardData();
+  }, []);
+
+  // Fetch live matches and poll every 20 seconds
+  useEffect(() => {
+    async function fetchLiveMatches() {
+      try {
+        const response = await getLiveMatches();
+        
+        // Map backend LiveMatchResponse to frontend LiveMatch format
+        const mappedMatches: LiveMatch[] = response.matches.map(match => ({
+          matchId: match.match_id,
+          homeTeam: match.home_team,
+          awayTeam: match.away_team,
+          score: {
+            home: match.home_score,
+            away: match.away_score,
+          },
+          minute: match.minute ?? 0,
+          status: match.status as 'live' | 'ht' | 'ft', // Map MatchStatus to component status
+        }));
+        
+        setLiveMatches(mappedMatches);
+        setLiveMatchesLoading(false);
+      } catch (err) {
+        console.error('Failed to fetch live matches:', err);
+        setLiveMatchesLoading(false);
+        // Don't set main error state - live matches are not critical
+      }
+    }
+
+    // Initial fetch
+    fetchLiveMatches();
+
+    // Poll every 20 seconds
+    const intervalId = setInterval(fetchLiveMatches, 20000);
+
+    // Cleanup on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
   if (loading) {
@@ -228,7 +265,7 @@ export function Dashboard() {
         
         {/* Right panel - Live matches (desktop only) */}
         <aside className="dashboard-live-panel">
-          <LiveMatchesPanel liveMatches={liveMatches} isLoading={false} />
+          <LiveMatchesPanel liveMatches={liveMatches} isLoading={liveMatchesLoading} />
         </aside>
       </div>
       
