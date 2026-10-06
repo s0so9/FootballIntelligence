@@ -54,6 +54,12 @@ from app.features.shot_production import (
     ShotProduction,
     ShotProductionCalculator,
 )
+from app.features.common_opponent_intelligence import (
+    CommonOpponentMatch,
+    CommonOpponentEvidence,
+    CommonOpponentIntelligence,
+    CommonOpponentCalculator,
+)
 
 __all__ = [
     # Base (existing)
@@ -101,4 +107,9 @@ __all__ = [
     # Shot Production (Phase 10 Group 2)
     "ShotProduction",
     "ShotProductionCalculator",
+    # Common Opponent Intelligence (Phase 10 Group 3)
+    "CommonOpponentMatch",
+    "CommonOpponentEvidence",
+    "CommonOpponentIntelligence",
+    "CommonOpponentCalculator",
 ]

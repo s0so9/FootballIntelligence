@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 
 from app.prediction.data_quality import DataQualityReport
+from app.features.common_opponent_intelligence import CommonOpponentIntelligence
 
 
 class LineupStatus(str, Enum):
@@ -204,6 +205,9 @@ class MatchFeatureSnapshot:
     
     # Market information
     market_info: Optional[MarketInformation] = None
+    
+    # Common Opponent Intelligence (Phase 10 Group 3)
+    common_opponent_intel: Optional[CommonOpponentIntelligence] = None
     
     # Snapshot metadata
     snapshot_created_at: datetime = field(default_factory=datetime.utcnow)
