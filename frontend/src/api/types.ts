@@ -186,3 +186,49 @@ export interface MatchPredictionResponse {
   easy_match: EasyMatchResponse | null;
   is_development_data: boolean;
 }
+
+/**
+ * Live Matches API Response Types (Phase 10A)
+ */
+
+export interface LiveMatchResponse {
+  match_id: string;
+  home_team: string;
+  away_team: string;
+  home_score: number;
+  away_score: number;
+  status: MatchStatus;
+  minute: number | null;
+  added_time: number | null;
+  data_quality_flags: {
+    has_xg: boolean;
+    has_events: boolean;
+    has_shots: boolean;
+    has_player_positions: boolean;
+    has_ball_tracking: boolean;
+  };
+}
+
+export interface ProviderHealthResponse {
+  is_available: boolean;
+  availability_code: string;
+  last_check_utc: string;
+  consecutive_failures: number;
+  error_detail: string | null;
+}
+
+export interface LiveMatchesResponse {
+  matches: LiveMatchResponse[];
+  provider_health: Record<string, ProviderHealthResponse>;
+  data_quality: {
+    total_matches: number;
+    matches_with_xg: number;
+    matches_with_events: number;
+    matches_with_shots: number;
+    matches_with_player_positions: number;
+    matches_with_ball_tracking: number;
+  };
+  timestamp: string;
+  provider_used: string | null;
+  total_count: number;
+}
