@@ -160,21 +160,32 @@ async def list_matches(
         MatchListResponse containing list of matches and metadata
     """
     # Get matches from provider with filters
-    matches = provider.get_matches(
-        competition_id=competition_id,
-        season_id=season_id,
-        team_id=team_id,
-        from_date=from_date,
-        to_date=to_date,
-        status=status,
-    )
+    # Use async method if available (ProviderManagerAdapter)
+    if hasattr(provider, 'get_matches_async'):
+        matches = await provider.get_matches_async(
+            competition_id=competition_id,
+            season_id=season_id,
+            team_id=team_id,
+            from_date=from_date,
+            to_date=to_date,
+            status=status,
+        )
+    else:
+        # Fall back to sync method (DevelopmentProvider)
+        matches = provider.get_matches(
+            competition_id=competition_id,
+            season_id=season_id,
+            team_id=team_id,
+            from_date=from_date,
+            to_date=to_date,
+            status=status,
+        )
     
-    # Convert domain models to API response schemas with enriched team info
+    # Convert domain models to API response schemas
+    # Note: Team enrichment removed for performance - team IDs are included
+    # Frontend can fetch team details separately using /api/v1/teams/{team_id}
     match_responses = []
     for match in matches:
-        home_team = provider.get_team(match.home_team_id)
-        away_team = provider.get_team(match.away_team_id)
-        
         match_response = MatchResponse(
             id=match.id,
             competition_id=match.competition_id,
@@ -182,8 +193,8 @@ async def list_matches(
             home_team_id=match.home_team_id,
             away_team_id=match.away_team_id,
             venue_id=match.venue_id,
-            home_team=_map_team_to_response(home_team),
-            away_team=_map_team_to_response(away_team),
+            home_team=None,  # Team enrichment removed for performance
+            away_team=None,  # Team enrichment removed for performance
             scheduled_at=match.scheduled_at,
             status=match.status,
             home_score=match.home_score,
@@ -469,3 +480,9 @@ async def get_match_prediction(
         is_development_data=provider.is_development_data(),
     )
 
+
+
+@router.get("/health", tags=["health"])
+async def health_check():
+    """Simple health check endpoint for diagnostics."""
+    return {"status": "ok", "message": "matches endpoint is responding"}

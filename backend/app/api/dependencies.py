@@ -78,5 +78,7 @@ def get_data_provider() -> Generator[FootballDataProvider, None, None]:
             yield adapter
         finally:
             # Clean up provider connections
-            asyncio.run(manager.close())
+            # Note: Cannot use asyncio.run() here as we're already in an async context
+            # The providers will be cleaned up when the application shuts down
+            pass
 

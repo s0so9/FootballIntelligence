@@ -1,0 +1,175 @@
+{
+  "verdict": "APPROVED",
+  "timestamp": "2026-10-06T10:45:00Z",
+  "reviewer": "semantic_reviewer",
+  "findings": [
+    {
+      "id": "HIGH-001",
+      "original_finding": "Match vs TeamMatchStatistic Data Contract Mismatch",
+      "original_severity": "HIGH",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 3.2.1 now introduces MatchWithStatistics dataclass that pairs Match with Optional[TeamMatchStatistic] for home and away teams. All calculator signatures changed from List[Match] to List[MatchWithStatistics]. Explicit methods: is_home_team(), get_team_statistics(), is_finished(). Algorithm documentation specifies extraction of team statistics per role. Missing statistics explicitly handled as None. Matches actual repository structure in backend/app/domain/match.py and backend/app/domain/statistics.py.",
+      "evidence": "MatchWithStatistics dataclass (lines 81-99), AdvancedTeamIntelligenceCalculator signature (lines 152-192), algorithm step 4: 'For each match, extract team_statistics for team_id', missing data handling: 'If TeamMatchStatistic is None for a match → skip that match'."
+    },
+    {
+      "id": "HIGH-002",
+      "original_finding": "Unavailable Tactical Metrics - PPDA, Field Tilt, etc.",
+      "original_severity": "HIGH",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 2.1 DATA AVAILABILITY & CAPABILITY MATRIX added with comprehensive tables. Available metrics table lists exactly what exists in TeamMatchStatistic (xg, xg_against, shots_total, shots_on_target, possession_percentage, etc.). Unavailable metrics table explicitly marks PPDA, Field Tilt, progressive passes/carries, box entries, high turnovers, big chances, non-penalty xG, set-piece xG, box shot percentage as UNAVAILABLE. Fallback behavior documented: 'Return None (never zero, never estimated, never fabricated)', 'Mark data_quality_score accordingly', 'Document in provenance as UNAVAILABLE'. AdvancedTeamMetrics fields include comments like '# UNAVAILABLE until provider integration'.",
+      "evidence": "Section 2.1 tables (lines 38-96), Fallback Behavior section (lines 97-102), AdvancedTeamMetrics field comments (lines 120-130), Section 2.1 Manager/Coach Change Data subsection, Shot Location Data subsection."
+    },
+    {
+      "id": "HIGH-003",
+      "original_finding": "Opponent Strength Temporal Validity - Historical rating reconstruction",
+      "original_severity": "HIGH",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 3.2.2 added OpponentStrengthAtTime dataclass with rating_timestamp and __post_init__ temporal validation: 'assert self.rating_timestamp <= datetime.utcnow()'. Opponent Strength Source explicitly documented: uses existing Elo system from backend/app/prediction/elo.py. Data Flow for Historical Matches documented with 5-step process including 'Retrieve opponent Elo rating from history UP TO cutoff timestamp'. Algorithm specifies: 'self.elo_system.get_rating_at_time(opponent_id, match.scheduled_at)' and 'NEVER use self.elo_system.get_current_rating(opponent_id)'. Home/away context documented in OpponentStrengthAtTime. Temporal leakage prevention: 'If historical rating cannot be reconstructed → exclude that match'.",
+      "evidence": "OpponentStrengthAtTime dataclass with temporal assertion (lines 235-250), Data Flow section (lines 252-260), Algorithm step 1b: 'Get opponent Elo rating AT match.scheduled_at (historical reconstruction)' (lines 311-312), Temporal Leakage Prevention subsection (lines 337-343)."
+    },
+    {
+      "id": "HIGH-006",
+      "original_finding": "Shot Distribution Vagueness - Missing formulas for Poisson/NB",
+      "original_severity": "HIGH",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Shot Distribution Methodology section (before 4.2.2 ShotProductionCalculator) provides complete mathematical specification. Step 1: μ = Σ(shots_per_match) / n, σ² = Σ((shots - μ)²) / (n-1). Step 2: Distribution selection with explicit condition 'if variance > mean: use Negative Binomial, else: use Poisson'. Step 3: NB parameterization: r = μ²/(σ² - μ), p = μ/σ² with validation 'if r <= 0 or p <= 0 or p >= 1: return None'. Poisson parameterization: λ = μ with validation 'if λ <= 0: return None'. Step 4: Threshold probability formulas P(X > T) = 1 - CDF_NB(T; r, p) and P(X > T) = 1 - CDF_Poisson(T; λ) with explicit CDF summations. Standard thresholds listed: 10+, 12+, 15+, 18+, 20+ for shots. Edge cases covered: mean=0, variance=0, variance=mean, variance<mean. Minimum sample size: MIN_MATCHES_WITH_SHOT_DATA = 3.",
+      "evidence": "Shot Distribution Methodology section (lines 585-750), Step 2 distribution selection (lines 602-607), Step 3 parameterization formulas (lines 609-632), Step 4 threshold calculation (lines 634-651), Step 6 minimum sample logic (lines 684-695), Step 7 edge cases (lines 697-717)."
+    },
+    {
+      "id": "MEDIUM-004",
+      "original_finding": "Manager Change Data Availability",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 3.2.3 CRITICAL: Manager/Coach Change Data Availability explicitly states: 'The current repository DOES NOT have: Manager/coach tracking in Team model, Manager change events table, Coach assignment history database'. Regime Change Detection Strategy documented with 3 approaches: (1) Statistical Detection (AVAILABLE NOW) with detected_by='statistical' and lower confidence, (2) External Data Integration (FUTURE) with detected_by='external_data', (3) Manual Annotation (OPTIONAL) with detected_by='manual'. RegimeChange dataclass includes detected_by field and is_verified_external() method. Statistical detection cannot determine cause: event_type='statistical_shift'. Future provider integration interface defined (ManagerChangeEvent) but clearly marked as not implemented.",
+      "evidence": "Section 3.2.3 opening statement (lines 431-436), Regime Change Detection Strategy (lines 438-453), RegimeChange dataclass with detected_by field (lines 461-477), detect_regime_changes() documentation: 'STATISTICAL DETECTION ONLY - does not know actual manager changes' (lines 527-560), Future integration interface (lines 567-585)."
+    },
+    {
+      "id": "MEDIUM-005",
+      "original_finding": "Shot Location Unavailability",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 2.1 Shot Location Data subsection explicitly documents: 'The current TeamMatchStatistic model does NOT provide: Shot coordinates (x, y), Shot zones (box, outside box, etc.), Shot angle/distance'. Implications section states: 'box_shot_percentage = None (cannot calculate without coordinates)', 'shots_inside_box_per_match = None (cannot calculate without coordinates)'. Future Provider Capability defines expected ShotEvent structure with x_coordinate, y_coordinate, zone fields but clearly states: 'Until this exists, location-derived features remain UNAVAILABLE'. AdvancedTeamMetrics includes box_shot_percentage with comment '# UNAVAILABLE until shot coordinates'. ShotIntelligenceMetrics similarly documented.",
+      "evidence": "Section 2.1 Shot Location Data subsection (lines 78-96), Implications (lines 83-88), Future Provider Capability (lines 90-96), AdvancedTeamMetrics.box_shot_percentage comment (line 122), AdvancedTeamMetrics.shots_inside_box_per_match comment (line 118)."
+    },
+    {
+      "id": "MEDIUM-007",
+      "original_finding": "Lineup Impact Methodology - Avoid arbitrary percentages",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 4.2.3 LineupIntelligenceCalculator.calculate_lineup_impact() includes comprehensive Statistical Methodology with 7 explicit steps. Step 1: Split matches into WITH player and WITHOUT player samples. Step 2: Calculate performance differential with formula 'impact = (performance_with_player - performance_without_player)' using goals/match, xG/match, points/match, xGA/match. Step 3: Validate sample sizes with 'if n_with < min_with_player or n_without < min_without_player: return None'. Step 4: Calculate confidence formula accounting for sample size and imbalance. Step 5: Aggregate multiple absences. Step 6: Context normalization for opponent strength, home/away, match importance. Step 7: Replacement player quality when available. Explicit prohibition: 'NO Arbitrary Percentages: ✗ Star player out = -15% attack, ✓ Calculate from historical with/without samples'. Missing data handling: 'If no historical lineup data → all impacts = None', 'Never use hardcoded penalty values'.",
+      "evidence": "Statistical Methodology section (lines 1065-1150), Step 2 formula (lines 1074-1081), Step 3 validation (lines 1083-1088), Step 4 confidence formula (lines 1090-1098), NO Arbitrary Percentages note (lines 1116-1118), Missing Data Handling (lines 1136-1142)."
+    },
+    {
+      "id": "MEDIUM-008",
+      "original_finding": "Common Opponent Confidence - Missing explicit formula",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 5.2.1 CommonOpponentCalculator.find_common_opponents() includes Common Opponent Confidence Calculation with complete mathematical specification. Formula: 'confidence = (sample_factor) * (recency_factor) * (context_factor)' where sample_factor = min(1.0, n_common_opponents / 5), recency_factor = avg_match_recency_weight, context_factor = home_away_match_rate. Statistical Evidence Threshold defined with get_signal() function requiring BOTH |differential| >= 0.3 AND confidence >= 0.5 for non-neutral signal. Risk classification explicitly stated as MEDIUM RISK. Implementation includes _calculate_confidence() method with explicit formula. Never claim superiority requirements: n >= min_common_opponents, confidence >= 0.5, |differential| >= 0.3.",
+      "evidence": "Common Opponent Confidence Calculation section (lines 1510-1539), confidence formula (lines 1512-1524), sample_factor formula (line 1515), Statistical Evidence Threshold (lines 1541-1558), Risk classification (lines 1560-1563), _calculate_confidence() method (lines 1666-1681), Never claim superiority conditions (lines 1646-1649)."
+    },
+    {
+      "id": "MEDIUM-009",
+      "original_finding": "Feature Versioning Convention",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 6.2.1 Feature Versioning Convention defines semantic versioning MAJOR.MINOR.PATCH. Version Increments documented: MAJOR for breaking calculation changes (examples: changing xG methodology, changing opponent adjustment formula), MINOR for new features without changing existing (examples: adding progressive passes, adding shot thresholds), PATCH for bug fixes with no calculation changes (examples: fixing data quality score, correcting provenance timestamp). Feature Version Tracking shows ADVANCED_INTELLIGENCE_VERSION = '1.0.0' constant. Backward Compatibility strategy: predictions without advanced features continue, version recorded in PredictionVersion, backtesting can filter by version, version mismatch warnings. PredictionVersion extended with feature_version and advanced_features_enabled fields.",
+      "evidence": "Feature Versioning Convention section (lines 1965-2018), Version Increments with examples (lines 1970-1982), Feature Version Tracking (lines 1984-1992), Backward Compatibility (lines 1994-1999), Version Storage PredictionVersion extension (lines 2001-2008)."
+    },
+    {
+      "id": "MEDIUM-010",
+      "original_finding": "Walk-Forward Temporal Enforcement - List all calculators",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 8.2.1 WalkForwardBacktester.run_walk_forward() includes CRITICAL TEMPORAL VALIDITY ENFORCEMENT section listing ALL 7 feature calculators that MUST respect before_datetime: (1) AdvancedTeamIntelligenceCalculator with calculate_advanced_metrics(before_datetime=prediction_timestamp) and 'Filters matches before cutoff', (2) OpponentAdjustmentCalculator with calculate_adjusted_metrics(before_datetime=prediction_timestamp) and 'Retrieves opponent Elo AT prediction_timestamp', (3) TemporalIntelligenceCalculator with calculate_temporal_metrics(before_datetime=prediction_timestamp) and 'Recency weights only pre-cutoff matches', (4) ShotIntelligenceCalculator with calculate_shot_metrics(before_datetime=prediction_timestamp) and 'Shot statistics from pre-cutoff matches only', (5) LineupIntelligenceCalculator with 'historical_matches_with_stats filtered before cutoff', (6) CommonOpponentCalculator with find_common_opponents(before_datetime=prediction_timestamp) and 'Common opponent comparisons from pre-cutoff data', (7) AdvancedFeatureEngineer with 'validate_no_leakage() checks all provenance timestamps'. Algorithm explicitly includes 'Freeze prediction_timestamp = test_window_start' and 'Pass before_datetime=prediction_timestamp to ALL calculators'.",
+      "evidence": "CRITICAL TEMPORAL VALIDITY ENFORCEMENT section (lines 2609-2657), numbered list of all 7 calculators (lines 2611-2648), Algorithm step 1a 'Freeze prediction_timestamp' (line 2659), step 1c 'Pass before_datetime=prediction_timestamp to ALL calculators' (line 2664)."
+    },
+    {
+      "id": "MEDIUM-011",
+      "original_finding": "Interaction Features - Missing explicit operations",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 6.2.1 Interaction Features (Explicit Operations) provides InteractionFeature dataclass with feature_a, feature_b, operation fields. Operation types: 'multiply', 'divide', 'ratio', 'difference'. compute() method with explicit logic for each operation including missing value handling (None propagation) and divide-by-zero protection. CANDIDATE_INTERACTIONS list provides 4 concrete examples: (1) home_xg_for × opponent_xg_against (attack vs defense matchup), (2) home_xg_per_shot × home_shots (shot quality vs volume), (3) home_recent_form × home_elo_advantage (form vs home advantage), (4) home_adj_overall_strength - away_adj_overall_strength (opponent-adjusted differential). Validation Before Production section states interactions are CANDIDATES ONLY until GROUP 6 backtesting validates. Production Eligibility: 'Interaction features remain DISABLED until GROUP 6 backtesting demonstrates measurable improvement'.",
+      "evidence": "Interaction Features section (lines 2147-2250), InteractionFeature dataclass with operations (lines 2149-2176), compute() method with operations (lines 2178-2195), CANDIDATE_INTERACTIONS with 4 examples (lines 2199-2224), Validation Before Production (lines 2226-2231), Production Eligibility (line 2249)."
+    },
+    {
+      "id": "MEDIUM-012",
+      "original_finding": "Feature Provenance Metadata Structure",
+      "original_severity": "MEDIUM",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Section 6.2.1 Feature Provenance Metadata defines complete FeatureProvenance dataclass with: feature_name, source_module (e.g., 'advanced_team_intelligence'), Temporal fields (source_timestamp, match_timestamp, prediction_cutoff, historical_window), Context fields (home_away_context, competition_context), Data quality fields (availability='AVAILABLE'/'PARTIAL'/'UNAVAILABLE', data_quality_score, sample_size), feature_version. Includes validate_temporal_consistency() method checking source_timestamp <= match_timestamp and source_timestamp <= prediction_cutoff. Provenance Storage section shows AdvancedFeatureSet.feature_provenance as Dict[str, FeatureProvenance] keyed by feature_name, with validate_no_leakage() method checking all provenance.",
+      "evidence": "Feature Provenance Metadata section (lines 2020-2073), FeatureProvenance dataclass (lines 2025-2050), validate_temporal_consistency() method (lines 2052-2058), Provenance Storage (lines 2060-2073), AdvancedFeatureSet.feature_provenance field (line 2064)."
+    },
+    {
+      "id": "LOW-013",
+      "original_finding": "Recursive Feature Structures",
+      "original_severity": "LOW",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. AdvancedTeamMetrics.home_xg_for_per_match and away_xg_for_per_match documented with explicit comments: '# Separate home-only calculation' and '# Separate away-only calculation'. These are scalar Optional[float] values representing separate aggregations, not nested AdvancedTeamMetrics objects. Section 3.2.1 clarifies: 'Home/away separation (scalar values, not nested)'. Appendix A confirms: 'home_xg_for_per_match and away_xg_for_per_match documented as scalar Optional[float]', 'Not nested AdvancedTeamMetrics objects', 'No recursive structures in final design'.",
+      "evidence": "AdvancedTeamMetrics fields (lines 132-134) with comments, Section 3.2.1 note (line 131), Appendix A LOW finding resolution (lines 3272-3278)."
+    },
+    {
+      "id": "LOW-014",
+      "original_finding": "Backtesting Cutoff Date - Explicit list of calculators",
+      "original_severity": "LOW",
+      "resolution_status": "RESOLVED",
+      "verification": "CONFIRMED RESOLVED. Covered by MEDIUM-010 resolution. Section 8.2.1 CRITICAL TEMPORAL VALIDITY ENFORCEMENT lists all 7 calculators with before_datetime enforcement. Appendix A confirms: 'Covered in MEDIUM Walk-Forward Temporal Enforcement above'.",
+      "evidence": "Section 8.2.1 (lines 2609-2657), Appendix A LOW-014 resolution (line 3284)."
+    }
+  ],
+  "summary": "All 14 findings (4 HIGH, 8 MEDIUM, 2 LOW) from the original review have been RESOLVED in design v2.0. The revised design provides: (1) Complete data contracts using MatchWithStatistics matching actual repository models, (2) Comprehensive DATA AVAILABILITY MATRIX documenting available vs unavailable metrics with explicit UNAVAILABLE markings, (3) Historical opponent strength reconstruction using existing Elo system with temporal validity enforcement, (4) Complete shot distribution methodology with explicit Poisson/Negative Binomial formulas including distribution selection, parameterization, CDF calculations, and edge cases, (5) Manager change data availability documented as statistical detection (available) vs external events (future), (6) Shot location marked UNAVAILABLE until coordinates exist, (7) Lineup impact methodology with statistical with/without sampling and explicit prohibition of arbitrary percentages, (8) Common opponent confidence formula with sample/recency/context factors and statistical evidence thresholds, (9) Feature versioning convention with semantic versioning and increment rules, (10) Walk-forward temporal enforcement listing all 7 calculators with before_datetime requirements, (11) Interaction features with explicit operations (multiply/divide/ratio/difference) and concrete candidate examples, (12) Feature provenance metadata structure with temporal validation. All mathematical methodologies are complete and unambiguous. All unavailable data explicitly documented with None returns (never fabricated). All temporal validity mechanisms enforceable through before_datetime parameters. Design matches actual repository structure and preserves existing 7-model architecture. Ready for implementation.",
+  "recommendation": "APPROVE_FOR_IMPLEMENTATION",
+  "design_quality_assessment": {
+    "data_contract_alignment": "EXCELLENT - MatchWithStatistics matches repository, all calculators updated",
+    "temporal_validity": "EXCELLENT - All 7 calculators enforce before_datetime, historical reconstruction specified",
+    "mathematical_rigor": "EXCELLENT - Shot distribution formulas complete with parameterization and edge cases",
+    "data_availability_transparency": "EXCELLENT - Comprehensive matrix, explicit UNAVAILABLE markings, no fabrication",
+    "implementation_clarity": "EXCELLENT - All interfaces implementable, algorithms complete, integration points specified",
+    "architecture_preservation": "EXCELLENT - Extends existing pipeline, no parallel systems, backward compatible"
+  },
+  "remaining_considerations": {
+    "data_limitations": [
+      "Tactical metrics (PPDA, Field Tilt, progressive passes) require future provider - correctly handled as UNAVAILABLE",
+      "Shot coordinates unavailable - correctly handled with None returns",
+      "Manager changes limited to statistical detection initially - correctly documented with detected_by field",
+      "Interaction features disabled until GROUP 6 validation - correct cautious approach"
+    ],
+    "implementation_risks": [
+      "Baseline comparison (GROUP 6) must validate advanced features improve predictions before production",
+      "Opponent-adjusted features may be redundant with Elo - backtesting will determine",
+      "Common opponent features are MEDIUM risk - confidence thresholds must be validated empirically",
+      "Shot distribution model selection (Poisson vs NB) requires sufficient sample size"
+    ],
+    "validation_requirements": [
+      "GROUP 6 walk-forward backtesting critical - must demonstrate improvement over baseline",
+      "Temporal validity post-hoc validation - verify no leakage in practice",
+      "Feature contribution analysis (GROUP 7) - identify redundant features",
+      "Calibration validation for shot markets - ensure probabilities are well-calibrated"
+    ]
+  },
+  "design_strengths": [
+    "Complete mathematical specifications - no vague 'fit model' statements",
+    "Explicit data availability transparency - unavailable metrics clearly documented",
+    "Temporal validity throughout - all calculators enforce before_datetime",
+    "Statistical rigor - confidence formulas, sample size requirements, validation thresholds",
+    "Architecture preservation - extends existing pipeline without parallel systems",
+    "Provenance tracking - full metadata for reproducibility and debugging",
+    "Cautious production path - features validated through backtesting before activation",
+    "No fabrication - explicit None returns when data unavailable",
+    "Comprehensive testing strategy - unit, integration, regression tests per group"
+  ],
+  "approved_for_phases": [
+    "PHASE 10A - Advanced Team Intelligence",
+    "PHASE 10B - Opponent Adjustment",
+    "PHASE 10C - Temporal Intelligence",
+    "PHASE 10D - Shot Intelligence",
+    "PHASE 10E - Shot Production",
+    "PHASE 10F - Lineup Intelligence",
+    "PHASE 10F-1 - Lineup Statistical Methodology",
+    "PHASE 10G - Common Opponent Intelligence",
+    "PHASE 10H - Advanced Feature Engineering",
+    "PHASE 10I - Market-Specific Modeling",
+    "PHASE 10J - Model Disagreement",
+    "PHASE 10K - Walk-Forward Backtesting",
+    "PHASE 10L - Self-Evaluation & Diagnostics"
+  ]
+}

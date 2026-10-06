@@ -189,14 +189,22 @@ class ProviderManager:
         Returns:
             Tuple of (matches_list, metadata_dict)
         """
-        provider_method_map = {
-            'ryzellx': lambda: self._providers['ryzellx'].get_matches_by_date(date_obj),
-            'openligadb': lambda: self._providers['openligadb'].get_matches_by_date(date_obj),
-        }
-        
+        provider_method_map = {}
+
+        # Only add providers that are not None
+        if self._providers.get('ryzellx'):
+            provider_method_map['ryzellx'] = lambda: self._providers['ryzellx'].get_matches_by_date(date_obj)
+        if self._providers.get('fotmob'):
+            provider_method_map['fotmob'] = lambda: self._providers['fotmob'].get_matches_by_date(date_obj)
+        if self._providers.get('openligadb'):
+            provider_method_map['openligadb'] = lambda: self._providers['openligadb'].get_matches_by_date(date_obj)
+
+        # Use extended order that includes fotmob
+        provider_order = ['ryzellx', 'fotmob', 'openligadb']
+
         result, metadata = await self._try_providers(
             operation_name='get_matches_by_date',
-            provider_order=self.NORMAL_ORDER,
+            provider_order=provider_order,
             provider_method_map=provider_method_map
         )
         
@@ -210,7 +218,7 @@ class ProviderManager:
     ) -> Tuple[List, Dict]:
         """Get matches in date range.
         
-        Uses NORMAL_ORDER: ryzellx → openligadb
+        Uses extended order: ryzellx → fotmob → openligadb
         
         Args:
             start_date: Start date (inclusive)
@@ -219,14 +227,22 @@ class ProviderManager:
         Returns:
             Tuple of (matches_list, metadata_dict)
         """
-        provider_method_map = {
-            'ryzellx': lambda: self._providers['ryzellx'].get_matches_by_range(start_date, end_date),
-            # Note: openligadb doesn't implement range queries, will fall through
-        }
-        
+        provider_method_map = {}
+
+        # Only add providers that are not None
+        if self._providers.get('ryzellx'):
+            provider_method_map['ryzellx'] = lambda: self._providers['ryzellx'].get_matches_by_range(start_date, end_date)
+        if self._providers.get('fotmob'):
+            provider_method_map['fotmob'] = lambda: self._providers['fotmob'].get_matches_by_range(start_date, end_date)
+        if self._providers.get('openligadb'):
+            provider_method_map['openligadb'] = lambda: self._providers['openligadb'].get_matches_by_range(start_date, end_date)
+
+        # Use extended order that includes fotmob
+        provider_order = ['ryzellx', 'fotmob', 'openligadb']
+
         result, metadata = await self._try_providers(
             operation_name='get_matches_by_range',
-            provider_order=self.NORMAL_ORDER,
+            provider_order=provider_order,
             provider_method_map=provider_method_map
         )
         

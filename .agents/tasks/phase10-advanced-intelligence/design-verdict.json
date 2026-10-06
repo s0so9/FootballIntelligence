@@ -1,0 +1,66 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "category": "data-contract",
+      "finding": "HIGH 1 — Match vs TeamMatchStatistic: The design proposes passing List[Match] to AdvancedTeamIntelligenceCalculator.calculate_advanced_metrics() (line 132), but the Match entity (backend/app/domain/match.py) does NOT contain xG, shots, or tactical statistics. These metrics live in TeamMatchStatistic (backend/app/domain/statistics.py). The calculator must accept a structure mapping Match → TeamMatchStatistic for home/away teams, not just List[Match]. Specify the exact input type that includes statistics, such as List[Tuple[Match, Optional[TeamMatchStatistic], Optional[TeamMatchStatistic]]] or a custom MatchWithStatistics dataclass."
+    },
+    {
+      "severity": "HIGH",
+      "category": "tactical-metrics-unavailability",
+      "finding": "HIGH 2 — Tactical metrics availability: The actual TeamMatchStatistic model (backend/app/domain/statistics.py lines 59-93) does NOT contain: PPDA, Field Tilt, progressive_passes, progressive_carries, box entries, high turnovers, big_chances, box_shot_percentage, non_penalty_xg, set_piece_xg. The design correctly marks these as Optional[float] = None in AdvancedTeamMetrics (lines 85-95), but it must explicitly state that these fields will remain None until real provider integration or future extension, rather than implying they can be calculated from existing data. Add a DATA AVAILABILITY section to GROUP 1 documenting: 'Currently available from TeamMatchStatistic: xg, xg_against, shots_total, shots_on_target, possession_percentage. Currently UNAVAILABLE (will remain None): PPDA, Field Tilt, progressive passes/carries, box entries, high turnovers, big chances, box shot %, non-penalty xG, set piece xG. These require future provider integration or explicit UNAVAILABLE state.'"
+    },
+    {
+      "severity": "HIGH",
+      "category": "shot-distribution-methodology",
+      "finding": "HIGH 6 — Shot distribution / market probability: The ShotProductionCalculator.calculate_shot_market_probs() method (lines 501-528) lacks explicit mathematical methodology for threshold probabilities. It mentions 'Fit distribution model (Poisson or Negative Binomial)' but does not specify: (1) When to use Poisson vs Negative Binomial (e.g., 'if variance > mean use NB, else Poisson'), (2) Exact parameterization formulas (e.g., for NB: r = mu²/(variance - mu), p = mu/variance), (3) How to calculate P(shots > threshold) from the distribution (e.g., 1 - CDF(threshold)), (4) Minimum sample size requirements for reliable distribution fitting, (5) How to handle edge cases where variance ≤ mean for NB. Add explicit Shot Distribution Methodology subsection to 4.2.2 with mathematical formulas and decision logic."
+    },
+    {
+      "severity": "HIGH",
+      "category": "opponent-strength-reconstruction",
+      "finding": "HIGH 3 — Historical opponent strength: OpponentAdjustmentCalculator.calculate_adjusted_metrics() (lines 221-250) proposes opponent adjustment but does not specify how opponent strength is reconstructed for historical matches. The design states 'calculate opponent's season-long defensive strength' (line 241) but: (1) Does not specify whether this uses Elo ratings, league position, goals-conceded average, or xGA, (2) Does not specify what timestamp/version of opponent strength is used (snapshot at match time vs season-end?), (3) Does not explain how to prevent temporal leakage (opponent's post-match performance cannot influence pre-match adjustment), (4) Does not specify home/away context handling for opponent strength. Add Opponent Strength Reconstruction subsection to 3.2.2 defining: source of opponent strength metric, temporal snapshot logic (before_datetime enforcement), home/away handling, leakage prevention validation."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "manager-change-data",
+      "finding": "HIGH 4 — Manager change data: TemporalIntelligenceCalculator.detect_regime_changes() (lines 324-334) proposes detecting 'manager_change' as a RegimeChange.event_type (line 272), but the current repository does not have manager/coach tracking in Match, Team, or database models. The design must explicitly state whether: (1) Manager change data will come from a real provider integration (specify which), (2) Regime detection will be purely statistical (performance-based), (3) Manager changes will remain UNAVAILABLE until external data source is integrated. Add Manager Change Data Availability subsection to 3.2.3 clarifying this will be statistical detection initially, with optional future provider integration for explicit manager events, and that absence of provider data will not fabricate manager changes."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "shot-location-data",
+      "finding": "HIGH 5 — Shot-location data: AdvancedTeamMetrics.box_shot_percentage (line 88) and ShotIntelligenceMetrics.box_shot_percentage (line 471) assume shot location data exists. The actual TeamMatchStatistic model only has shots_total, shots_on_target, shots_off_target, shots_blocked — it does NOT have shot coordinates or box/outside-box classification. The design must explicitly state: (1) box_shot_percentage will remain None until shot location data is available from provider, (2) No calculation from existing fields without real location data, (3) shots_inside_box_per_match (line 87) also requires location data. Add Shot Location Data Availability note to GROUPS 1 and 2 stating these metrics require future provider integration for shot coordinates/zones."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "lineup-integration",
+      "finding": "Lineup integration: LineupImpactEstimate integration with existing system (section 4.2.3 lines 545-596) proposes extending MatchFeatureSnapshot with home_lineup_impact and away_lineup_impact, but does not specify: (1) How lineup impact integrates with existing home_player_availability field (which already exists per line 581), (2) Whether PlayerAvailability dataclass needs extension or new fields, (3) How lineup uncertainty propagates to ConfidenceEngine (mentioned but not defined). Add Lineup Integration Details subsection specifying: exact PlayerAvailability extension points, how lineup_uncertainty_score is calculated and passed to confidence_engine.assess_with_disagreement(), and whether existing player_availability handling needs modification."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "common-opponent-confidence",
+      "finding": "Common-opponent statistical confidence: CommonOpponentCalculator.find_common_opponents() (lines 752-792) calculates comparison_confidence (line 777) but does not specify the formula or thresholds. The design must define: (1) How comparison_confidence is calculated (e.g., function of sample_size, recency, context_match), (2) What constitutes 'sufficient evidence' for non-neutral signal (lines 869-879), (3) Minimum n_common_opponents for reliable comparison (default min=3 mentioned but not justified). Add Common Opponent Confidence Calculation subsection to 5.2.1 with explicit formula, e.g., 'confidence = min(1.0, (n_common_opponents / 5) * (avg_match_recency_weight) * (context_normalization_factor))', and thresholds for signal classification."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "feature-versioning",
+      "finding": "Feature versioning: AdvancedFeatureSet.feature_version (line 937) uses string '1.0.0' but the design does not define: (1) Versioning convention (semantic versioning assumed but not stated), (2) When to increment version (feature addition? calculation change? normalization change?), (3) How version compatibility is checked during backtesting (features from v1.0.0 vs v1.1.0), (4) Whether feature_version applies per-feature or per-snapshot. Add Feature Versioning Convention subsection to 6.2.1 defining: semantic versioning rules (major.minor.patch), increment triggers, backward compatibility requirements, and snapshot-level vs feature-level versioning."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "interaction-features",
+      "finding": "Interaction features: AdvancedFeatureEngineer.engineer_features() mentions 'Create interaction features where validated' (line 972) but section 6.2.1 does not define: (1) What constitutes an 'interaction feature' (multiplication? addition? nonlinear transform?), (2) Which specific interactions will be created (e.g., home_xg * opponent_defensive_strength), (3) Validation criteria before production use. The design correctly defers validation to GROUP 6 (line 973), but must provide concrete examples of proposed interactions. Add Interaction Features subsection to 6.2.1 with examples: 'Candidate interactions: (home_xg_for, opponent_xg_against, multiply), (recent_form, home_advantage, multiply), validated in GROUP 6 backtesting before production use.'"
+    },
+    {
+      "severity": "LOW",
+      "category": "recursive-models",
+      "finding": "Recursive model structure: The design does not appear to have problematic recursive structures like AdvancedTeamMetrics.home_metrics → AdvancedTeamMetrics, but AdvancedTeamMetrics includes home_xg_for and away_xg_for (lines 101-102) without clarifying whether these are separate aggregations or nested structures. Clarify in 3.2.1 that home/away metrics are scalar Optional[float] values representing home-only and away-only averages, not nested AdvancedTeamMetrics objects."
+    },
+    {
+      "severity": "LOW",
+      "category": "backtesting-cutoff",
+      "finding": "Backtesting temporal cutoff: WalkForwardBacktester.run_walk_forward() (lines 1190-1216) correctly mentions 'before_datetime=prediction_timestamp' parameter (line 1210), but step 3b 'Build FeatureSnapshot with before_datetime=prediction_timestamp' should explicitly state that ALL feature calculators (AdvancedTeamIntelligenceCalculator, OpponentAdjustmentCalculator, TemporalIntelligenceCalculator, ShotIntelligenceCalculator, CommonOpponentCalculator, etc.) must enforce before_datetime filtering. Add explicit list in 8.2.1: 'ALL feature calculators called during snapshot reconstruction MUST respect before_datetime: team intelligence (3.2.1), opponent adjustment (3.2.2), temporal (3.2.3), shot (4.2.1), lineup (4.2.3), common opponent (5.2.1), feature engineering (6.2.1).'"
+    }
+  ],
+  "designDoc": "c:/FootballIntelligence/.agents/tasks/phase10-advanced-intelligence/design.md"
+}
