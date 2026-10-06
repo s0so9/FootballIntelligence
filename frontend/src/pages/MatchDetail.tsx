@@ -10,6 +10,7 @@ import {
 } from '../utils/formatters';
 import { useFavorites } from '../hooks/useFavorites';
 import { useCombine } from '../hooks/useCombine';
+import { useLiveMatch } from '../hooks/useLiveMatch';
 import GeneralAnalysis from '../components/match/GeneralAnalysis';
 import FirstHalfAnalysis from '../components/match/FirstHalfAnalysis';
 import FullMatchAnalysis from '../components/match/FullMatchAnalysis';
@@ -17,6 +18,15 @@ import StatisticsComparison from '../components/match/StatisticsComparison';
 import FormDisplay from '../components/match/FormDisplay';
 import HeadToHead from '../components/match/HeadToHead';
 import CombineDrawer from '../components/combine/CombineDrawer';
+import {
+  LiveMatchHeader,
+  LiveScoreboard,
+  LiveStats,
+  LiveShotIntelligence,
+  LiveTimeline,
+  LivePrediction,
+  LivePickCard
+} from '../components/live';
 import './MatchDetail.css';
 
 type TabType = 'general' | 'first-half' | 'full-match';
@@ -33,6 +43,18 @@ export function MatchDetail() {
   // Favorites and combine state
   const { isFavorite, toggleFavorite } = useFavorites();
   const { combineItems, isInCombine, toggleCombine, removeFromCombine, clearCombine } = useCombine();
+  
+  // Live match polling (only when match is live)
+  const isMatchLive = match?.status === 'live';
+  const { 
+    liveMatch, 
+    loading: liveLoading, 
+    error: liveError,
+    lastUpdated,
+    connectionStatus 
+  } = useLiveMatch(id || '', { 
+    enabled: isMatchLive 
+  });
 
   useEffect(() => {
     async function fetchMatchData() {
@@ -298,6 +320,83 @@ export function MatchDetail() {
           <p className="info-description">
             Bu maç için tahmin verisi henüz oluşturulmadı veya yeterli veri bulunmamaktadır.
           </p>
+        </div>
+      )}
+
+      {/* Live Match - Show Live Intelligence UI */}
+      {match.status === 'live' && (
+        <div className="live-match-section">
+          {/* Live Match Header */}
+          <LiveMatchHeader
+            competition={competition}
+            venue={liveMatch?.venue}
+            connectionStatus={connectionStatus}
+            lastUpdated={lastUpdated || undefined}
+            dataQuality={undefined}
+          />
+
+          {/* Live Scoreboard */}
+          <LiveScoreboard
+            homeTeam={liveMatch?.homeTeam}
+            awayTeam={liveMatch?.awayTeam}
+            homeScore={liveMatch?.homeScore}
+            awayScore={liveMatch?.awayScore}
+            minute={liveMatch?.minute}
+            addedTime={liveMatch?.addedTime}
+            period={liveMatch?.period}
+            isLoading={liveLoading}
+          />
+
+          {/* Live Pick Card */}
+          <LivePickCard
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            pick={null} // TODO: Backend integration
+            isLoading={liveLoading}
+          />
+
+          {/* Live Stats Comparison */}
+          <LiveStats
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            homeStats={liveMatch?.homeStats}
+            awayStats={liveMatch?.awayStats}
+            isLoading={liveLoading}
+          />
+
+          {/* Live Prediction */}
+          <LivePrediction
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            prediction={null} // TODO: Backend integration
+            isLoading={liveLoading}
+          />
+
+          {/* Live Shot Intelligence */}
+          <LiveShotIntelligence
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            shots={[]} // TODO: Backend integration
+            hasCoordinates={false}
+            isLoading={liveLoading}
+          />
+
+          {/* Live Timeline */}
+          <LiveTimeline
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+            events={[]} // TODO: Backend integration
+            isLoading={liveLoading}
+          />
+
+          {/* Error State */}
+          {liveError && (
+            <div className="info-state">
+              <div className="info-icon">⚠️</div>
+              <p className="info-title">Canlı veri yüklenemedi</p>
+              <p className="info-description">{liveError}</p>
+            </div>
+          )}
         </div>
       )}
 
