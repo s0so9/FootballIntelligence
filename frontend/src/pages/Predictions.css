@@ -12,16 +12,19 @@
   flex-direction: column;
   gap: var(--spacing-2);
   padding: var(--spacing-6);
-  background: rgba(26, 26, 36, 0.7);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(8px);
+  background: linear-gradient(135deg, rgba(13, 20, 36, 0.9) 0%, rgba(16, 24, 43, 0.85) 100%);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
   transition: all var(--transition-base);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .stat-item:hover {
-  border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);
+  border-color: rgba(14, 165, 233, 0.4);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4),
+              0 0 16px rgba(14, 165, 233, 0.15);
+  transform: translateY(-2px);
 }
 
 .stat-item__label {
@@ -45,19 +48,21 @@
 
 .prediction-card {
   display: block;
-  background: rgba(26, 26, 36, 0.7);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(13, 20, 36, 0.9) 0%, rgba(16, 24, 43, 0.85) 100%);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  border-radius: 12px;
   padding: var(--spacing-6);
   text-decoration: none;
   color: inherit;
   transition: all var(--transition-base);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .prediction-card:hover {
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+  border-color: rgba(14, 165, 233, 0.45);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5),
+              0 0 24px rgba(14, 165, 233, 0.2);
   transform: translateY(-2px);
 }
 
