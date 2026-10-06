@@ -278,20 +278,20 @@ class FotMobFootballProvider:
         status_lower = status_str.lower()
         
         # FotMob typically uses status strings like:
-        # "live", "finished", "not_started", "halftime", "postponed", etc.
+        # "live", "finished", "not_started", "halftime", "postponed", "fulltime_short", etc.
         if status_lower in ["live", "in_play", "playing"]:
             return MatchStatus.LIVE
-        elif status_lower in ["ht", "half_time", "halftime"]:
+        elif status_lower in ["ht", "half_time", "halftime", "halftime_short"]:
             return MatchStatus.HALF_TIME
-        elif status_lower in ["ft", "finished", "full_time", "fulltime"]:
+        elif status_lower in ["ft", "finished", "full_time", "fulltime", "fulltime_short"]:
             return MatchStatus.FINISHED
-        elif status_lower in ["postponed", "pst"]:
+        elif status_lower in ["postponed", "pst", "postponed_short"]:
             return MatchStatus.POSTPONED
-        elif status_lower in ["cancelled", "canceled", "cnc"]:
+        elif status_lower in ["cancelled", "canceled", "cnc", "cancelled_short"]:
             return MatchStatus.CANCELLED
-        elif status_lower in ["suspended", "susp"]:
+        elif status_lower in ["suspended", "susp", "suspended_short"]:
             return MatchStatus.SUSPENDED
-        elif status_lower in ["scheduled", "not_started", "ns", "not started"]:
+        elif status_lower in ["scheduled", "not_started", "ns", "not started", "notstarted_short"]:
             return MatchStatus.SCHEDULED
         else:
             logger.warning(
@@ -324,83 +324,200 @@ class FotMobFootballProvider:
         else:
             return MatchOutcome.DRAW
     
-    def _normalize_match(self, data: Dict[str, Any], is_live: bool = False) -> ProviderMatch:
+    def _normalize_match(self, data: Dict[str, Any], is_live: bool = False, league_context: Optional[Dict[str, Any]] = None) -> ProviderMatch:
         """Normalize FotMob match data to ProviderMatch.
         
         Args:
             data: Raw match data from FotMob API
             is_live: Whether this is live match data
+            league_context: Optional league data when parsing from leagues list
             
         Returns:
             Normalized ProviderMatch
         """
         now = datetime.now(timezone.utc)
         
-        # Parse scheduled time - FotMob may use different field names
-        scheduled_str = (
-            data.get("startTime") or 
-            data.get("time") or 
-            data.get("kickoff") or 
-            data.get("date")
-        )
-        if scheduled_str:
+        # Parse scheduled time
+        # Priority 1: general.matchTimeUTCDate (matchDetails primary field)
+        # Priority 2-N: existing fallbacks preserved
+        scheduled_at = now
+        general_data = data.get("general") or {}
+
+        # Try general.matchTimeUTCDate first
+        if isinstance(general_data, dict) and "matchTimeUTCDate" in general_data:
             try:
-                # Try parsing as ISO format
-                scheduled_at = datetime.fromisoformat(scheduled_str.replace("Z", "+00:00"))
+                scheduled_at = datetime.fromisoformat(general_data["matchTimeUTCDate"].replace("Z", "+00:00"))
             except:
+                pass
+
+        # Existing fallback logic preserved
+        if scheduled_at == now:
+            status_data = data.get("status") or {}
+            # Try status.utcTime first (existing logic)
+            if isinstance(status_data, dict) and "utcTime" in status_data:
                 try:
-                    # Try parsing as timestamp (milliseconds)
-                    timestamp_ms = int(scheduled_str)
-                    scheduled_at = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+                    scheduled_at = datetime.fromisoformat(status_data["utcTime"].replace("Z", "+00:00"))
                 except:
-                    scheduled_at = now
-        else:
-            scheduled_at = now
+                    pass
+
+            # Fallback to other time fields (existing logic preserved)
+            if scheduled_at == now:
+                scheduled_str = (
+                    data.get("startTime") or
+                    data.get("time") or
+                    data.get("kickoff") or
+                    data.get("date")
+                )
+                if scheduled_str:
+                    try:
+                        # Try parsing as ISO format
+                        scheduled_at = datetime.fromisoformat(scheduled_str.replace("Z", "+00:00"))
+                    except:
+                        try:
+                            # Try parsing as timestamp (milliseconds)
+                            timestamp_ms = int(scheduled_str) if isinstance(scheduled_str, (int, str)) else scheduled_str
+                            scheduled_at = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+                        except:
+                            pass
         
-        # Parse status
         status_data = data.get("status") or {}
+
+        # Parse status from status.reason or status object
         if isinstance(status_data, dict):
-            status_str = status_data.get("type") or status_data.get("reason")
+            # Check for nested reason
+            if "reason" in status_data and isinstance(status_data["reason"], dict):
+                status_str = status_data["reason"].get("shortKey") or status_data["reason"].get("short")
+            else:
+                status_str = status_data.get("type") or status_data.get("reason")
+
+            # Map FotMob status flags to status string
+            if not status_str:
+                if status_data.get("finished"):
+                    status_str = "finished"
+                elif status_data.get("started"):
+                    status_str = "live"
+                elif status_data.get("cancelled"):
+                    status_str = "cancelled"
+                else:
+                    status_str = "not_started"
         else:
             status_str = str(status_data)
+
         status = self._parse_match_status(status_str)
-        
-        # Parse scores - FotMob may nest scores differently
+
+        # Parse teams - FotMob matchDetails structure
+        # Priority 1: general.homeTeam / general.awayTeam
+        # Priority 2: header.teams[0] / header.teams[1]
+        home_team = None
+        away_team = None
+        home_team_id = None
+        away_team_id = None
+        home_team_name = ""
+        away_team_name = ""
+
+        # Try general.homeTeam / awayTeam first (matchDetails primary structure)
+        general_data = data.get("general") or {}
+        if isinstance(general_data, dict):
+            home_team = general_data.get("homeTeam")
+            away_team = general_data.get("awayTeam")
+
+        # Fallback to header.teams if general not available (match list structure)
+        if not home_team or not away_team:
+            header_data = data.get("header") or {}
+            if isinstance(header_data, dict):
+                teams = header_data.get("teams", [])
+                if isinstance(teams, list) and len(teams) >= 2:
+                    home_team = teams[0]
+                    away_team = teams[1]
+
+        # Fallback to old structure for backward compatibility with other endpoints
+        if not home_team:
+            home_team = data.get("home") or data.get("homeTeam") or {}
+        if not away_team:
+            away_team = data.get("away") or data.get("awayTeam") or {}
+
+        # Extract team IDs and names
+        if isinstance(home_team, dict):
+            home_team_id = home_team.get("id")
+            if home_team_id is not None:
+                home_team_id = str(home_team_id)
+            home_team_name = home_team.get("longName") or home_team.get("name", "")
+        else:
+            home_team_name = str(home_team) if home_team else ""
+
+        if isinstance(away_team, dict):
+            away_team_id = away_team.get("id")
+            if away_team_id is not None:
+                away_team_id = str(away_team_id)
+            away_team_name = away_team.get("longName") or away_team.get("name", "")
+        else:
+            away_team_name = str(away_team) if away_team else ""
+
+        # DATA INTEGRITY CHECK: If no valid team IDs, raise ProviderInvalidDataError
+        # Do NOT fabricate team IDs - fail safely
+        if not home_team_id or not away_team_id:
+            match_id_for_error = (
+                data.get("id") or 
+                data.get("matchId") or 
+                (general_data.get("matchId") if isinstance(general_data, dict) else None) or 
+                "unknown"
+            )
+            raise ProviderInvalidDataError(
+                provider_name=self.PROVIDER_NAME,
+                operation="normalize_match",
+                message=f"Missing required team IDs in match data (match_id: {match_id_for_error})"
+            )
+
+        # Parse scores
+        # Priority 1: header.teams[0].score / header.teams[1].score
+        # Priority 2: team object scores (for backward compatibility)
+        # Priority 3: existing fallbacks
         home_score = None
         away_score = None
-        if "score" in data:
+
+        # Try header.teams scores first (most reliable for matchDetails)
+        header_data = data.get("header") or {}
+        if isinstance(header_data, dict):
+            teams = header_data.get("teams", [])
+            if isinstance(teams, list) and len(teams) >= 2:
+                home_score = teams[0].get("score")
+                away_score = teams[1].get("score")
+
+        # Fallback: check team objects (for backward compatibility)
+        if home_score is None and isinstance(home_team, dict):
+            home_score = home_team.get("score")
+        if away_score is None and isinstance(away_team, dict):
+            away_score = away_team.get("score")
+
+        # Fallback: check for separate score object (existing logic preserved)
+        if home_score is None and "score" in data:
             home_score = data["score"].get("home")
             away_score = data["score"].get("away")
-        else:
+        elif home_score is None:
             home_score = data.get("homeScore") or data.get("home_score")
             away_score = data.get("awayScore") or data.get("away_score")
-        
-        # Parse teams
-        home_team = data.get("home") or data.get("homeTeam") or {}
-        away_team = data.get("away") or data.get("awayTeam") or {}
-        
-        if isinstance(home_team, dict):
-            home_team_id = str(home_team.get("id", ""))
-            home_team_name = home_team.get("name", "")
+
+        # Parse competition - use league context if provided, otherwise from match data
+        if league_context:
+            competition_id = str(league_context.get("primaryId")) if league_context.get("primaryId") else str(league_context.get("id")) if league_context.get("id") else None
+            competition_name = league_context.get("name")
         else:
-            home_team_id = ""
-            home_team_name = str(home_team)
-        
-        if isinstance(away_team, dict):
-            away_team_id = str(away_team.get("id", ""))
-            away_team_name = away_team.get("name", "")
-        else:
-            away_team_id = ""
-            away_team_name = str(away_team)
-        
-        # Parse competition
-        league_data = data.get("league") or data.get("competition") or {}
-        if isinstance(league_data, dict):
-            competition_id = str(league_data.get("id")) if league_data.get("id") else None
-            competition_name = league_data.get("name")
-        else:
-            competition_id = None
-            competition_name = str(league_data) if league_data else None
+            # Try general.leagueId / leagueName first (matchDetails structure)
+            general_data = data.get("general") or {}
+            if isinstance(general_data, dict) and general_data.get("leagueId"):
+                competition_id = str(general_data["leagueId"])
+                competition_name = general_data.get("leagueName")
+            else:
+                # Fallback to existing logic
+                league_data = data.get("league") or data.get("competition") or {}
+                if isinstance(league_data, dict):
+                    competition_id = str(league_data.get("id")) if league_data.get("id") else None
+                    competition_name = league_data.get("name")
+                else:
+                    # Final fallback: top-level leagueId
+                    league_id = data.get("leagueId")
+                    competition_id = str(league_id) if league_id else None
+                    competition_name = str(league_data) if league_data else None
         
         # Parse minute
         minute = None
@@ -417,7 +534,12 @@ class FotMobFootballProvider:
         return ProviderMatch(
             # Source metadata
             provider=self.PROVIDER_NAME,
-            source_id=str(data.get("id") or data.get("matchId", "")),
+            source_id=str(
+                data.get("id") or 
+                data.get("matchId") or 
+                (general_data.get("matchId") if isinstance(general_data, dict) else None) or 
+                ""
+            ),
             fetched_at=now,
             source_updated_at=None,  # FotMob doesn't typically provide this
             is_live=is_live or status == MatchStatus.LIVE,
@@ -453,7 +575,15 @@ class FotMobFootballProvider:
             outcome=outcome,
             
             # Match round
-            round=data.get("round") or data.get("matchday"),
+            # Priority 1: general.matchRound
+            # Priority 2: existing fallbacks
+            round=(
+                (lambda: (
+                    int(general_data.get("matchRound"))
+                    if isinstance(general_data, dict) and "matchRound" in general_data and general_data.get("matchRound") is not None
+                    else None
+                ))() or data.get("round") or data.get("matchday")
+            ),
         )
     
     async def get_matches_by_date(self, date_obj: date) -> List[ProviderMatch]:
@@ -501,7 +631,8 @@ class FotMobFootballProvider:
                     league_matches = league.get("matches", [])
                     for match_data in league_matches:
                         try:
-                            match = self._normalize_match(match_data, is_live=False)
+                            # Pass league context for better normalization
+                            match = self._normalize_match(match_data, is_live=False, league_context=league)
                             matches.append(match)
                         except Exception as e:
                             logger.warning(
@@ -540,9 +671,76 @@ class FotMobFootballProvider:
         )
         return matches
     
+    async def get_matches_by_range(
+        self,
+        start_date: date,
+        end_date: date
+    ) -> List[ProviderMatch]:
+        """Get matches in date range.
+
+        FotMob doesn't have a native range endpoint, so we iterate through dates.
+
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            List of ProviderMatch in the range
+
+        Raises:
+            ProviderError: On request failure
+        """
+        from datetime import timedelta
+
+        # Check cache
+        cache_key = (
+            f"{self.PROVIDER_NAME}:matches:range:"
+            f"{start_date.isoformat()}:{end_date.isoformat()}"
+        )
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
+                return cached
+
+        # Iterate through dates and collect matches
+        all_matches = []
+        current_date = start_date
+
+        while current_date <= end_date:
+            try:
+                daily_matches = await self.get_matches_by_date(current_date)
+                all_matches.extend(daily_matches)
+            except ProviderError as e:
+                logger.warning(
+                    f"[{self.PROVIDER_NAME}] Failed to fetch matches for {current_date}: {e}"
+                )
+                # Continue with other dates even if one fails
+
+            current_date += timedelta(days=1)
+
+        # Cache result with TTL based on date range
+        if self.cache:
+            today = date.today()
+            if end_date < today:
+                # Historical data - longer TTL
+                ttl = FINISHED_MATCH_TTL
+            elif start_date > today:
+                # Future data - medium TTL
+                ttl = UPCOMING_FIXTURES_TTL
+            else:
+                # Range includes today - short TTL
+                ttl = LIVE_DATA_TTL
+            self.cache.set(cache_key, all_matches, ttl_seconds=ttl)
+
+        logger.info(
+            f"[{self.PROVIDER_NAME}] Fetched {len(all_matches)} matches for range {start_date} to {end_date}"
+        )
+        return all_matches
+
     async def get_match(self, match_id: str) -> Optional[ProviderMatch]:
         """Get detailed match information.
-        
+
         FotMob typically provides match details through:
         /api/matchDetails?matchId={match_id}
         
