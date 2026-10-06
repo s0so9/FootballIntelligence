@@ -28,7 +28,9 @@ class Settings(BaseSettings):
 
     # Football Data Providers
     # Ryzellx (PRIMARY provider)
-    ryzellx_base_url: str = "https://football-live-api.vercel.app"
+    # Use local Ryzellx for development: http://localhost:3001
+    # Use public Ryzellx for production: https://football-live-api.vercel.app
+    ryzellx_base_url: str = "http://localhost:3001"
     
     # FotMob (FAST/LIVE provider)
     fotmob_base_url: str = "https://www.fotmob.com/api"

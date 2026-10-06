@@ -8,7 +8,9 @@ from app.api.v1.endpoints import matches, live_matches
 api_router = APIRouter(prefix="/api/v1")
 
 # Include endpoint routers
-api_router.include_router(matches.router)
+# IMPORTANT: live_matches must be registered BEFORE matches to prevent
+# /{match_id} from capturing /live as a match_id parameter
 api_router.include_router(live_matches.router)
+api_router.include_router(matches.router)
 
 __all__ = ["api_router"]
