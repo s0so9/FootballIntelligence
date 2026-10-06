@@ -287,6 +287,54 @@ class EloRatingSystem:
         """
         return self._ratings.get(team_id, self.initial_rating)
 
+    def get_rating_at_time(self, team_id: str, at_timestamp: datetime) -> float:
+        """Return historical rating for a team at a specific timestamp.
+        
+        Reconstructs the team's rating as it was at at_timestamp by finding
+        the last processed match before that timestamp.
+        
+        CRITICAL TEMPORAL VALIDITY: This method ensures opponent adjustments
+        use historical ratings, preventing temporal leakage.
+        
+        Args:
+            team_id: Team identifier
+            at_timestamp: The timestamp at which to retrieve the rating
+            
+        Returns:
+            The team's Elo rating as it was at at_timestamp.
+            Returns initial_rating if no matches found before at_timestamp.
+            
+        Algorithm:
+            1. Find last match in self._history where:
+               - played_at < at_timestamp
+               - Either home_team_id or away_team_id == team_id
+            2. Return rating_after from that match
+            3. If no matches found, return initial_rating
+        """
+        # Find the last match involving this team before at_timestamp
+        last_match_result = None
+        
+        for match_result in self._history:
+            # Skip matches at or after the cutoff timestamp
+            if match_result.played_at >= at_timestamp:
+                continue
+            
+            # Check if this match involves the team
+            if match_result.home_team_id == team_id:
+                last_match_result = match_result
+            elif match_result.away_team_id == team_id:
+                last_match_result = match_result
+        
+        # If we found a match, return the rating after that match
+        if last_match_result is not None:
+            if last_match_result.home_team_id == team_id:
+                return last_match_result.home_rating_after
+            else:  # away_team_id == team_id
+                return last_match_result.away_rating_after
+        
+        # No matches found before at_timestamp, return initial rating
+        return self.initial_rating
+
     def get_state(self) -> EloRatingState:
         """Return a snapshot of the current rating state."""
         return EloRatingState(
