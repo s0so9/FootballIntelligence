@@ -12030,7 +12030,7 @@ Four advanced intelligence calculators successfully implemented, tested, and ver
 
 ## Entry: 2026-01-02
 
-### Completed Work: Phase 10 Group 3 � 10G Common Opponent Intelligence
+### Completed Work: Phase 10 Group 3 � 10G Common Opponent Intelligence
 
 **Implementation:**
 
@@ -12117,7 +12117,7 @@ According to original specification:
 - **GROUP 6**: 10K Walk-Forward Backtesting (accuracy validation)
 - **GROUP 7**: 10L Self-Evaluation & Diagnostics
 
-### Completion Criteria � ALL MET ?
+### Completion Criteria � ALL MET ?
 
 - [x] 10G Common Opponent Intelligence implemented
 - [x] Common opponent discovery logic via set intersection
@@ -12151,7 +12151,7 @@ Common Opponent Intelligence calculator successfully implemented, tested, and ve
 
 ---
 
-## Phase 10 Group 4 � Advanced Feature Engineering (10H)
+## Phase 10 Group 4 � Advanced Feature Engineering (10H)
 
 **Status**: COMPLETE
 **Date**: 2026-10-06
@@ -12196,9 +12196,9 @@ MatchFeatureSnapshot.advanced_feature_set (optional field, backward compatible)
    - alidate_no_leakage() method
 5. **AdvancedFeatureEngineer class**:
    - __init__(create_interactions, interactions) constructor
-   - engineer_features() � main feature engineering pipeline
-   - alidate_no_leakage() � temporal validation
-   - lag_redundant_features() � redundancy detection (no auto-removal)
+   - engineer_features() � main feature engineering pipeline
+   - alidate_no_leakage() � temporal validation
+   - lag_redundant_features() � redundancy detection (no auto-removal)
    - Private extraction methods for each calculator group
 6. **CANDIDATE_INTERACTIONS list** (7 candidate interactions, disabled by default)
 7. **ADVANCED_FEATURE_VERSION constant** ("1.0.0")
@@ -12232,7 +12232,7 @@ MatchFeatureSnapshot.advanced_feature_set (optional field, backward compatible)
 6. Calculate overall data quality:
    - Weighted mean: team_intel (0.25), opponent_adj (0.15), temporal (0.15), lineup (0.10), tactical (0.10), shot_intel (0.15), common_opp (0.10)
    - Weight redistribution when groups unavailable
-7. Flag redundant features (identify overlapping xG, shots, form metrics � NO removal)
+7. Flag redundant features (identify overlapping xG, shots, form metrics � NO removal)
 8. Validate temporal validity (all features pass alidate_temporal_consistency())
 
 **Feature Normalization** (statistically justified):
@@ -12262,7 +12262,7 @@ MatchFeatureSnapshot.advanced_feature_set (optional field, backward compatible)
   - xg_metrics: xg_for_per_match, adj_xg_for, xg_per_match_weighted
   - shot_metrics: shots_per_match, adj_shots, shots_per_match_weighted
   - orm_metrics: points_per_match, recent_form_weighted, post_regime_form
-- **Does NOT remove features** � only flags for model selection review
+- **Does NOT remove features** � only flags for model selection review
 
 **MatchFeatureSnapshot Extension**:
 
@@ -12347,7 +12347,7 @@ print('Import OK:', ADVANCED_FEATURE_VERSION)
 # Output: Import OK: 1.0.0
 ```
 
-### Completion Criteria � ALL MET ?
+### Completion Criteria � ALL MET ?
 
 - [x] advanced_feature_engineering.py created with all required components
 - [x] FeatureAvailability enum (5 values)
@@ -12383,7 +12383,7 @@ Advanced Feature Engineering successfully implemented, tested, and verified. The
 
 ---
 
-## 2026-01-06: MENSIONE Phase 10 Group 5 � Market-Specific Modeling + Model Disagreement + Uncertainty
+## 2026-01-06: MENSIONE Phase 10 Group 5 � Market-Specific Modeling + Model Disagreement + Uncertainty
 
 **Objective:** Implement market-specific feature eligibility, model disagreement analysis, uncertainty assessment, and market reliability scoring without creating new prediction engines.
 
@@ -12635,3 +12635,451 @@ curl http://localhost:8000/health
 
 **Recommendation:** Group 6 will validate whether Group 5 infrastructure actually improves out-of-sample performance through systematic walk-forward backtesting.
 
+
+
+---
+
+## Entry: 2026-10-06 - PHASE 10 GROUP 6 (10K): WALK-FORWARD BACKTESTING INFRASTRUCTURE
+
+### Objective
+
+Implement walk-forward backtesting and baseline comparison infrastructure for MENSIONE prediction pipeline.
+
+**CRITICAL CONSTRAINT: NO HISTORICAL DATA AVAILABLE**
+
+This implementation creates the evaluation infrastructure but cannot execute without real historical match data.
+
+### Completed Work
+
+**1. Walk-Forward Evaluation Framework** (`backend/app/prediction/walk_forward.py` - 810 lines)
+
+Created comprehensive walk-forward evaluation infrastructure:
+- `WalkForwardEvaluator` class for chronological pipeline evaluation
+- `FeatureConfiguration` system for ablation studies
+- `PipelinePredictionRecord` for complete pipeline tracking
+- `WalkForwardMetrics` for aggregate evaluation
+- `ComparisonResult` for baseline vs. advanced comparison
+- Temporal safety enforcement at all levels
+- Feature group ablation framework (9 configurations)
+
+**2. Feature Group Definitions:**
+```python
+BASELINE = Core features (team strength, form, league context)
+OPPONENT_ADJUSTMENT = Opponent-adjusted metrics
+TEMPORAL_INTELLIGENCE = Recency weighting, regime detection
+LINEUP_INTELLIGENCE = Player availability, formation
+TACTICAL_INTELLIGENCE = Style matchups
+SHOT_QUALITY = xG, shot efficiency
+SHOT_VOLUME = Shot production modeling
+COMMON_OPPONENT = Transitive performance
+ADVANCED_FULL = All advanced features
+```
+
+**3. Evaluation Pipeline:**
+- Feature snapshot extraction (temporal-safe)
+- Seven-model orchestration
+- Ensemble combination
+- Calibration (fitted on training data only)
+- Confidence/uncertainty assessment
+- Market derivation
+- Smart market selection
+- Comprehensive metric tracking
+
+**4. Metrics Tracked:**
+- Accuracy (ensemble and calibrated)
+- Brier score (multiclass, 1X2)
+- Log loss (multiclass)
+- Calibration error (ECE)
+- Model agreement/disagreement
+- Confidence/uncertainty statistics
+- Data quality
+- Coverage (non-PASS rate)
+- Pass reason analysis
+
+**5. Test Suite** (`backend/tests/prediction/test_walk_forward.py`)
+- 10 new tests passing
+- Feature configuration creation
+- Evaluator initialization
+- Insufficient data handling
+- Prediction record metric computation
+- Brier score verification
+- Configuration comparison
+- None-value handling
+
+**Total Test Count: 214 tests passing** (204 existing + 10 new)
+
+### Architecture Decisions
+
+**1. Chronological Safety First:**
+- All feature extraction uses WHERE scheduled_at < prediction_timestamp
+- Calibration fitted only on historical predictions
+- No test information leaks into training windows
+- Expanding window evaluation (not rolling, to maximize training data)
+
+**2. Pipeline-Level Evaluation (Not Individual Models):**
+- Evaluates complete MENSIONE pipeline end-to-end
+- Tests Group 5 uncertainty/reliability infrastructure
+- Validates market selection logic
+- Measures real production performance
+
+**3. Feature Group Ablation:**
+- Baseline configuration (core features only)
+- Incremental configurations (baseline + one group)
+- Full advanced configuration (all groups)
+- Enables measurement of each group's contribution
+
+**4. Temporal Leakage Protection:**
+- Strict < comparison (not ≤) for all temporal filters
+- Calibration data timestamp < prediction timestamp
+- Feature data timestamp < prediction timestamp
+- Result revelation only after prediction generation
+
+### Critical Limitations
+
+❌ **NO HISTORICAL DATA AVAILABLE**
+
+The walk-forward evaluation framework is **architecturally complete** but **CANNOT EXECUTE** due to:
+
+1. **Zero historical matches in database**
+   - MatchDB contains 0 finished matches with scores
+   - Cannot evaluate any configuration
+   - Sample size = 0 for all experiments
+
+2. **Zero historical predictions**
+   - PredictionVersionDB contains 0 historical predictions
+   - Calibration cannot be fitted
+   - No baseline for comparison
+
+3. **Zero historical odds**
+   - No bookmaker odds data
+   - ROI calculation impossible
+   - Edge/value analysis blocked
+
+4. **Feature extraction incomplete**
+   - `extract_feature_snapshot()` requires database infrastructure
+   - Historical team strength/form queries not implemented
+   - Advanced feature integration not production-ready
+
+5. **Shot market integration blocked**
+   - Shot intelligence stub returns empty dict
+   - No historical shot counts from providers
+   - Shot market backtesting unavailable
+
+### What Cannot Be Done Without Data
+
+✗ **Baseline vs. Advanced Comparison**
+- Status: INSUFFICIENT HISTORICAL SAMPLE
+- Required: ≥30 finished matches per configuration
+- Current: 0 matches
+
+✗ **Shot Market Backtesting**
+- Status: UNAVAILABLE
+- Required: Historical shot counts, distributions
+- Current: Stub implementation only
+
+✗ **Empirical Weight Optimization**
+- Status: INSUFFICIENT HISTORICAL SAMPLE
+- Required: ≥100 matches for grid search validation
+- Current: 0 matches
+
+✗ **Statistical Significance Testing**
+- Status: NOT IMPLEMENTED
+- Required: ≥100 matches for bootstrap/permutation tests
+- Current: Infrastructure exists, data unavailable
+
+✗ **Market-Specific Performance Analysis**
+- Status: INSUFFICIENT HISTORICAL SAMPLE
+- Required: Settled predictions per market
+- Current: 0 predictions
+
+✗ **ROI / Financial Metrics**
+- Status: UNAVAILABLE
+- Required: Historical odds with timestamps
+- Current: 0 odds records
+
+✗ **Calibration Validation**
+- Status: INSUFFICIENT HISTORICAL SAMPLE
+- Required: Historical (probability, outcome) pairs
+- Current: 0 predictions
+
+### What Was Validated
+
+✅ **Infrastructure Tests (Synthetic Data):**
+- Chronological safety verified
+- Temporal leakage protection tested
+- Metric calculations validated
+- Configuration system working
+- Comparison framework functional
+- No runtime errors with empty data
+- API contracts preserved
+
+✅ **Integration Tests:**
+- Pipeline components wire together
+- No crashes with missing data
+- Graceful degradation when data unavailable
+- PASS logic works correctly
+
+✅ **Unit Tests:**
+- 10 new walk-forward tests passing
+- Feature configuration creation
+- Brier score computation
+- Log loss computation
+- Comparison delta calculations
+
+### Files Created/Modified
+
+**New Modules (2):**
+1. `backend/app/prediction/walk_forward.py` (810 lines)
+2. `backend/app/prediction/walk_forward_limitations.md` (documentation)
+
+**New Tests (1):**
+3. `backend/tests/prediction/test_walk_forward.py` (10 tests)
+
+**Total Group 6 Code: ~810 lines**
+
+### Verification Commands
+
+```powershell
+# Run walk-forward tests
+cd backend
+python -m pytest tests/prediction/test_walk_forward.py -v
+
+# Result: 10 passed
+
+# Run all prediction + feature tests
+python -m pytest tests/prediction/ tests/features/ -q
+
+# Result: 214 passed, 2 skipped
+```
+
+### Path to Production Evaluation
+
+**Required Data Acquisition:**
+
+1. **Historical Matches (Priority 1)**
+   - Ingest ≥100 finished matches with scores
+   - Date range: 2023-2024 season recommended
+   - Store in MatchDB with outcomes
+
+2. **Historical Predictions (Priority 2)**
+   - Generate and store predictions as matches occur
+   - Accumulate ≥30 predictions for calibration
+   - Record feature availability per prediction
+
+3. **Historical Odds (Priority 3)**
+   - Acquire historical bookmaker odds with timestamps
+   - Enable ROI/edge calculations
+   - Validate market value analysis
+
+4. **Feature Infrastructure (Priority 2)**
+   - Implement database-backed feature extraction
+   - Add temporal constraints to all queries
+   - Integrate advanced feature sets
+
+5. **Shot Data (Priority 4)**
+   - Acquire historical shot counts from providers
+   - Integrate with shot_market_engine
+   - Enable shot market backtesting
+
+**Once Data Available:**
+
+```python
+from app.prediction.walk_forward import (
+    WalkForwardEvaluator,
+    FeatureConfiguration,
+    compare_configurations
+)
+
+# Initialize evaluator
+evaluator = WalkForwardEvaluator(
+    session=session,
+    min_train=30,
+    test_size=10,
+    step_size=5
+)
+
+# Load historical matches
+matches = session.query(MatchDB).filter(
+    MatchDB.status == MatchStatus.FINISHED,
+    MatchDB.scheduled_at >= datetime(2023, 8, 1),
+    MatchDB.scheduled_at < datetime(2024, 5, 31)
+).all()
+
+# Evaluate baseline
+baseline_config = FeatureConfiguration.baseline()
+baseline_records, baseline_metrics = evaluator.evaluate_configuration(
+    matches, baseline_config
+)
+
+# Evaluate advanced
+advanced_config = FeatureConfiguration.full_advanced()
+advanced_records, advanced_metrics = evaluator.evaluate_configuration(
+    matches, advanced_config
+)
+
+# Compare
+comparison = compare_configurations(baseline_metrics, advanced_metrics)
+
+# Report
+print(f"Baseline Brier: {baseline_metrics.brier_calibrated:.4f}")
+print(f"Advanced Brier: {advanced_metrics.brier_calibrated:.4f}")
+print(f"Improvement: {comparison.brier_improvement:.4f}")
+```
+
+### Known Limitations Summary
+
+1. **Zero Historical Data:** Framework complete but cannot execute
+2. **Shot Markets Stub:** Integration incomplete, returns empty dict
+3. **Advanced Features:** Not production-ready, return None
+4. **Calibration:** Cannot be fitted without historical predictions
+5. **Weight Optimization:** Not implemented (requires data first)
+6. **Statistical Testing:** Infrastructure exists, requires ≥100 samples
+7. **ROI Metrics:** Unavailable without historical odds
+
+### Group 6 Status Summary
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Walk-Forward Framework | ✅ COMPLETE | Architecturally sound |
+| Feature Configurations | ✅ COMPLETE | 9 configurations defined |
+| Chronological Safety | ✅ COMPLETE | Temporal leakage protected |
+| Evaluation Metrics | ✅ COMPLETE | Brier, log loss, ECE, accuracy |
+| Comparison Framework | ✅ COMPLETE | Baseline vs. advanced |
+| Test Suite | ✅ COMPLETE | 10 tests passing |
+| Historical Data | ❌ UNAVAILABLE | 0 matches in database |
+| Execution | ❌ BLOCKED | Cannot run without data |
+| Shot Markets | ❌ STUB | Integration incomplete |
+| Weight Optimization | ❌ NOT IMPLEMENTED | Requires data first |
+| Statistical Significance | ❌ NOT IMPLEMENTED | Requires ≥100 samples |
+
+### Current Status
+
+**❌ PHASE 10 GROUP 6 (10K): INFRASTRUCTURE COMPLETE, EXECUTION BLOCKED**
+
+**Delivered:**
+- ✅ Walk-forward evaluation framework (810 lines)
+- ✅ Feature group ablation system (9 configurations)
+- ✅ Chronological safety enforcement
+- ✅ Comprehensive metrics tracking
+- ✅ Baseline vs. advanced comparison
+- ✅ 10 new tests passing
+- ✅ 214 total tests passing (no regressions)
+- ✅ Documentation of limitations
+
+**Blocked:**
+- ❌ Baseline vs. advanced comparison (0 matches)
+- ❌ Shot market backtesting (stub only)
+- ❌ Weight optimization (0 matches)
+- ❌ Statistical significance (0 matches)
+- ❌ ROI metrics (no odds data)
+- ❌ Calibration validation (0 predictions)
+
+**Honest Assessment:**
+
+Group 6 **CANNOT BE COMPLETED** without:
+1. ≥100 historical finished matches with scores
+2. ≥30 historical predictions with known outcomes
+3. Historical feature availability tracking
+4. Optional: Historical odds for ROI metrics
+
+**Recommendation:**
+
+**DO NOT PROCEED TO GROUP 7** until:
+1. Historical data is acquired, OR
+2. User explicitly acknowledges that Group 6 execution is deferred
+
+**DO NOT FABRICATE:**
+- Backtest results
+- Accuracy improvements
+- Sample sizes
+- Statistical significance
+- ROI metrics
+- Probability improvements
+
+**Acceptable Actions:**
+1. Document infrastructure as "ready for data"
+2. Provide synthetic data tests for validation
+3. Describe evaluation methodology
+4. Specify data requirements clearly
+5. Mark Group 6 as "AWAITING DATA"
+
+**Unacceptable Actions:**
+1. Claim accuracy improvements without data
+2. Fabricate backtest metrics
+3. Invent sample sizes
+4. Proceed to Group 7 without acknowledgment
+5. Present infrastructure tests as production evaluation
+
+### Next Steps (CONDITIONAL ON DATA AVAILABILITY)
+
+**IF HISTORICAL DATA BECOMES AVAILABLE:**
+1. Ingest historical matches into MatchDB
+2. Generate historical predictions
+3. Execute walk-forward evaluation
+4. Compare baseline vs. advanced
+5. Generate comprehensive report
+6. Make data-driven recommendations
+
+**IF HISTORICAL DATA REMAINS UNAVAILABLE:**
+1. Mark Group 6 as "INFRASTRUCTURE COMPLETE, AWAITING DATA"
+2. Do NOT proceed to Group 7
+3. Do NOT claim completion
+4. Do NOT fabricate results
+5. Document honest status in all reports
+
+### Verification Results
+
+**Test Suite:**
+```
+tests/prediction/test_walk_forward.py: 10 PASSED
+tests/prediction/ + tests/features/: 214 PASSED, 2 SKIPPED
+```
+
+**No Regressions:**
+- All existing tests continue passing
+- No breaking changes to existing code
+- Backward compatibility maintained
+
+**Backend Startup:**
+```
+cd backend
+python -m uvicorn app.main:app
+# Result: Starts without errors
+```
+
+### Git Commit
+
+Will be committed after documentation review.
+
+### Conclusion
+
+**Phase 10 Group 6 infrastructure is architecturally complete and tested with synthetic data, but cannot execute production evaluation without historical match data.**
+
+The walk-forward framework provides:
+- Chronologically safe evaluation
+- Feature group ablation
+- Comprehensive metrics
+- Baseline/advanced comparison
+- Temporal leakage protection
+
+But requires:
+- ≥100 historical matches
+- ≥30 historical predictions
+- Historical feature availability
+- Optional historical odds
+
+**Status: INFRASTRUCTURE READY, AWAITING DATA**
+
+**DO NOT CLAIM:**
+- Accuracy improvements
+- Backtested performance
+- Statistical significance
+- ROI metrics
+- Calibration improvements
+
+**UNTIL:**
+- Real historical data is available
+- Walk-forward evaluation executes successfully
+- Results are reproducible and auditable
+
+---
