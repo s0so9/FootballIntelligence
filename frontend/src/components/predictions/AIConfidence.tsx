@@ -1,8 +1,8 @@
 /**
  * AIConfidence Component
  * 
- * MENSIONE AI Confidence indicator with 1-6 money-bag scale.
- * Uses custom CSS icons with MENSIONE green glow that scales by confidence level.
+ * TUTAR X AI Confidence indicator with 1-6 money-bag scale.
+ * Uses custom CSS icons with TUTAR X green glow that scales by confidence level.
  * 
  * Confidence Mapping (0-1 or 0-100):
  * 1/6 (Çok Düşük):  0.00 - 0.16

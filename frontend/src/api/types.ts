@@ -139,7 +139,7 @@ export interface EasyMatchResponse {
 }
 
 /**
- * MENSIONE Pick Response - SmartMarketSelector format
+ * TUTAR X Pick Response - SmartMarketSelector format
  * Can be either BestTip or PassDecision
  */
 export interface MensionePickResponse {

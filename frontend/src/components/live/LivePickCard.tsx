@@ -1,9 +1,9 @@
 /**
  * LivePickCard Component
  * 
- * Displays MENSIONE LIVE PICK or PASS decision with real-time confidence.
+ * Displays TUTAR X LIVE PICK or PASS decision with real-time confidence.
  * Shows signal strength, invalidation warnings, and data quality.
- * Styled with MENSIONE green glow for picks, muted for PASS.
+ * Styled with TUTAR X green glow for picks, muted for PASS.
  */
 
 import type { LivePick, DataQualityLevel } from '../../types/live';
@@ -40,7 +40,7 @@ export default function LivePickCard({
     return (
       <div className="live-pick-card live-pick-card--unavailable">
         <div className="live-pick-badge live-pick-badge--unavailable">
-          MENSIONE LIVE
+          TUTAR X LIVE
         </div>
         <div className="live-pick-card__empty">
           <p className="empty-text">Canlı seçim verisi mevcut değil</p>
@@ -55,7 +55,7 @@ export default function LivePickCard({
     return (
       <div className="live-pick-card live-pick-card--pass">
         <div className="live-pick-badge live-pick-badge--pass">
-          MENSIONE LIVE PASS
+          TUTAR X LIVE PASS
         </div>
         <div className="live-pick-card__header">
           <h3 className="live-pick-card__title">
@@ -88,7 +88,7 @@ export default function LivePickCard({
     return (
       <div className="live-pick-card live-pick-card--invalidated">
         <div className="live-pick-badge live-pick-badge--invalidated">
-          MENSIONE LIVE - GEÇERSİZ
+          TUTAR X LIVE - GEÇERSİZ
         </div>
         <div className="live-pick-card__header">
           <h3 className="live-pick-card__title">
@@ -128,7 +128,7 @@ export default function LivePickCard({
   return (
     <div className={`live-pick-card live-pick-card--active ${signalClass}`}>
       <div className="live-pick-badge live-pick-badge--active">
-        MENSIONE LIVE PICK
+        TUTAR X LIVE PICK
       </div>
       <div className="live-pick-card__header">
         <h3 className="live-pick-card__title">

@@ -1,5 +1,5 @@
 /**
- * MENSIONE Data Visualization Rules - Test Suite
+ * TUTAR X Data Visualization Rules - Test Suite
  * 
  * Verifies that status determination follows the specified rules.
  */

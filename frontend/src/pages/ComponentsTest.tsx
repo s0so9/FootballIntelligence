@@ -1,7 +1,7 @@
 /**
  * Components Test Page
  * 
- * Temporary page for testing MENSIONE components.
+ * Temporary page for testing TUTAR X components.
  * This page demonstrates AIConfidence, MensionePickCard, LiveMatchCard, and MarketRow.
  */
 
@@ -22,7 +22,7 @@ export function ComponentsTest() {
   return (
     <div className="components-test">
       <div className="components-test__header">
-        <h1>MENSIONE Component Test</h1>
+        <h1>TUTAR X Component Test</h1>
         <p>Testing all FEAT-002 components</p>
       </div>
 

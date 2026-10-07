@@ -55,7 +55,7 @@ describe('LivePickCard', () => {
       />
     );
 
-    expect(screen.getByText('MENSIONE LIVE PICK')).toBeInTheDocument();
+    expect(screen.getByText('TUTAR X LIVE PICK')).toBeInTheDocument();
     expect(screen.getByText('Home Team vs Away Team')).toBeInTheDocument();
     expect(screen.getByText('Maç Sonucu')).toBeInTheDocument();
     expect(screen.getByText('Ev Sahibi Kazanır')).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('LivePickCard', () => {
       />
     );
 
-    expect(screen.getByText('MENSIONE LIVE PASS')).toBeInTheDocument();
+    expect(screen.getByText('TUTAR X LIVE PASS')).toBeInTheDocument();
     expect(screen.getByText('Seçim Yapılmadı')).toBeInTheDocument();
     expect(screen.getByText('Yetersiz veri kalitesi')).toBeInTheDocument();
   });
@@ -110,7 +110,7 @@ describe('LivePickCard', () => {
       />
     );
 
-    expect(screen.getByText('MENSIONE LIVE - GEÇERSİZ')).toBeInTheDocument();
+    expect(screen.getByText('TUTAR X LIVE - GEÇERSİZ')).toBeInTheDocument();
     expect(screen.getByText('Seçim Geçersiz Kılındı')).toBeInTheDocument();
     expect(screen.getByText('Kırmızı kart sonrası maç dinamikleri değişti')).toBeInTheDocument();
   });

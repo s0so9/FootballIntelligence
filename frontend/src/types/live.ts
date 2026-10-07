@@ -219,7 +219,7 @@ export interface LiveMarket {
 
 /**
  * Live Pick
- * MENSIONE LIVE PICK or PASS decision
+ * TUTAR X LIVE PICK or PASS decision
  */
 export interface LivePick {
   matchId: string;

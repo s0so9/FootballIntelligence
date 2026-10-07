@@ -1,5 +1,5 @@
 /**
- * MENSIONE Data Visualization Utilities
+ * TUTAR X Data Visualization Utilities
  * 
  * Dynamic status determination for football analytics data.
  * Colors are derived from actual numeric values, never hardcoded.
