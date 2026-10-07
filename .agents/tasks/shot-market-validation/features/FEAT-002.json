@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Complete Shot Market Engine implementation. Transform the stub predict_all_shot_markets() into a full production implementation that extracts shot intelligence from the snapshot, calls ShotProductionCalculator for both teams, generates threshold probabilities (team shots 10+/12+/15+/18+/20+, SOT 3+/4+/5+/6+, total shots 20+/22+/25+/30+), builds ShotMarketPrediction objects with distribution parameters, and handles insufficient data with explicit unavailability reasons.",
+  "status": "completed",
+  "steps": [
+    "Read backend/app/prediction/shot_market_engine.py fully to understand the existing stub. Read backend/app/features/shot_intelligence.py and backend/app/features/shot_production.py to understand the calculator interfaces. Read backend/app/prediction/interfaces.py to understand ShotMarketPrediction, ShotMarketThreshold, ShotMarketType, and DistributionType structures.",
+    "Implement predict_all_shot_markets() in ShotMarketEngine: (1) Check if snapshot.home_shot_intelligence and snapshot.away_shot_intelligence are available. If either is None, return empty dict {}. (2) Extract raw shot counts using ShotIntelligenceCalculator.get_raw_shot_counts() for home and away teams. (3) Call self.shot_calc.calculate() for home team shots and SOT. (4) Call self.shot_calc.calculate() for away team shots and SOT. (5) Call self.shot_calc.calculate_total() for total shots. (6) Build ShotMarketPrediction objects using _build_team_shots_prediction() and _build_team_sot_prediction() (create this helper). (7) Return dict mapping ShotMarketType.TEAM_SHOTS -> [home_pred, away_pred], ShotMarketType.TEAM_SHOTS_ON_TARGET -> [home_sot, away_sot], ShotMarketType.TOTAL_SHOTS -> [total_pred].",
+    "Create _build_team_sot_prediction() helper method following the pattern of _build_team_shots_prediction(). Accept team_id, shot_production (ShotProduction), market_type (ShotMarketType). Extract SOT threshold probabilities (over_3_sot_prob, over_4_sot_prob, over_5_sot_prob, over_6_sot_prob). Build ShotMarketThreshold objects for each. Determine DistributionType from shot_production.sot_distribution_model. Return ShotMarketPrediction with thresholds, distribution parameters, and availability status.",
+    "Create _build_total_shots_prediction() helper method for total shots market. Accept shot_production from calculate_total(). Extract total threshold probabilities (total_over_20_prob, total_over_22_prob, total_over_25_prob, total_over_30_prob). Build ShotMarketThreshold objects. Return ShotMarketPrediction with team_id='total', market_type=ShotMarketType.TOTAL_SHOTS.",
+    "Handle insufficient data scenarios explicitly: When ShotProduction has shots_distribution_model='none' or available=False, set distribution_model=DistributionType.UNAVAILABLE, available=False, unavailability_reason='insufficient_shot_data'. When sample_size < 5, set unavailability_reason='insufficient_historical_sample'. When variance calculation fails, set unavailability_reason='distribution_fitting_failed'.",
+    "Write comprehensive tests in backend/tests/prediction/test_shot_market_engine.py. Test: (1) predict_all_shot_markets() with complete shot intelligence returns all market types, (2) team shots thresholds 10+/12+/15+/18+/20+ present, (3) SOT thresholds 3+/4+/5+/6+ present, (4) total shots thresholds 20+/22+/25+/30+ present, (5) Poisson distribution selected when variance ≈ mean, (6) Negative Binomial selected when variance > mean, (7) insufficient data returns available=False with unavailability_reason, (8) shot intelligence absent in snapshot returns empty dict, (9) distribution parameters (expected_value, variance, sample_size) populated correctly.",
+    "Run shot market engine tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/prediction/test_shot_market_engine.py -v. All tests must pass."
+  ],
+  "acceptance_criteria": [
+    "predict_all_shot_markets() returns Dict[ShotMarketType, List[ShotMarketPrediction]] with all supported market types",
+    "Team shots predictions include thresholds 10+, 12+, 15+, 18+, 20+ with probabilities",
+    "Team SOT predictions include thresholds 3+, 4+, 5+, 6+ with probabilities",
+    "Total shots predictions include thresholds 20+, 22+, 25+, 30+ with probabilities",
+    "Poisson distribution selected when variance ≤ mean, Negative Binomial when variance > mean (traceable in distribution_model field)",
+    "Insufficient data handled with available=False and explicit unavailability_reason",
+    "Distribution parameters (expected_value, variance, sample_size) stored in ShotMarketPrediction",
+    "When shot intelligence absent from snapshot, returns empty dict (not crash)",
+    "All shot market engine tests pass"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/prediction/test_shot_market_engine.py -v — all tests pass",
+    "Test coverage includes: complete data, insufficient data, Poisson selection, NegBin selection, threshold probabilities, unavailability handling"
+  ],
+  "blocked_reason": null,
+  "findings": "Shot Market Engine implementation completed successfully. predict_all_shot_markets() now: (1) accepts snapshot + raw MatchWithStatistics for both teams, (2) extracts raw shot counts using ShotIntelligenceCalculator.get_raw_shot_counts(), (3) calls ShotProductionCalculator for home/away team shots and SOT, (4) calls ShotProductionCalculator.calculate_total() for total shots, (5) builds ShotMarketPrediction objects with all required thresholds. Team shots thresholds: 10+/12+/15+/18+/20+. SOT thresholds: 3+/4+/5+/6+. Total shots thresholds: 20+/22+/25+/30+. Distribution selection: Poisson when variance ≤ mean (+buffer), Negative Binomial when variance > mean. All distribution parameters (expected_value, variance, sample_size, distribution_model) stored in ShotMarketPrediction. Insufficient data scenarios handled with available=False and explicit unavailability_reason (insufficient_shot_data, insufficient_sot_data, insufficient_total_shots_data, insufficient_historical_sample, distribution_fitting_failed). Missing shot intelligence in snapshot returns empty dict (graceful handling, no crash). All 11 tests pass: complete data, team shots thresholds, SOT thresholds, total shots thresholds, Poisson selection, NegBin selection, insufficient data, missing shot intelligence, distribution parameters, no matches data, threshold probability monotonicity."
+}
