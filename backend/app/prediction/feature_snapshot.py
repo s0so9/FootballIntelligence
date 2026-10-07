@@ -12,6 +12,7 @@ from enum import Enum
 
 from app.prediction.data_quality import DataQualityReport
 from app.features.common_opponent_intelligence import CommonOpponentIntelligence
+from app.features.shot_intelligence import ShotIntelligenceMetrics
 
 if TYPE_CHECKING:
     from app.features.advanced_feature_engineering import AdvancedFeatureSet
@@ -212,6 +213,10 @@ class MatchFeatureSnapshot:
     # Common Opponent Intelligence (Phase 10 Group 3)
     common_opponent_intel: Optional[CommonOpponentIntelligence] = None
     
+    # Shot Intelligence (Phase 10 Group 2)
+    home_shot_intelligence: Optional[ShotIntelligenceMetrics] = None
+    away_shot_intelligence: Optional[ShotIntelligenceMetrics] = None
+    
     # Advanced Feature Engineering (Phase 10 Group 4)
     # OPTIONAL: Contains unified engineered features from Groups 1-3
     # If None, snapshot uses existing fields only (backward compatible)
@@ -286,6 +291,30 @@ class MatchFeatureSnapshot:
         # Data quality
         if self.data_quality_report:
             features["data_quality_score"] = self.data_quality_report.overall_score
+        
+        # Shot intelligence - home
+        if self.home_shot_intelligence:
+            hsi = self.home_shot_intelligence
+            features["home_shots_per_match"] = hsi.shots_total_per_match
+            features["home_sot_per_match"] = hsi.shots_on_target_per_match
+            features["home_xg_per_match"] = hsi.xg_for_per_match
+            features["home_xg_against_per_match"] = hsi.xg_against_per_match
+            features["home_xg_per_shot"] = hsi.xg_per_shot
+            features["home_shot_on_target_rate"] = hsi.shot_on_target_rate
+            features["home_shots_against_per_match"] = hsi.shots_against_per_match
+            features["home_shot_share"] = hsi.shot_share
+        
+        # Shot intelligence - away
+        if self.away_shot_intelligence:
+            asi = self.away_shot_intelligence
+            features["away_shots_per_match"] = asi.shots_total_per_match
+            features["away_sot_per_match"] = asi.shots_on_target_per_match
+            features["away_xg_per_match"] = asi.xg_for_per_match
+            features["away_xg_against_per_match"] = asi.xg_against_per_match
+            features["away_xg_per_shot"] = asi.xg_per_shot
+            features["away_shot_on_target_rate"] = asi.shot_on_target_rate
+            features["away_shots_against_per_match"] = asi.shots_against_per_match
+            features["away_shot_share"] = asi.shot_share
         
         return features
     

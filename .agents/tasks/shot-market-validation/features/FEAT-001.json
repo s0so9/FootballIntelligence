@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Historical data coverage inspection and Shot Intelligence integration into MatchFeatureSnapshot. This feature establishes the data foundation: (1) creates a script to inspect the real database for shot coverage, and (2) extends MatchFeatureSnapshot to include shot intelligence fields for downstream prediction. These changes are independent prerequisites for the shot market engine.",
+  "status": "completed",
+  "steps": [
+    "Create backend/scripts/inspect_historical_coverage.py following the pattern in validate_data_coverage.py. Query finished matches, count shot coverage (shots_total IS NOT NULL), SOT coverage (shots_on_target IS NOT NULL), xG coverage (xg IS NOT NULL), date range (MIN/MAX scheduled_at), and competition distribution. Print structured report to console. Use SessionLocal() from app.database. Handle empty database gracefully (print INSUFFICIENT_HISTORICAL_SAMPLE message).",
+    "Run the inspection script: cd backend && .venv\\Scripts\\python.exe scripts/inspect_historical_coverage.py. Verify it connects to database and prints coverage report without errors. If database is empty, verify it prints INSUFFICIENT_HISTORICAL_SAMPLE. Record the actual coverage statistics in FEAT-001 findings field.",
+    "Extend MatchFeatureSnapshot dataclass in backend/app/prediction/feature_snapshot.py. Add two Optional fields after common_opponent_intel: home_shot_intelligence: Optional[ShotIntelligenceMetrics] = None and away_shot_intelligence: Optional[ShotIntelligenceMetrics] = None. Import ShotIntelligenceMetrics from app.features.shot_intelligence. Update get_feature_dict() method to extract shot intelligence features (home_shots_per_match, away_shots_per_match, home_sot_per_match, away_sot_per_match, home_xg_per_match, away_xg_per_match) from these fields when available.",
+    "Extend AdvancedFeatureEngineer.build_snapshot() in backend/app/features/feature_engineering.py (or advanced_feature_engineering.py where build_snapshot lives). After building the snapshot, call ShotIntelligenceCalculator.calculate_shot_metrics() for home and away teams with before_datetime=match.scheduled_at. Populate snapshot.home_shot_intelligence and snapshot.away_shot_intelligence. Handle insufficient data gracefully (metrics will have low data_quality_score).",
+    "Run existing feature engineering tests to confirm no regressions: cd backend && .venv\\Scripts\\python.exe -m pytest tests/features/test_feature_engineering.py -v. All existing tests must pass."
+  ],
+  "acceptance_criteria": [
+    "Script backend/scripts/inspect_historical_coverage.py exists and runs without errors",
+    "Script prints structured coverage report with match counts, shot coverage percentages, date ranges, and competition distribution",
+    "MatchFeatureSnapshot has home_shot_intelligence and away_shot_intelligence Optional fields",
+    "MatchFeatureSnapshot.get_feature_dict() extracts shot intelligence features when available",
+    "AdvancedFeatureEngineer populates shot intelligence fields with temporal validity (before_datetime respected)",
+    "All existing feature engineering tests pass"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe scripts/inspect_historical_coverage.py — runs successfully and prints coverage report",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/features/test_feature_engineering.py -v — all tests pass"
+  ],
+  "blocked_reason": null,
+  "findings": "Historical data coverage: 2,673 finished matches with 933 matches (34.9%) having shot data. Shots Total and Shots on Target coverage: 100% (1,866 records). xG coverage: 36.3% (678 records). Date range: 2024-09-01 to 2026-10-07 (766 days). Database has SUFFICIENT shot data for shot market engine implementation. MatchFeatureSnapshot extended with home_shot_intelligence and away_shot_intelligence fields. AdvancedFeatureEngineer.populate_shot_intelligence() method added to populate these fields with temporal validity. MatchFeatureSnapshot.get_feature_dict() now extracts shot intelligence features (shots_per_match, sot_per_match, xg_per_match, xg_against_per_match, xg_per_shot, shot_on_target_rate, shots_against_per_match, shot_share) for both home and away teams. All 34 existing advanced feature engineering tests pass without regressions."
+}

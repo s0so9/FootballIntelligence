@@ -586,6 +586,46 @@ class AdvancedFeatureEngineer:
         
         return redundancy_groups
     
+    def populate_shot_intelligence(
+        self,
+        snapshot: 'MatchFeatureSnapshot',
+        home_team_id: str,
+        away_team_id: str,
+        matches_with_stats: List[MatchWithStatistics],
+        before_datetime: datetime
+    ) -> None:
+        """Populate shot intelligence fields in MatchFeatureSnapshot.
+        
+        Extends snapshot with home_shot_intelligence and away_shot_intelligence fields.
+        Respects temporal validity: only uses data before before_datetime.
+        
+        Args:
+            snapshot: MatchFeatureSnapshot to populate (modified in-place)
+            home_team_id: Home team database ID
+            away_team_id: Away team database ID
+            matches_with_stats: Historical matches with statistics
+            before_datetime: Temporal cutoff (strict <)
+        """
+        shot_intel_calc = ShotIntelligenceCalculator(session=None, min_matches=3)
+        
+        # Calculate home shot intelligence
+        home_shot_intel = shot_intel_calc.calculate_shot_metrics(
+            team_id=home_team_id,
+            matches_with_stats=matches_with_stats,
+            before_datetime=before_datetime
+        )
+        
+        # Calculate away shot intelligence
+        away_shot_intel = shot_intel_calc.calculate_shot_metrics(
+            team_id=away_team_id,
+            matches_with_stats=matches_with_stats,
+            before_datetime=before_datetime
+        )
+        
+        # Populate snapshot fields
+        snapshot.home_shot_intelligence = home_shot_intel
+        snapshot.away_shot_intelligence = away_shot_intel
+    
     # Helper methods for feature extraction
     
     def _extract_team_metrics(
