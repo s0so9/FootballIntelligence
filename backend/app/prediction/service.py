@@ -164,6 +164,16 @@ class PredictionService:
                 # Database features not available
                 pass
         
+        # NEW: FEAT-003 - Initialize shot market engine
+        self.shot_market_engine = None
+        if db_session:
+            try:
+                from app.prediction.shot_market_engine import ShotMarketEngine
+                self.shot_market_engine = ShotMarketEngine(session=db_session)
+            except ImportError:
+                # Shot market engine not available
+                pass
+        
         # Model metadata
         self.poisson_model_metadata = Model(
             id="poisson_v1",
@@ -871,17 +881,74 @@ class PredictionService:
                 import logging
                 logging.error(f"Market derivation failed: {e}", exc_info=True)
         
+        # NEW: FEAT-003 - STEP 7.5: Predict shot markets if engine available
+        shot_market_predictions = None
+        if self.shot_market_engine and snapshot:
+            try:
+                # Get raw match data for distribution fitting
+                # In real implementation, this would fetch historical matches with shot data
+                # For now, pass None - shot engine will handle gracefully
+                home_matches = None
+                away_matches = None
+                
+                # Try to get raw match data from database if available
+                if self.db_session:
+                    try:
+                        from app.features.advanced_team_intelligence import get_team_matches_with_stats
+                        
+                        # Get matches before prediction timestamp
+                        before_datetime = match.scheduled_at if hasattr(match, 'scheduled_at') else datetime.now()
+                        
+                        home_matches = get_team_matches_with_stats(
+                            session=self.db_session,
+                            team_id=snapshot.home_team_id,
+                            before_datetime=before_datetime
+                        )
+                        
+                        away_matches = get_team_matches_with_stats(
+                            session=self.db_session,
+                            team_id=snapshot.away_team_id,
+                            before_datetime=before_datetime
+                        )
+                    except Exception as match_fetch_error:
+                        import logging
+                        logging.debug(f"Could not fetch match data for shot markets: {match_fetch_error}")
+                
+                # Predict shot markets
+                shot_market_predictions = self.shot_market_engine.predict_all_shot_markets(
+                    snapshot=snapshot,
+                    home_matches=home_matches,
+                    away_matches=away_matches,
+                    before_datetime=match.scheduled_at if hasattr(match, 'scheduled_at') else None
+                )
+            except Exception as e:
+                import logging
+                logging.error(f"Shot market prediction failed: {e}", exc_info=True)
+        
         # STEP 8: Generate TUTAR X PICK using SmartMarketSelector
         mensione_pick = None
         pipeline_version = "1.0.0"
         if market_probs:
             try:
                 from app.prediction.market_selector import BestTip, PassDecision
+                
+                # Extract team names for readable shot market labels
+                home_team_name = None
+                away_team_name = None
+                if hasattr(match, 'home_team') and match.home_team:
+                    home_team_name = match.home_team.name
+                if hasattr(match, 'away_team') and match.away_team:
+                    away_team_name = match.away_team.name
+                
+                # NEW: FEAT-003 - Pass shot market predictions to selector
                 mensione_result = self.market_selector.evaluate_and_select(
                     market_probs=market_probs,
                     confidence_assessment=confidence_assessment,
                     odds_data=odds_data,
-                    pipeline_version=pipeline_version
+                    pipeline_version=pipeline_version,
+                    shot_market_predictions=shot_market_predictions,  # NEW: FEAT-003
+                    home_team_name=home_team_name,  # NEW: FEAT-003
+                    away_team_name=away_team_name   # NEW: FEAT-003
                 )
                 
                 # Convert BestTip or PassDecision to dict for AnalysisContext
@@ -950,6 +1017,7 @@ class PredictionService:
             "btts_probability": None,  # TODO: derive from score distribution
             "score_distribution": calibrated_prediction.score_distribution,
             "markets": market_probs.__dict__ if market_probs else None,
+            "shot_markets": self._serialize_shot_markets(shot_market_predictions) if shot_market_predictions else None,  # NEW: FEAT-003
             "mensione_pick": mensione_pick,
             "confidence": {
                 "overall": confidence_assessment.overall_confidence,
@@ -1243,3 +1311,53 @@ class PredictionService:
             ))
         
         return markets
+    
+    def _serialize_shot_markets(
+        self,
+        shot_market_predictions: Dict
+    ) -> Dict[str, Any]:
+        """Serialize shot market predictions for storage in prediction_data.
+        
+        Args:
+            shot_market_predictions: Dict[ShotMarketType, List[ShotMarketPrediction]]
+            
+        Returns:
+            Serialized dict with shot market data
+        """
+        if not shot_market_predictions:
+            return {}
+        
+        serialized = {}
+        
+        for market_type, predictions in shot_market_predictions.items():
+            market_key = market_type.value if hasattr(market_type, 'value') else str(market_type)
+            serialized[market_key] = []
+            
+            for prediction in predictions:
+                pred_dict = {
+                    "team_id": prediction.team_id,
+                    "market_type": prediction.market_type.value if hasattr(prediction.market_type, 'value') else str(prediction.market_type),
+                    "available": prediction.available,
+                    "unavailability_reason": prediction.unavailability_reason,
+                    "distribution_model": prediction.distribution_model.value if hasattr(prediction.distribution_model, 'value') else str(prediction.distribution_model),
+                    "expected_value": prediction.expected_value,
+                    "variance": prediction.variance,
+                    "sample_size": prediction.sample_size,
+                    "data_quality_score": prediction.data_quality_score,
+                    "thresholds": []
+                }
+                
+                for threshold in prediction.thresholds:
+                    threshold_dict = {
+                        "threshold": threshold.threshold,
+                        "over_probability": threshold.over_probability,
+                        "distribution_model": threshold.distribution_model.value if hasattr(threshold.distribution_model, 'value') else str(threshold.distribution_model),
+                        "expected_value": threshold.expected_value,
+                        "variance": threshold.variance,
+                        "data_quality": threshold.data_quality
+                    }
+                    pred_dict["thresholds"].append(threshold_dict)
+                
+                serialized[market_key].append(pred_dict)
+        
+        return serialized

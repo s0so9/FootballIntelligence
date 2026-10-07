@@ -1,0 +1,13 @@
+{
+  "task_id": "task-shot-market-validation",
+  "task_description": "Complete Shot Market Engine and implement real Walk-Forward Validation with temporal leakage protection",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004",
+    "FEAT-005"
+  ],
+  "blocked_reason": null
+}

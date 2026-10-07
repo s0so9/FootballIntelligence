@@ -182,10 +182,34 @@ async def list_matches(
         )
     
     # Convert domain models to API response schemas
-    # Note: Team enrichment removed for performance - team IDs are included
-    # Frontend can fetch team details separately using /api/v1/teams/{team_id}
+    # Use provider team names if available (stored as private attributes by adapter)
     match_responses = []
     for match in matches:
+        # Check if provider team names are available (from ProviderManagerAdapter)
+        home_team_name = getattr(match, '_provider_home_team_name', None)
+        away_team_name = getattr(match, '_provider_away_team_name', None)
+        
+        # Create lightweight team info if names are available
+        home_team = None
+        if home_team_name:
+            home_team = TeamInfoResponse(
+                id=match.home_team_id,
+                name=home_team_name,
+                short_name=None,
+                code=None,
+                logo_url=None,
+            )
+        
+        away_team = None
+        if away_team_name:
+            away_team = TeamInfoResponse(
+                id=match.away_team_id,
+                name=away_team_name,
+                short_name=None,
+                code=None,
+                logo_url=None,
+            )
+        
         match_response = MatchResponse(
             id=match.id,
             competition_id=match.competition_id,
@@ -193,8 +217,8 @@ async def list_matches(
             home_team_id=match.home_team_id,
             away_team_id=match.away_team_id,
             venue_id=match.venue_id,
-            home_team=None,  # Team enrichment removed for performance
-            away_team=None,  # Team enrichment removed for performance
+            home_team=home_team,
+            away_team=away_team,
             scheduled_at=match.scheduled_at,
             status=match.status,
             home_score=match.home_score,

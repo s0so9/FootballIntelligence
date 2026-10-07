@@ -1,0 +1,45 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Create frontend TypeScript types and API client functions for live match center. Define LiveMatchState, LiveEvent, LiveLineup, LiveStatistics types in frontend/src/types/live.ts. Extend frontend/src/api/client.ts with functions to call new backend endpoints (getLiveMatchDetail, getLiveEvents, getLiveLineups, getLiveStatistics). Handle errors, timeouts, and unavailable data.",
+  "status": "pending",
+  "steps": [
+    "Read frontend/src/api/client.ts to understand existing API client pattern (request() function, ApiError class, timeout handling)",
+    "Read frontend/src/api/types.ts to understand existing type definitions (MatchResponse, MatchPredictionResponse)",
+    "Read frontend/src/types/ directory to see if live.ts already exists (investigation report mentions it)",
+    "Create or extend frontend/src/types/live.ts: Define MatchStatusType ('LIVE' | 'SCHEDULED' | 'HALF_TIME' | 'FINISHED' | 'POSTPONED' | 'CANCELLED' | 'SUSPENDED')",
+    "Define TeamInfo type: id, name, code, logo (all optional except id and name)",
+    "Define LiveStats type: shots, shotsOnTarget, shotsOutsideBox, xG, possession, corners, fouls, offsides, yellowCards, redCards, passes, passAccuracy, tackles, interceptions, saves (all optional)",
+    "Define LiveMatchState type: matchId, provider, providerMatchId, status (MatchStatusType), minute, addedTime, period, homeScore, awayScore, homeTeam, awayTeam, competition, homeStats, awayStats, dataQuality, lastUpdate (all optional except matchId and status)",
+    "Define LiveEvent type: id, type ('GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION' | 'VAR_DECISION' | 'PENALTY' | 'OWN_GOAL'), minute, addedTime, teamId, teamName, playerId, playerName, relatedPlayerId, relatedPlayerName, description, isHome",
+    "Define PlayerInfo type: id, name, jerseyNumber, position (all optional except name)",
+    "Define LineupInfo type: teamId, teamName, formation, startingXI (PlayerInfo[]), substitutes (PlayerInfo[]), coach",
+    "Define LiveLineups type: matchId, homeLineup, awayLineup",
+    "Define LiveStatistics type: matchId, homeStats (LiveStats), awayStats (LiveStats)",
+    "Extend frontend/src/api/client.ts: Add getLiveMatchDetail(matchId: string): Promise<LiveMatchState | null> function that calls GET /api/v1/matches/{matchId}/live",
+    "Add getLiveEvents(matchId: string): Promise<LiveEvent[]> function that calls GET /api/v1/matches/{matchId}/live/events",
+    "Add getLiveLineups(matchId: string): Promise<LiveLineups | null> function that calls GET /api/v1/matches/{matchId}/live/lineups",
+    "Add getLiveStatistics(matchId: string): Promise<LiveStatistics | null> function that calls GET /api/v1/matches/{matchId}/live/stats",
+    "Update existing getLiveMatchDetail function (if it exists from previous implementation) or create it to handle null responses (match not live)",
+    "All API functions: Handle 404 (return null), handle timeout (throw ApiError with detail), handle network errors (throw ApiError)",
+    "Test API client functions manually: Start backend server, use browser console to import and call functions (import { getLiveMatchDetail } from './api/client'; getLiveMatchDetail('test_id')), verify error handling",
+    "Commit: 'feat(frontend): add TypeScript types and API client for live match center'"
+  ],
+  "acceptance_criteria": [
+    "frontend/src/types/live.ts created or extended with all type definitions (LiveMatchState, LiveEvent, LiveLineups, LiveStatistics, TeamInfo, PlayerInfo, LiveStats)",
+    "All types use optional fields (? or | undefined) for data that may be unavailable",
+    "frontend/src/api/client.ts extended with 4 new functions (getLiveMatchDetail, getLiveEvents, getLiveLineups, getLiveStatistics)",
+    "All API functions return Promise with correct return type",
+    "All API functions handle 404 by returning null (not throwing error)",
+    "All API functions handle timeouts and network errors by throwing ApiError with detail message",
+    "TypeScript compilation succeeds: npm run build (in frontend directory) returns 0 exit code",
+    "No TypeScript errors: npx tsc --noEmit returns 0 exit code",
+    "Manual browser console test confirms functions can be called and return correct types or errors"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\.worktrees\\phase21-sportscore\\frontend && npx tsc --noEmit",
+    "cd c:\\FootballIntelligence\\.worktrees\\phase21-sportscore\\frontend && npm run build"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -1,0 +1,42 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Walk-Forward Validation infrastructure and execution. Implements WalkForwardValidator class that iterates through historical finished matches, builds temporal feature snapshots, generates shot market predictions, evaluates against actual results, and compares baseline vs advanced shot intelligence variants. Creates execution script that runs walk-forward validation and writes results JSON. This is the validation phase that determines whether shot intelligence actually improves prediction accuracy.",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/backtesting/__init__.py (new directory). Create backend/app/backtesting/walk_forward.py (new file). Import SessionLocal, Match, MatchStatistic, ShotMarketEngine, AdvancedFeatureEngineer, ShotIntelligenceCalculator, datetime, dataclasses for results.",
+    "Define EvaluationMetrics dataclass in walk_forward.py: sample_size (int), brier_score (Optional[float]), log_loss (Optional[float]), hit_rate (Optional[float]), calibration_error (Optional[float]), mean_probability (Optional[float]), mean_actual (Optional[float]). Define VariantResults dataclass: variant_name (str), thresholds (Dict[int, EvaluationMetrics]) for 10+/12+/15+/18+/20+ thresholds.",
+    "Define ShotMarketVariant enum: BASELINE (simple historical average only), PLUS_OPPONENT (+ opponent suppression), PLUS_RECENCY (+ recency weighting), PLUS_SHOT_QUALITY (+ xG/shot quality), PLUS_HOME_AWAY (+ venue split), FULL (all shot intelligence features).",
+    "Implement WalkForwardValidator class with __init__(session, shot_market_engine, feature_engineer, min_matches=10). Implement validate() method: (1) Query finished matches with status='FINISHED' and shots_total IS NOT NULL, ordered by scheduled_at ASC. (2) For each match (skip first min_matches as warmup): freeze prediction_timestamp = match.scheduled_at, build MatchFeatureSnapshot using only data < prediction_timestamp, call shot_market_engine.predict_all_shot_markets(), store prediction. (3) Load actual match statistics AFTER prediction (shots_total, shots_on_target). (4) Evaluate prediction vs actual for each threshold (10+, 12+, 15+, 18+, 20+): calculate Brier score = (prob - actual)^2 where actual=1 if shots >= threshold else 0. (5) Accumulate metrics across all matches.",
+    "Implement baseline comparison in WalkForwardValidator: For each variant (BASELINE, PLUS_OPPONENT, PLUS_RECENCY, PLUS_SHOT_QUALITY, PLUS_HOME_AWAY, FULL), configure ShotIntelligenceCalculator with appropriate feature flags. BASELINE: use only shots_total_per_match from historical average. PLUS_OPPONENT: add shots_against_per_match. PLUS_RECENCY: add shots_per_match_weighted. PLUS_SHOT_QUALITY: add xg_per_shot. PLUS_HOME_AWAY: add shots_home_per_match / shots_away_per_match split. FULL: use all shot intelligence features. Run walk-forward for each variant and store results separately.",
+    "Implement calculate_evaluation_metrics() helper: Accept list of (probability, actual_binary) tuples. Calculate Brier score = mean((p - a)^2). Calculate log loss = -mean(a*log(p) + (1-a)*log(1-p)) with epsilon for numerical stability. Calculate hit_rate = proportion where (p >= 0.5 and a == 1) or (p < 0.5 and a == 0). Calculate calibration_error using binning approach from calibration.py. Return EvaluationMetrics.",
+    "Create backend/scripts/run_walk_forward.py execution script. Initialize SessionLocal, ShotMarketEngine, AdvancedFeatureEngineer. Create WalkForwardValidator. Call validate() for all variants. Collect VariantResults for each. Write results to c:\\FootballIntelligence\\.agents\\tasks\\shot-market-validation\\results.json with structure: {variants: [{variant_name, thresholds: {10: {brier_score, log_loss, hit_rate, sample_size}, 12: {...}, ...}}], summary: {best_variant, improvement_over_baseline, total_matches_evaluated}}. Print summary to console.",
+    "Handle insufficient data gracefully in run_walk_forward.py: If query returns < min_matches finished matches with shot data, print 'INSUFFICIENT_HISTORICAL_SAMPLE: Found X finished matches with shot data, need at least Y. Shot market walk-forward validation cannot proceed.' Write this message to results.json as {status: 'insufficient_data', message: '...', matches_found: X, matches_required: Y}. Exit with code 0 (not an error, expected condition).",
+    "Add temporal leakage detection in WalkForwardValidator.validate(): Before loading actual match statistics, assert that snapshot.home_shot_intelligence.sample_size < total_historical_matches (target match must be excluded). If this assertion fails, raise TemporalLeakageError with details. This is a validation safety check.",
+    "Write walk-forward tests in backend/tests/backtesting/test_walk_forward.py. Test: (1) validate() processes matches in chronological order, (2) each prediction uses only historical data, (3) baseline variant uses only simple features, (4) FULL variant uses all shot intelligence features, (5) evaluation metrics calculated correctly (Brier, log loss, hit rate), (6) insufficient data handled gracefully, (7) temporal leakage detection triggers when violated.",
+    "Run walk-forward tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/backtesting/test_walk_forward.py -v. All tests must pass.",
+    "Execute walk-forward validation script: cd backend && .venv\\Scripts\\python.exe scripts/run_walk_forward.py. Verify it runs without errors. If insufficient data, verify graceful message. If sufficient data, verify results.json created with evaluation metrics. Print summary showing Brier scores for each variant and threshold."
+  ],
+  "acceptance_criteria": [
+    "WalkForwardValidator class implemented with validate() method",
+    "validate() iterates through finished matches in chronological order",
+    "Each prediction uses strict temporal filtering (before_datetime = match.scheduled_at)",
+    "Baseline variants (BASELINE, PLUS_OPPONENT, PLUS_RECENCY, PLUS_SHOT_QUALITY, PLUS_HOME_AWAY, FULL) implemented and evaluated",
+    "Evaluation metrics (Brier score, log loss, hit rate, calibration error) calculated for each threshold (10+, 12+, 15+, 18+, 20+)",
+    "Temporal leakage detection raises error if target match included in features",
+    "Insufficient data handled gracefully with explicit message (no crash)",
+    "run_walk_forward.py script writes results.json to .agents/tasks/shot-market-validation/ directory",
+    "results.json contains variant comparisons showing which features improve accuracy",
+    "All walk-forward tests pass",
+    "Execution script runs successfully (either completes validation or reports insufficient data)"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/backtesting/test_walk_forward.py -v — all tests pass",
+    "cd backend && .venv\\Scripts\\python.exe scripts/run_walk_forward.py — runs successfully, writes results.json",
+    "Verify results.json exists at c:\\FootballIntelligence\\.agents\\tasks\\shot-market-validation\\results.json",
+    "Verify results.json contains evaluation metrics (Brier, log loss, hit rate) for all variants and thresholds",
+    "If insufficient data, verify graceful message in console and results.json"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

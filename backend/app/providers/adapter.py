@@ -423,7 +423,7 @@ class ProviderManagerAdapter(FootballDataProvider):
             pm: ProviderMatch instance
             
         Returns:
-            Domain Match instance
+            Domain Match instance with _provider_team_names attribute
         """
         # Generate match ID from provider and source_id
         match_id = f"{pm.provider}_{pm.source_id}"
@@ -442,7 +442,7 @@ class ProviderManagerAdapter(FootballDataProvider):
         if pm.venue_name:
             venue_id = f"{pm.provider}_venue_{pm.venue_name}"
         
-        return Match(
+        match = Match(
             id=match_id,
             competition_id=competition_id,
             season_id=season_id,
@@ -460,6 +460,14 @@ class ProviderManagerAdapter(FootballDataProvider):
             outcome=pm.outcome,
             round=pm.round,
         )
+        
+        # Store provider team names as private attribute for use by API layer
+        # This avoids modifying the domain model while preserving names from provider
+        match._provider_home_team_name = pm.home_team_name
+        match._provider_away_team_name = pm.away_team_name
+        match._provider_competition_name = pm.competition_name
+        
+        return match
     
     # === Statistics ===
     

@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-004",
+  "type": "test",
+  "description": "Temporal leakage protection tests for shot markets. Creates comprehensive tests ensuring that shot market predictions never use post-match data (final shots, final SOT, final xG, final result) for pre-match predictions. Tests the critical boundary condition: before_datetime must use strict < comparison to prevent any leakage.",
+  "status": "pending",
+  "steps": [
+    "Read backend/tests/features/test_group2_temporal_leakage.py to understand existing temporal leakage test patterns. Study the test structure: create matches before/after cutoff, call calculator with before_datetime, assert only pre-cutoff matches used.",
+    "Create backend/tests/backtesting/test_temporal_leakage.py (new file). Import pytest, datetime, ShotMarketEngine, ShotIntelligenceCalculator, MatchWithStatistics, Match, TeamMatchStatistic. Create fixtures for mock session, calculator instances.",
+    "Write test_shot_market_excludes_target_match(): Create target match at T, create 5 historical matches before T with shot data, create ShotMarketEngine, call predict_all_shot_markets() with snapshot built at timestamp T. Assert target match statistics (shots_total, shots_on_target) were NOT used in feature calculation. Verify by checking sample_size in ShotMarketPrediction matches number of historical matches (not including target).",
+    "Write test_shot_market_excludes_future_matches(): Create target match at T, create 3 matches before T and 2 matches after T. Call predict_all_shot_markets() with before_datetime=T. Assert sample_size=3 (only pre-T matches), not 5.",
+    "Write test_shot_market_strict_less_than_boundary(): Create target match at exactly T=2024-01-15 12:00:00. Create match at T-1 day (included), match at T exactly (EXCLUDED), match at T+1 day (excluded). Verify prediction uses only T-1 day match. This tests the strict < comparison (not <=).",
+    "Write test_shot_intelligence_snapshot_isolation(): Build MatchFeatureSnapshot for target match. Verify snapshot.home_shot_intelligence and snapshot.away_shot_intelligence were computed using only historical data (check sample_size, check data_quality_score). Verify target match's final shots_total not included in shots_total_per_match calculation.",
+    "Write test_post_match_stats_never_in_pre_match_features(): Create finished match with final statistics (shots_total=15, shots_on_target=7, xg=2.1). Build snapshot for this match at scheduled_at timestamp. Call shot market prediction. Verify prediction uses only previous matches' statistics, NOT the target match's final statistics. Assert by checking sample_size excludes target match.",
+    "Write test_all_shot_calculators_respect_temporal_cutoff(): Integration test verifying ShotIntelligenceCalculator, ShotProductionCalculator, and ShotMarketEngine all use strict < comparison consistently. Create timeline with matches at T-5, T-3, T-1, T (target), T+2. Build shot market prediction with before_datetime=T. Assert sample_size=3 across all calculators.",
+    "Run temporal leakage tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/backtesting/test_temporal_leakage.py -v. All tests must pass."
+  ],
+  "acceptance_criteria": [
+    "test_shot_market_excludes_target_match passes — target match statistics never used in its own prediction",
+    "test_shot_market_excludes_future_matches passes — matches after before_datetime excluded",
+    "test_shot_market_strict_less_than_boundary passes — strict < comparison verified (not <=)",
+    "test_shot_intelligence_snapshot_isolation passes — snapshot isolation verified",
+    "test_post_match_stats_never_in_pre_match_features passes — post-match stats excluded from pre-match features",
+    "test_all_shot_calculators_respect_temporal_cutoff passes — consistent temporal filtering across all calculators",
+    "No temporal leakage detected in any test",
+    "All tests pass on first run (no leakage bugs found)"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/backtesting/test_temporal_leakage.py -v — all tests pass",
+    "Verify test output shows sample_size values matching expected historical match counts (excluding target and future matches)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

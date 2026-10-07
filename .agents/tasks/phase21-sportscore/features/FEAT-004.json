@@ -1,0 +1,45 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Build bird's-eye football pitch component with formation-based player visualization. Create LivePitch.tsx React component using SVG for pitch rendering. Display pitch markings (center circle, penalty boxes, goals, touchlines). Map formation string to player positions on pitch. Display player markers with jersey numbers and short names. Clearly label as 'FORMATION VIEW' (not live tracking). Support responsive design and team colors.",
+  "status": "pending",
+  "steps": [
+    "Read investigation report section 7 'Bird's-Eye Live Pitch' and section 6.5 'Pitch Visualization Spec' for SVG dimensions (1050x680), zone mappings, player marker specs",
+    "Read frontend/src/types/live.ts to understand PlayerInfo and LineupInfo types",
+    "Create frontend/src/components/live/LivePitch.tsx: Functional React component with TypeScript",
+    "Define component props: homeLineup (LineupInfo | undefined), awayLineup (LineupInfo | undefined), homeColor (string, default '#e74c3c'), awayColor (string, default '#3498db')",
+    "Implement formation parser function: parseFormation(formation: string): number[] that converts '4-3-3' to [4, 3, 3] or '4-4-2' to [4, 4, 2]",
+    "Implement position calculator: calculatePlayerPositions(players: PlayerInfo[], formation: number[], isHome: boolean) that returns {x, y}[] array mapping each player to SVG coordinates",
+    "Position logic for home team (left to right): Goalkeeper x=100, defenders x=200, midfielders x=500, forwards x=800, y evenly spaced within zone based on formation line count",
+    "Position logic for away team (right to left, mirrored): Goalkeeper x=950, defenders x=850, midfielders x=550, forwards x=250, y evenly spaced",
+    "Render SVG with viewBox='0 0 1050 680' preserveAspectRatio='xMidYMid meet' for responsive scaling",
+    "Draw pitch markings: Green rect (fill='#2d8a2d'), white lines (stroke='#ffffff', stroke-width='2') for touchlines, halfway line, center circle (r=91.5), penalty boxes (width=165, height=403), six-yard boxes, goal lines",
+    "Render home team player markers: For each player in homeLineup.startingXI, draw circle (r=20, fill=homeColor, stroke='#fff', stroke-width='2'), text for jersey number (font-size=14, font-weight=bold, fill='#fff', centered), text for short name (font-size=10, fill='#fff', below circle)",
+    "Render away team player markers: Same as home but with awayColor and mirrored positions",
+    "Add text overlay in top-right corner: 'FORMAÇÃO' (font-size=16, fill='#fff', stroke='#000', stroke-width='0.5') to clearly indicate this is formation view, NOT live tracking",
+    "Handle unavailable data: If homeLineup or awayLineup is undefined, display message 'Escalação indisponível' (Lineup unavailable) in center of pitch",
+    "Add CSS for component sizing: .live-pitch-container { width: 100%; max-width: 1050px; margin: 0 auto; }",
+    "Test component with mock data: Create test fixture with 4-3-3 formation, render component, verify player markers appear at correct positions, verify formation label visible",
+    "Commit: 'feat(frontend): add bird\\'s-eye football pitch component with formation-based visualization'"
+  ],
+  "acceptance_criteria": [
+    "frontend/src/components/live/LivePitch.tsx created as functional React component with TypeScript",
+    "Component accepts homeLineup, awayLineup, homeColor, awayColor props",
+    "SVG pitch rendered with realistic markings (center circle, penalty boxes, goals, touchlines)",
+    "Formation parser converts strings like '4-3-3', '4-4-2', '3-5-2' to position arrays",
+    "Player markers display jersey numbers (if available) and short names",
+    "Home team positioned left-to-right, away team right-to-left (mirrored)",
+    "Text overlay 'FORMAÇÃO' clearly visible in top-right corner of pitch",
+    "Component handles missing lineup data by displaying 'Escalação indisponível' message",
+    "TypeScript compilation succeeds: npx tsc --noEmit returns 0 exit code",
+    "Component renders without errors when imported in test page",
+    "Visual verification: Pitch looks realistic, players positioned according to formation, colors distinct"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\.worktrees\\phase21-sportscore\\frontend && npx tsc --noEmit",
+    "cd c:\\FootballIntelligence\\.worktrees\\phase21-sportscore\\frontend && npm run dev",
+    "Open browser to http://localhost:5173/live/test (after creating test page in FEAT-005), verify pitch renders correctly"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

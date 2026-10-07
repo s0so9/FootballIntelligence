@@ -330,3 +330,55 @@ class ErrorResponse(BaseModel):
                 "detail": "Match not found"
             }
         }
+
+
+class CompetitionResponse(BaseModel):
+    """Competition response schema."""
+    
+    id: str = Field(..., description="Competition identifier")
+    name: str = Field(..., description="Competition name")
+    country: Optional[str] = Field(None, description="Country code")
+    
+    class Config:
+        """Pydantic configuration."""
+        
+        json_schema_extra = {
+            "example": {
+                "id": "47",
+                "name": "Premier League",
+                "country": "ENG",
+            }
+        }
+
+
+class CompetitionListResponse(BaseModel):
+    """Response schema for competition list endpoint."""
+    
+    competitions: List[CompetitionResponse] = Field(..., description="List of competitions")
+    count: int = Field(..., description="Number of competitions returned")
+    is_development_data: bool = Field(
+        ..., 
+        description="Flag indicating if this is mock/development data"
+    )
+    
+    class Config:
+        """Pydantic configuration."""
+        
+        json_schema_extra = {
+            "example": {
+                "competitions": [
+                    {
+                        "id": "47",
+                        "name": "Premier League",
+                        "country": "ENG",
+                    },
+                    {
+                        "id": "54",
+                        "name": "Bundesliga",
+                        "country": "GER",
+                    }
+                ],
+                "count": 2,
+                "is_development_data": False,
+            }
+        }

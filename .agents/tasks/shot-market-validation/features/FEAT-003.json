@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Integrate shot markets into Smart Market Selector and Prediction Service. Extends market_selector.py to evaluate shot market predictions alongside existing 1X2/BTTS/goals markets, selecting the best shot market or issuing PASS if weak. Integrates shot market prediction into service.py generate_full_prediction() flow, preserving all existing prediction functionality.",
+  "status": "pending",
+  "steps": [
+    "Read backend/app/prediction/market_selector.py to understand the evaluate_and_select() signature and CandidateEvaluation structure. Read backend/app/prediction/service.py to understand generate_full_prediction() flow and where shot markets should be integrated.",
+    "Extend SmartMarketSelector.evaluate_and_select() to accept optional shot_market_predictions parameter: shot_market_predictions: Optional[Dict[ShotMarketType, List[ShotMarketPrediction]]] = None. When provided, iterate through shot markets and evaluate each threshold as a candidate using the same selection logic as existing markets (probability, confidence, data quality, uncertainty).",
+    "Create _evaluate_shot_market_candidate() helper method in SmartMarketSelector. Accept shot_market_prediction: ShotMarketPrediction and threshold: ShotMarketThreshold. Build CandidateEvaluation with market='{team_name} {threshold}+ Shots', selection=format selection string, model_probability=threshold.over_probability, confidence=derived from data_quality and uncertainty, data_quality=threshold.data_quality. Calculate selection_score using existing scoring logic. Check qualification against min_probability, min_confidence thresholds.",
+    "Extend _select_best_qualified_candidate() logic to include shot market candidates in the comparison. Shot markets compete with 1X2/BTTS/goals markets on equal footing based on selection_score. Do NOT simply select highest probability — evaluate calibrated probability, uncertainty, data quality, threshold stability (variance), and sample size.",
+    "Extend PredictionService.generate_full_prediction() in backend/app/prediction/service.py. After calling model_orchestrator and before market selection, call shot_market_engine.predict_all_shot_markets(snapshot). Pass shot market predictions to market_selector.evaluate_and_select(). Store shot market predictions in AnalysisContext for AI Analyst explanation.",
+    "Handle PASS decision for weak shot markets. If best shot market has low confidence (< min_confidence), high uncertainty (> max_uncertainty), or insufficient data (data_quality < threshold), include it in PassDecision.best_market_details with rejection_reason='insufficient_shot_data' or 'weak_shot_conviction' or 'high_shot_uncertainty'.",
+    "Write integration tests in backend/tests/prediction/test_market_selector_shot_integration.py. Test: (1) shot markets evaluated alongside 1X2 markets, (2) best shot market selected when it has highest selection_score, (3) weak shot markets trigger PASS, (4) shot market with insufficient data excluded from candidates, (5) shot market candidate structure matches CandidateEvaluation format.",
+    "Run market selector tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/prediction/test_market_selector_shot_integration.py -v. All tests must pass."
+  ],
+  "acceptance_criteria": [
+    "SmartMarketSelector accepts shot_market_predictions parameter",
+    "Shot market thresholds evaluated as candidates with probability, confidence, data quality, uncertainty",
+    "Shot markets compete with existing markets on selection_score (not just probability)",
+    "Best shot market selected when it has highest qualified selection_score",
+    "Weak shot markets (low confidence, high uncertainty, insufficient data) trigger PASS with explicit reason",
+    "PredictionService.generate_full_prediction() calls shot_market_engine and passes results to market_selector",
+    "Shot market predictions included in AnalysisContext for AI Analyst",
+    "All existing 1X2/BTTS/goals prediction functionality preserved (no regression)",
+    "Integration tests pass"
+  ],
+  "verification": [
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/prediction/test_market_selector_shot_integration.py -v — all tests pass",
+    "cd backend && .venv\\Scripts\\python.exe -m pytest tests/prediction/test_service.py -v — existing service tests still pass (no regression)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

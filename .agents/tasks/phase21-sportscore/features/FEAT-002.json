@@ -1,0 +1,49 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Create backend API endpoints for live match center. Extend existing live_matches.py endpoint to include SportScore provider. Create new endpoints for live match detail (/matches/{id}/live), live events (/matches/{id}/live/events), live lineups (/matches/{id}/live/lineups), live statistics (/matches/{id}/live/stats). Add Pydantic response schemas. Integrate with SportScore provider. Write API tests.",
+  "status": "pending",
+  "steps": [
+    "Read backend/app/api/v1/endpoints/live_matches.py to understand existing live matches endpoint structure, LiveMatchesResponse schema, provider health service integration",
+    "Read backend/app/api/v1/__init__.py to understand router registration pattern",
+    "Read backend/app/domain/live.py to understand LiveMatchState model",
+    "Extend backend/app/api/v1/endpoints/live_matches.py: Add SportScore provider instantiation in get_live_matches() function alongside Ryzellx, FotMob, OpenLigaDB",
+    "Update ProviderManager initialization to include sportscore parameter, pass to manager",
+    "Create backend/app/api/v1/endpoints/live_detail.py: Import FastAPI router, Pydantic models, SportScore provider",
+    "Define LiveMatchDetailResponse schema: match_id, provider, status, minute, added_time, period, home_score, away_score, home_team, away_team, competition, live_statistics, data_quality, timestamp",
+    "Implement GET /matches/{match_id}/live endpoint: Instantiate SportScore provider, call get_live_match_state(match_id), return LiveMatchDetailResponse or 404 if not found",
+    "Define LiveEventsResponse schema: match_id, events List[LiveEvent] with type, minute, added_time, team, player_name, description",
+    "Implement GET /matches/{match_id}/live/events endpoint: Call sportscore.get_match_events(match_id), normalize to LiveEvent objects, return LiveEventsResponse",
+    "Define LiveLineupsResponse schema: match_id, home_lineup (formation, starting_xi, substitutes), away_lineup (formation, starting_xi, substitutes)",
+    "Implement GET /matches/{match_id}/live/lineups endpoint: Call sportscore.get_match_lineups(match_id), return LiveLineupsResponse",
+    "Define LiveStatisticsResponse schema: match_id, home_stats (possession, shots, shots_on_target, corners, fouls, yellow_cards, red_cards), away_stats (same fields)",
+    "Implement GET /matches/{match_id}/live/stats endpoint: Extract statistics from live match state, return LiveStatisticsResponse with None for unavailable fields",
+    "Register new router in backend/app/api/v1/__init__.py: api_router.include_router(live_detail.router) (ensure ordering: live_matches, live_detail, then matches)",
+    "Create backend/tests/api/test_live_endpoints.py: Test GET /matches/live returns 200 with SportScore in provider list, test GET /matches/{id}/live returns LiveMatchDetailResponse, test 404 for non-existent match, test error handling",
+    "Run API tests: cd backend && .venv\\Scripts\\python.exe -m pytest tests/api/test_live_endpoints.py -v, fix failures",
+    "Manually test endpoints: Start FastAPI server (.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload), use curl or browser to test /api/v1/matches/live, /api/v1/matches/{some_id}/live, verify JSON responses",
+    "Commit: 'feat(api): add live match center endpoints with SportScore integration'"
+  ],
+  "acceptance_criteria": [
+    "backend/app/api/v1/endpoints/live_matches.py updated to include SportScore provider in get_live_matches()",
+    "backend/app/api/v1/endpoints/live_detail.py created with 4 new endpoints",
+    "GET /api/v1/matches/{id}/live endpoint returns LiveMatchDetailResponse with live match state",
+    "GET /api/v1/matches/{id}/live/events endpoint returns LiveEventsResponse with match events timeline",
+    "GET /api/v1/matches/{id}/live/lineups endpoint returns LiveLineupsResponse with formations and players",
+    "GET /api/v1/matches/{id}/live/stats endpoint returns LiveStatisticsResponse with live statistics",
+    "All endpoints return 404 with error detail when match not found",
+    "All endpoints handle provider errors gracefully (log error, return 500 with error message)",
+    "Pydantic schemas validate all response data (no runtime validation errors)",
+    "backend/tests/api/test_live_endpoints.py created with at least 6 test cases",
+    "All API tests pass: pytest tests/api/test_live_endpoints.py returns 0 exit code",
+    "Manual testing confirms endpoints return valid JSON and FastAPI /docs shows new endpoints"
+  ],
+  "verification": [
+    "cd c:\\FootballIntelligence\\.worktrees\\phase21-sportscore\\backend && .venv\\Scripts\\python.exe -m pytest tests/api/test_live_endpoints.py -v",
+    "cd c:\\FootballIntelligence\\.worktrees\\phase21-sportscore\\backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &",
+    "Invoke-WebRequest -Uri http://127.0.0.1:8000/api/v1/matches/live -UseBasicParsing | Select-Object StatusCode",
+    "Stop FastAPI server process"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

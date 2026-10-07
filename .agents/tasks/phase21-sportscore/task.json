@@ -1,0 +1,13 @@
+{
+  "task_id": "task-phase21-sportscore-live-center",
+  "task_description": "Implement SportScore API integration with Live Match Center and formation-based bird's-eye pitch visualization. No real-time player tracking (data unavailable). Formation view only.",
+  "status": "pending",
+  "feature_order": [
+    "FEAT-001",
+    "FEAT-002",
+    "FEAT-003",
+    "FEAT-004",
+    "FEAT-005"
+  ],
+  "blocked_reason": null
+}

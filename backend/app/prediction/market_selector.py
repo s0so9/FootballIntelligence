@@ -153,7 +153,9 @@ class SmartMarketSelector:
         pipeline_version: str = "1.0.0",
         uncertainty_assessment=None,  # NEW: Group 5 - Optional[UncertaintyAssessment]
         model_disagreement=None,       # NEW: Group 5 - Optional[ModelDisagreementResult]
-        shot_market_predictions=None   # NEW: Group 5 - Optional[Dict[ShotMarketType, List[ShotMarketPrediction]]]
+        shot_market_predictions=None,  # NEW: FEAT-003 - Optional[Dict[ShotMarketType, List[ShotMarketPrediction]]]
+        home_team_name: Optional[str] = None,  # NEW: FEAT-003 - For readable market names
+        away_team_name: Optional[str] = None   # NEW: FEAT-003 - For readable market names
     ):
         """Evaluate all available markets and select the best tip or issue a PASS.
         
@@ -177,7 +179,7 @@ class SmartMarketSelector:
         model_agreement = confidence_assessment.components.model_agreement
         data_quality = confidence_assessment.components.data_quality
         
-        # Build candidate markets
+        # Build candidate markets (1X2, BTTS, goals)
         candidates = self._build_candidates(
             market_probs=market_probs,
             overall_confidence=overall_confidence,
@@ -185,6 +187,18 @@ class SmartMarketSelector:
             data_quality=data_quality,
             odds_data=odds_data
         )
+        
+        # Add shot market candidates if available
+        if shot_market_predictions:
+            shot_candidates = self._build_shot_market_candidates(
+                shot_market_predictions=shot_market_predictions,
+                overall_confidence=overall_confidence,
+                model_agreement=model_agreement,
+                data_quality=data_quality,
+                home_team_name=home_team_name,
+                away_team_name=away_team_name
+            )
+            candidates.extend(shot_candidates)
         
         if not candidates:
             return PassDecision(
@@ -525,6 +539,157 @@ class SmartMarketSelector:
             'value_contribution': value_contribution,
             'high_base_rate_penalty': high_base_rate_penalty
         }
+    
+    def _build_shot_market_candidates(
+        self,
+        shot_market_predictions: Dict,  # Dict[ShotMarketType, List[ShotMarketPrediction]]
+        overall_confidence: float,
+        model_agreement: float,
+        data_quality: float,
+        home_team_name: Optional[str] = None,
+        away_team_name: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Build shot market candidates from shot market predictions.
+        
+        Shot markets are evaluated using the same scoring logic as traditional markets,
+        considering probability, confidence, data quality, uncertainty, and threshold stability.
+        
+        Weak shot markets (low confidence, high uncertainty, insufficient data) will fail
+        qualification and trigger PASS decision.
+        
+        Args:
+            shot_market_predictions: Dict mapping ShotMarketType -> List[ShotMarketPrediction]
+            overall_confidence: Overall confidence from confidence assessment
+            model_agreement: Model agreement score
+            data_quality: Data quality score
+            home_team_name: Home team name for readable market names
+            away_team_name: Away team name for readable market names
+            
+        Returns:
+            List of candidate dicts with all fields computed
+        """
+        from app.prediction.interfaces import ShotMarketType
+        
+        candidates = []
+        
+        for market_type, predictions in shot_market_predictions.items():
+            for prediction in predictions:
+                # Skip unavailable predictions
+                if not prediction.available:
+                    continue
+                
+                # Determine team name for market label
+                if prediction.team_id == "total":
+                    team_label = "Total"
+                elif prediction.team_id and home_team_name and prediction.team_id in [home_team_name, "home"]:
+                    team_label = home_team_name
+                elif prediction.team_id and away_team_name and prediction.team_id in [away_team_name, "away"]:
+                    team_label = away_team_name
+                else:
+                    team_label = prediction.team_id  # Fallback to ID
+                
+                # Determine market suffix
+                if market_type == ShotMarketType.TEAM_SHOTS:
+                    market_suffix = "Shots"
+                elif market_type == ShotMarketType.TEAM_SHOTS_ON_TARGET:
+                    market_suffix = "Shots on Target"
+                elif market_type == ShotMarketType.TOTAL_SHOTS:
+                    market_suffix = "Shots"
+                elif market_type == ShotMarketType.TOTAL_SHOTS_ON_TARGET:
+                    market_suffix = "Shots on Target"
+                else:
+                    market_suffix = str(market_type.value)
+                
+                # Evaluate each threshold as a candidate
+                for threshold in prediction.thresholds:
+                    # Build market key
+                    market_key = f"SHOT_{market_type.value.upper()}_{prediction.team_id}_{threshold.threshold}PLUS"
+                    
+                    # Build selection text
+                    selection_text = f"{team_label} {threshold.threshold}+ {market_suffix}"
+                    
+                    # Calculate shot-market-specific confidence
+                    # Factors: base confidence, data quality, sample size, threshold stability (variance)
+                    shot_confidence = self._calculate_shot_market_confidence(
+                        base_confidence=overall_confidence,
+                        data_quality=threshold.data_quality,
+                        sample_size=prediction.sample_size,
+                        variance=threshold.variance,
+                        expected_value=threshold.expected_value
+                    )
+                    
+                    # Build candidate using standard logic
+                    candidate = self._build_candidate(
+                        market=market_key,
+                        selection=selection_text,
+                        probability=threshold.over_probability,
+                        confidence=shot_confidence,  # Use shot-specific confidence
+                        model_agreement=model_agreement,
+                        data_quality=threshold.data_quality,  # Use threshold-specific data quality
+                        odds_data=None  # Shot markets typically don't have bookmaker odds
+                    )
+                    
+                    # Mark as shot market for debugging
+                    candidate['market_category'] = 'shot'
+                    candidate['shot_sample_size'] = prediction.sample_size
+                    candidate['shot_variance'] = threshold.variance
+                    candidate['shot_expected_value'] = threshold.expected_value
+                    
+                    candidates.append(candidate)
+        
+        return candidates
+    
+    def _calculate_shot_market_confidence(
+        self,
+        base_confidence: float,
+        data_quality: float,
+        sample_size: int,
+        variance: Optional[float],
+        expected_value: Optional[float]
+    ) -> float:
+        """Calculate confidence for shot market predictions.
+        
+        Shot market confidence considers:
+        - Base confidence from overall pipeline
+        - Data quality from shot production
+        - Sample size (historical matches with shot data)
+        - Threshold stability (penalize high variance)
+        
+        Args:
+            base_confidence: Overall confidence from pipeline
+            data_quality: Shot-specific data quality score
+            sample_size: Number of historical matches
+            variance: Shot distribution variance
+            expected_value: Expected shot count
+            
+        Returns:
+            Shot market confidence score [0.0, 1.0]
+        """
+        # Start with base confidence
+        confidence = base_confidence
+        
+        # Weight by shot-specific data quality
+        confidence = (0.6 * confidence) + (0.4 * data_quality)
+        
+        # Sample size penalty
+        if sample_size < 5:
+            confidence *= 0.5  # Heavy penalty
+        elif sample_size < 10:
+            confidence *= 0.7  # Moderate penalty
+        elif sample_size < 15:
+            confidence *= 0.85  # Light penalty
+        # else: no penalty
+        
+        # Variance/stability penalty (high variance = less reliable)
+        if variance is not None and expected_value is not None and expected_value > 0:
+            coefficient_of_variation = (variance ** 0.5) / expected_value
+            if coefficient_of_variation > 0.8:
+                confidence *= 0.8  # High uncertainty
+            elif coefficient_of_variation > 0.6:
+                confidence *= 0.9  # Moderate uncertainty
+            # else: stable, no penalty
+        
+        return max(0.0, min(1.0, confidence))
     
     def _filter_candidates(
         self,
