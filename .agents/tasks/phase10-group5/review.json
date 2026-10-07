@@ -1,0 +1,70 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "severity": "blocking",
+      "category": "fabricated_data",
+      "title": "Hardcoded uncertainty weights without justification",
+      "description": "UncertaintyEngine uses component weights 0.30/0.25/0.20/0.15/0.10 with no documented rationale, sensitivity analysis, or empirical validation. These appear arbitrary and may not reflect actual uncertainty contribution. Either document reasoning (domain expert consensus, prior research) or strengthen provisional comment acknowledging Group 6 validation pending.",
+      "location": "backend/app/prediction/uncertainty_engine.py lines 62-67",
+      "recommendation": "Add comment: 'Provisional weights pending Group 6 empirical validation. 30% disagreement chosen to emphasize inter-model variance as primary uncertainty signal; other components scaled proportionally.' Or provide actual justification if weights are based on research/domain expertise."
+    },
+    {
+      "severity": "blocking",
+      "category": "implementation_bug",
+      "title": "VERY_HIGH uncertainty check uses string comparison",
+      "description": "market_selector.py line 446 compares uncertainty_level == 'VERY_HIGH' (string literal) instead of UncertaintyLevel.VERY_HIGH (enum). This bypasses type checking and is fragile to enum representation changes.",
+      "location": "backend/app/prediction/market_selector.py line 446",
+      "recommendation": "Change to: if uncertainty_assessment.uncertainty_level == UncertaintyLevel.VERY_HIGH"
+    },
+    {
+      "severity": "blocking",
+      "category": "implementation_bug",
+      "title": "Uncertainty filtering logic inconsistent between filter and pass-reason",
+      "description": "_filter_candidates checks uncertainty_level == 'VERY_HIGH' OR overall_uncertainty >= max_uncertainty (0.7), but _determine_pass_reason checks uncertainty_level in ('HIGH', 'VERY_HIGH') OR overall_uncertainty >= 0.6. This asymmetry means uncertainty=0.65 passes filter but triggers 'high_uncertainty' pass reason (misleading). Uncertainty=0.75 fails numeric check in filter but passes level check, creating redundant logic paths.",
+      "location": "backend/app/prediction/market_selector.py lines 444-454, 517-524",
+      "recommendation": "Simplify to single numeric check: filter and pass-reason both use 'overall_uncertainty >= max_uncertainty'. Remove level checks entirely. This makes behavior predictable with single tunable threshold."
+    },
+    {
+      "severity": "non-blocking",
+      "category": "incomplete_implementation",
+      "title": "Shot market engine returns empty dict without diagnostics",
+      "description": "predict_all_shot_markets is complete stub returning {} without checking whether shot intelligence data exists in snapshot or providing unavailability reason. Silent pass-through makes debugging impossible when shot markets don't appear.",
+      "location": "backend/app/prediction/shot_market_engine.py lines 60-78",
+      "recommendation": "At minimum: check if snapshot has shot_intelligence attribute, return empty dict with log message 'Shot intelligence not available in snapshot' or set unavailability_reason field when shot data absent."
+    },
+    {
+      "severity": "non-blocking",
+      "category": "incomplete_implementation",
+      "title": "Distribution selection documented but not validated",
+      "description": "_build_team_shots_prediction reads shot_production.shots_distribution_model string without verifying distribution was actually fit. If ShotProductionCalculator doesn't populate shots_distribution_model, returns DistributionType.UNAVAILABLE without distinguishing 'distribution fitting failed' from 'never attempted'.",
+      "location": "backend/app/prediction/shot_market_engine.py lines 80-148",
+      "recommendation": "Add validation: if shot_production.shots_distribution_model is None, set unavailability_reason='distribution_not_fit'. Document that ShotProductionCalculator must populate shots_distribution_model field."
+    },
+    {
+      "severity": "non-blocking",
+      "category": "architecture_gap",
+      "title": "Feature eligibility has no enforcement path to models",
+      "description": "MarketFeatureSelector extracts eligible features by market type but no code path consumes filtered feature sets. Models receive full MatchFeatureSnapshot via ModelOrchestrator.run(). Eligibility exists as advisory metadata without runtime enforcement.",
+      "location": "backend/app/prediction/market_features.py, backend/app/prediction/model_orchestrator.py",
+      "recommendation": "Document in market_features.py module docstring: 'Feature eligibility defines which features are ELIGIBLE for each market (for Group 6 feature weight optimization) but does NOT filter features at runtime. Models receive full MatchFeatureSnapshot and extract needed features independently.' Or implement runtime filtering if intended."
+    },
+    {
+      "severity": "non-blocking",
+      "category": "fabricated_data",
+      "title": "Market reliability formula weights lack justification",
+      "description": "MarketReliabilityCalculator weights probability conviction, calibration, uncertainty, and data quality at 0.25/0.25/0.30/0.20 with no documented rationale. Why is uncertainty 30% but calibration only 25%? Formula also double-counts data quality (contributes to uncertainty at 25% weight, then direct at 20% weight = 27.5% total influence).",
+      "location": "backend/app/prediction/market_reliability.py lines 65-69, lines 118-123",
+      "recommendation": "Either explain weighting choice or acknowledge provisional status. Address double-counting: either remove data_quality from reliability formula (already in uncertainty) or remove from uncertainty calculation."
+    },
+    {
+      "severity": "non-blocking",
+      "category": "implementation_bug",
+      "title": "INSUFFICIENT_DATA calibration status unreachable",
+      "description": "CalibrationEngine.status returns INSUFFICIENT_DATA when is_fitted=True AND sample_size < MIN_SAMPLES, but fit() refuses to set is_fitted=True when sample_size < MIN_SAMPLES. Second condition is unreachable. Test test_status_after_insufficient_fit expects INSUFFICIENT_DATA but gets NOT_FITTED (test doesn't assert status, only sample_size, so passes despite wrong status).",
+      "location": "backend/app/prediction/calibration_engine.py lines 251-258, lines 185-192",
+      "recommendation": "Remove INSUFFICIENT_DATA status (collapse to FITTED/NOT_FITTED) OR lower MIN_SAMPLES to 30 and let fit() proceed with warning when 30 <= n < 50, setting is_fitted=True, allowing INSUFFICIENT_DATA status at 30-49 samples."
+    }
+  ],
+  "reviewDoc": "c:\\FootballIntelligence\\.agents\\tasks\\phase10-group5\\2025-01-29-203000-review.md"
+}

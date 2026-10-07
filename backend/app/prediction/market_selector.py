@@ -22,6 +22,8 @@ from typing import Dict, Optional, Any
 
 from app.prediction.market_derivation import MarketProbabilities
 from app.prediction.confidence_engine import ConfidenceAssessment
+from app.prediction.uncertainty_engine import UncertaintyLevel  # NEW: Group 5 - For uncertainty level checks
+
 
 
 @dataclass
@@ -74,7 +76,8 @@ class SmartMarketSelector:
         min_confidence: float = 0.4,
         min_probability: float = 0.5,
         min_edge: float = 0.0,
-        max_risk_level: str = "HIGH"
+        max_risk_level: str = "HIGH",
+        max_uncertainty: float = 0.7  # NEW: Group 5 - reject if uncertainty > threshold
     ):
         """Initialize smart market selector.
         
@@ -83,18 +86,23 @@ class SmartMarketSelector:
             min_probability: Minimum probability threshold [0, 1]
             min_edge: Minimum edge threshold (when odds available)
             max_risk_level: Maximum acceptable risk level ("LOW", "MEDIUM", "HIGH")
+            max_uncertainty: Maximum uncertainty threshold [0, 1] (Group 5)
         """
         self.min_confidence = min_confidence
         self.min_probability = min_probability
         self.min_edge = min_edge
         self.max_risk_level = max_risk_level
+        self.max_uncertainty = max_uncertainty
     
     def evaluate_and_select(
         self,
         market_probs: MarketProbabilities,
         confidence_assessment: ConfidenceAssessment,
         odds_data: Optional[Dict[str, float]] = None,
-        pipeline_version: str = "1.0.0"
+        pipeline_version: str = "1.0.0",
+        uncertainty_assessment=None,  # NEW: Group 5 - Optional[UncertaintyAssessment]
+        model_disagreement=None,       # NEW: Group 5 - Optional[ModelDisagreementResult]
+        shot_market_predictions=None   # NEW: Group 5 - Optional[Dict[ShotMarketType, List[ShotMarketPrediction]]]
     ):
         """Evaluate all available markets and select the best tip or issue a PASS.
         
@@ -103,6 +111,9 @@ class SmartMarketSelector:
             confidence_assessment: ConfidenceAssessment from confidence_engine
             odds_data: Optional dict mapping market_key -> bookmaker_odds
             pipeline_version: Pipeline version for tracking
+            uncertainty_assessment: Optional UncertaintyAssessment (Group 5)
+            model_disagreement: Optional ModelDisagreementResult (Group 5)
+            shot_market_predictions: Optional shot market predictions (Group 5)
             
         Returns:
             BestTip if a qualifying market is found, PassDecision otherwise
@@ -140,7 +151,9 @@ class SmartMarketSelector:
             min_confidence=self.min_confidence,
             min_probability=self.min_probability,
             min_edge=self.min_edge,
-            max_risk_level=self.max_risk_level
+            max_risk_level=self.max_risk_level,
+            uncertainty_assessment=uncertainty_assessment,  # NEW: Group 5
+            max_uncertainty=self.max_uncertainty  # NEW: Group 5
         )
         
         if not qualifying:
@@ -149,7 +162,8 @@ class SmartMarketSelector:
                 candidates=candidates,
                 min_confidence=self.min_confidence,
                 min_probability=self.min_probability,
-                min_edge=self.min_edge
+                min_edge=self.min_edge,
+                uncertainty_assessment=uncertainty_assessment  # NEW: Group 5
             )
             
             # Find best candidate (highest selection_score before filtering)
@@ -425,7 +439,9 @@ class SmartMarketSelector:
         min_confidence: float,
         min_probability: float,
         min_edge: float,
-        max_risk_level: str
+        max_risk_level: str,
+        uncertainty_assessment=None,  # NEW: Group 5 - Optional[UncertaintyAssessment]
+        max_uncertainty: float = 0.7  # NEW: Group 5
     ):
         """Filter candidates by thresholds.
         
@@ -434,6 +450,14 @@ class SmartMarketSelector:
         """
         risk_order = {'LOW': 0, 'MEDIUM': 1, 'HIGH': 2}
         max_risk_value = risk_order.get(max_risk_level, 2)
+        
+        # NEW: Group 5 - Check for high uncertainty (auto-PASS)
+        # Simplified to single numeric threshold check for predictable behavior
+        if uncertainty_assessment is not None:
+            if hasattr(uncertainty_assessment, 'overall_uncertainty'):
+                if uncertainty_assessment.overall_uncertainty >= max_uncertainty:
+                    # Force PASS when uncertainty exceeds threshold
+                    return []
         
         qualifying = []
         for c in candidates:
@@ -463,13 +487,21 @@ class SmartMarketSelector:
         candidates,
         min_confidence: float,
         min_probability: float,
-        min_edge: float
+        min_edge: float,
+        uncertainty_assessment=None  # NEW: Group 5
     ) -> str:
         """Determine the reason for passing on this match.
         
         Returns:
             Pass reason string
         """
+        # NEW: Group 5 - Check for high uncertainty first
+        # Simplified to single numeric threshold for consistency with filter
+        if uncertainty_assessment is not None:
+            if hasattr(uncertainty_assessment, 'overall_uncertainty'):
+                if uncertainty_assessment.overall_uncertainty >= max_uncertainty:
+                    return "high_uncertainty"
+        
         if not candidates:
             return "insufficient_data"
         

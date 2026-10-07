@@ -5,7 +5,9 @@ along with supporting data structures for model outputs, availability, and metad
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field, field_validator
 
@@ -167,3 +169,62 @@ class PredictionModel(ABC):
             (requirements_met, missing_requirements)
         """
         pass
+
+
+# ============================================================================
+# SHOT MARKET STRUCTURES (Phase 10 Group 5)
+# ============================================================================
+
+
+class ShotMarketType(str, Enum):
+    """Shot market types."""
+    TEAM_SHOTS = "team_shots"
+    TEAM_SHOTS_ON_TARGET = "team_shots_on_target"
+    TOTAL_SHOTS = "total_shots"
+    TOTAL_SHOTS_ON_TARGET = "total_shots_on_target"
+
+
+class DistributionType(str, Enum):
+    """Statistical distribution used for shot modeling."""
+    POISSON = "poisson"
+    NEGATIVE_BINOMIAL = "negative_binomial"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass
+class ShotMarketThreshold:
+    """Shot market threshold definition with probability.
+    
+    Represents P(X >= threshold) for a specific shot count threshold.
+    """
+    threshold: int  # e.g., 10, 12, 15, 18, 20 for shots
+    over_probability: float  # P(X >= threshold)
+    distribution_model: DistributionType
+    expected_value: Optional[float] = None
+    variance: Optional[float] = None
+    data_quality: float = 0.0
+
+
+@dataclass
+class ShotMarketPrediction:
+    """Shot market prediction with threshold probabilities.
+    
+    Contains distribution parameters and probabilities for multiple thresholds.
+    """
+    team_id: str
+    market_type: ShotMarketType
+    thresholds: List[ShotMarketThreshold]
+    
+    # Distribution parameters
+    distribution_model: DistributionType
+    expected_value: Optional[float] = None
+    variance: Optional[float] = None
+    
+    # Availability
+    available: bool = True
+    unavailability_reason: Optional[str] = None
+    
+    # Provenance
+    sample_size: int = 0
+    data_quality_score: float = 0.0
+    model_id: str = "shot_market_v1"

@@ -17,7 +17,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Tuple
+from enum import Enum
+from typing import List, Optional, Tuple, Dict, Any
 import warnings
 
 # Optional sklearn import (graceful degradation if not available)
@@ -30,6 +31,18 @@ except ImportError:
     warnings.warn(
         "sklearn not available. CalibrationEngine will return uncalibrated probabilities."
     )
+
+
+class CalibrationStatus(str, Enum):
+    """Calibration status for tracking calibrator state.
+    
+    FITTED: Calibrator has been fitted with sufficient data (>= MIN_SAMPLES)
+    INSUFFICIENT_DATA: Calibrator fitted but with insufficient data (< MIN_SAMPLES)
+    NOT_FITTED: Calibrator has never been fitted
+    """
+    FITTED = "fitted"
+    INSUFFICIENT_DATA = "insufficient_data"
+    NOT_FITTED = "not_fitted"
 
 
 @dataclass
@@ -87,9 +100,18 @@ class IsotonicCalibration:
     
     Uses sklearn's IsotonicRegression to fit a monotonic mapping
     from predicted probabilities to calibrated probabilities.
+    
+    Sample Size Thresholds:
+    - MIN_SAMPLES = 30: Minimum to attempt fitting (will fit with warning)
+    - RECOMMENDED_SAMPLES = 50: Recommended minimum for reliable calibration
+    
+    When 30 <= n < 50: Calibrator fits but status = INSUFFICIENT_DATA
+    When n >= 50: Calibrator fits and status = FITTED
+    When n < 30: Calibrator does not fit, status = NOT_FITTED
     """
     
-    MIN_SAMPLES = 50
+    MIN_SAMPLES = 30  # Minimum to attempt fitting
+    RECOMMENDED_SAMPLES = 50  # Recommended minimum for reliable calibration
     
     def __init__(self):
         self.calibrator: Optional[IsotonicRegression] = None
@@ -122,6 +144,13 @@ class IsotonicCalibration:
                 "Calibrator will not be fitted."
             )
             return
+        
+        # Warn if below recommended threshold but still fit
+        if len(data) < self.RECOMMENDED_SAMPLES:
+            warnings.warn(
+                f"Borderline sample size for calibration: {len(data)} < {self.RECOMMENDED_SAMPLES}. "
+                "Calibrator will be fitted but may be unreliable. Status will be INSUFFICIENT_DATA."
+            )
         
         # Fit isotonic regression
         self.calibrator = IsotonicRegression(out_of_bounds="clip")
@@ -156,9 +185,18 @@ class PlattCalibration:
     
     Fits a logistic regression model to map predicted probabilities
     to calibrated probabilities.
+    
+    Sample Size Thresholds:
+    - MIN_SAMPLES = 30: Minimum to attempt fitting (will fit with warning)
+    - RECOMMENDED_SAMPLES = 50: Recommended minimum for reliable calibration
+    
+    When 30 <= n < 50: Calibrator fits but status = INSUFFICIENT_DATA
+    When n >= 50: Calibrator fits and status = FITTED
+    When n < 30: Calibrator does not fit, status = NOT_FITTED
     """
     
-    MIN_SAMPLES = 50
+    MIN_SAMPLES = 30  # Minimum to attempt fitting
+    RECOMMENDED_SAMPLES = 50  # Recommended minimum for reliable calibration
     
     def __init__(self):
         self.calibrator: Optional[LogisticRegression] = None
@@ -191,6 +229,13 @@ class PlattCalibration:
                 "Calibrator will not be fitted."
             )
             return
+        
+        # Warn if below recommended threshold but still fit
+        if len(data) < self.RECOMMENDED_SAMPLES:
+            warnings.warn(
+                f"Borderline sample size for calibration: {len(data)} < {self.RECOMMENDED_SAMPLES}. "
+                "Calibrator will be fitted but may be unreliable. Status will be INSUFFICIENT_DATA."
+            )
         
         # Fit logistic regression
         import numpy as np
@@ -249,11 +294,55 @@ class CalibrationEngine:
             self.calibrator = PlattCalibration()
         
         self.metrics: Optional[CalibrationMetrics] = None
+        self._calibration_sample_size: int = 0
+        self._fitted_at: Optional[datetime] = None
     
     @property
     def is_fitted(self) -> bool:
         """Whether engine has been fitted."""
         return self.calibrator.is_fitted
+    
+    @property
+    def status(self) -> CalibrationStatus:
+        """Get calibration status.
+        
+        Returns:
+            CalibrationStatus enum value
+            - FITTED: is_fitted=True and sample_size >= RECOMMENDED_SAMPLES (50)
+            - INSUFFICIENT_DATA: is_fitted=True but sample_size < RECOMMENDED_SAMPLES (30-49)
+            - NOT_FITTED: is_fitted=False (never fitted or sample_size < MIN_SAMPLES)
+        """
+        if not self.calibrator.is_fitted:
+            return CalibrationStatus.NOT_FITTED
+        # Use RECOMMENDED_SAMPLES for the threshold, not MIN_SAMPLES
+        # This makes INSUFFICIENT_DATA reachable when 30 <= n < 50
+        if self._calibration_sample_size < self.calibrator.RECOMMENDED_SAMPLES:
+            return CalibrationStatus.INSUFFICIENT_DATA
+        return CalibrationStatus.FITTED
+    
+    @property
+    def calibration_sample_size(self) -> int:
+        """Get number of samples used for calibration.
+        
+        Returns:
+            Sample size
+        """
+        return self._calibration_sample_size
+    
+    def get_status_metadata(self) -> Dict[str, Any]:
+        """Return calibration status metadata.
+        
+        Returns:
+            Dictionary with status, sample size, fitted time, etc.
+        """
+        return {
+            "status": self.status.value,
+            "sample_size": self._calibration_sample_size,
+            "fitted_at": self._fitted_at.isoformat() if self._fitted_at else None,
+            "is_fitted": self.is_fitted,
+            "method": self.method,
+            "min_samples_required": self.calibrator.MIN_SAMPLES
+        }
     
     def fit(
         self,
@@ -277,6 +366,7 @@ class CalibrationEngine:
             for prob, outcome, ts in zip(
                 data.predicted_probs, data.actual_outcomes, data.timestamps
             ):
+                # STRICT: Only data BEFORE cutoff_date (< not <=)
                 if ts < cutoff_date:
                     filtered_probs.append(prob)
                     filtered_outcomes.append(outcome)
@@ -288,11 +378,16 @@ class CalibrationEngine:
                 timestamps=filtered_times
             )
         
+        # Store sample size
+        self._calibration_sample_size = len(data)
+        
         # Fit calibrator
         self.calibrator.fit(data)
         
-        # Calculate metrics if fitted
+        # Record fit time
         if self.calibrator.is_fitted:
+            self._fitted_at = datetime.utcnow()
+            # Calculate metrics
             self.metrics = self._calculate_metrics(data)
     
     def calibrate(self, prob: float) -> float:
@@ -345,3 +440,70 @@ class CalibrationEngine:
             n_samples=n,
             is_reliable=(n >= self.calibrator.MIN_SAMPLES)
         )
+
+
+# ============================================================================
+# MARKET-SPECIFIC CALIBRATION (Phase 10 Group 5 - Stub for Group 6)
+# ============================================================================
+
+
+class MarketSpecificCalibration:
+    """Market-specific calibration manager (stub for future Group 6 implementation).
+    
+    This class provides the infrastructure for per-market calibration but does not
+    implement the full training/validation logic, which will be added in Group 6
+    through walk-forward backtesting.
+    """
+    
+    def __init__(self):
+        """Initialize market-specific calibration manager."""
+        self.calibrators: Dict[str, CalibrationEngine] = {}
+    
+    def register_market(self, market_type: str, engine: CalibrationEngine) -> None:
+        """Register calibrator for a market type.
+        
+        Args:
+            market_type: Market type identifier (e.g., "1x2", "over_under")
+            engine: Calibration engine for this market
+        """
+        self.calibrators[market_type] = engine
+    
+    def get_calibrator(self, market_type: str) -> Optional[CalibrationEngine]:
+        """Get calibrator for market type.
+        
+        Args:
+            market_type: Market type identifier
+            
+        Returns:
+            CalibrationEngine if registered, None otherwise
+        """
+        return self.calibrators.get(market_type)
+    
+    def calibrate_for_market(self, market_type: str, prob: float) -> float:
+        """Calibrate probability for specific market.
+        
+        Args:
+            market_type: Market type identifier
+            prob: Raw probability [0, 1]
+            
+        Returns:
+            Calibrated probability [0, 1] (or uncalibrated if no calibrator registered)
+        """
+        calibrator = self.get_calibrator(market_type)
+        if calibrator is None or not calibrator.is_fitted:
+            return prob  # Return uncalibrated
+        return calibrator.calibrate(prob)
+    
+    def get_market_status(self, market_type: str) -> CalibrationStatus:
+        """Get calibration status for a market.
+        
+        Args:
+            market_type: Market type identifier
+            
+        Returns:
+            CalibrationStatus enum value
+        """
+        calibrator = self.get_calibrator(market_type)
+        if calibrator is None:
+            return CalibrationStatus.NOT_FITTED
+        return calibrator.status

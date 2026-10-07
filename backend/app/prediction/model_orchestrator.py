@@ -99,6 +99,11 @@ class ModelOrchestrationResult:
     execution_metadata: Dict[str, Any] = field(default_factory=dict)
     orchestration_timestamp: datetime = field(default_factory=datetime.utcnow)
     
+    # NEW: Group 5 fields (Optional for backward compatibility)
+    model_disagreement: Optional[Any] = None  # ModelDisagreementResult
+    uncertainty_assessment: Optional[Any] = None  # UncertaintyAssessment
+    shot_market_predictions: Optional[Dict[Any, List[Any]]] = None  # Dict[ShotMarketType, List[ShotMarketPrediction]]
+    
     @property
     def has_predictions(self) -> bool:
         """Check if at least one model produced a prediction."""
