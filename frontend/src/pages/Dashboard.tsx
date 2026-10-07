@@ -61,6 +61,44 @@ function parsePickMarket(market: string | undefined, selection: string | undefin
   };
 }
 
+/**
+ * Execute promises with bounded concurrency.
+ * Limits the number of simultaneously executing promises.
+ * 
+ * @param tasks - Array of promise-returning functions
+ * @param concurrencyLimit - Maximum number of concurrent executions
+ * @returns Promise that resolves when all tasks complete
+ */
+async function executeWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrencyLimit: number
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = [];
+  const executing: Promise<void>[] = [];
+  
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    
+    const promise = task()
+      .then(value => {
+        results[i] = { status: 'fulfilled', value };
+      })
+      .catch(reason => {
+        results[i] = { status: 'rejected', reason };
+      });
+    
+    executing.push(promise);
+    
+    if (executing.length >= concurrencyLimit) {
+      await Promise.race(executing);
+      executing.splice(0, executing.findIndex(p => p === promise) + 1);
+    }
+  }
+  
+  await Promise.all(executing);
+  return results;
+}
+
 export function Dashboard() {
   const [mensionePicksData, setMensionePicksData] = useState<MensionePickData[]>([]);
   const [liveMatches, setLiveMatches] = useState<LiveMatch[]>([]);
@@ -88,21 +126,23 @@ export function Dashboard() {
         if (!isMounted) return;
         
         const matches = matchesResponse.matches;
-        console.log(`[Dashboard] Found ${matches.length} matches, fetching predictions in parallel...`);
+        console.log(`[Dashboard] Found ${matches.length} matches, fetching predictions with bounded concurrency (max 6 concurrent)...`);
 
-        // Fetch predictions in PARALLEL (not sequential) for all matches
-        // Use Promise.allSettled to not block on failures
-        const predictionPromises = matches.map(async (match) => {
-          try {
-            const prediction = await getMatchPrediction(match.id);
-            return { match, prediction, success: true as const };
-          } catch (err) {
-            console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
-            return { match, error: err, success: false as const };
-          }
-        });
+        // Create prediction fetch tasks (lazy - not executed yet)
+        const predictionTasks = matches.map(match => 
+          () => getMatchPrediction(match.id, abortController.signal)
+            .then(prediction => ({ match, prediction, success: true as const }))
+            .catch(err => {
+              // Only log if not aborted
+              if (!abortController.signal.aborted) {
+                console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
+              }
+              return { match, error: err, success: false as const };
+            })
+        );
 
-        const results = await Promise.allSettled(predictionPromises);
+        // Execute with bounded concurrency (max 6 simultaneous requests)
+        const results = await executeWithConcurrency(predictionTasks, 6);
         
         if (!isMounted) return;
 

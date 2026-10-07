@@ -31,6 +31,9 @@ export class ApiError extends Error {
 
 /**
  * Make an HTTP request to the API with timeout.
+ * 
+ * @param endpoint - API endpoint path
+ * @param options - Fetch options including optional signal for cancellation
  */
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -38,6 +41,16 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   // Create abort controller for timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  // If caller provided an AbortSignal, listen to it
+  const callerSignal = options?.signal;
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      clearTimeout(timeoutId);
+      throw new DOMException('Request was aborted', 'AbortError');
+    }
+    callerSignal.addEventListener('abort', () => controller.abort());
+  }
 
   try {
     const response = await fetch(url, {
@@ -187,9 +200,15 @@ export async function getMatch(matchId: string): Promise<MatchDetailResponse> {
 
 /**
  * Get prediction for a match.
+ * 
+ * @param matchId - Match ID
+ * @param signal - Optional AbortSignal for request cancellation
  */
-export async function getMatchPrediction(matchId: string): Promise<MatchPredictionResponse> {
-  return request<MatchPredictionResponse>(`/matches/${matchId}/prediction`);
+export async function getMatchPrediction(
+  matchId: string,
+  signal?: AbortSignal
+): Promise<MatchPredictionResponse> {
+  return request<MatchPredictionResponse>(`/matches/${matchId}/prediction`, { signal });
 }
 
 /**
