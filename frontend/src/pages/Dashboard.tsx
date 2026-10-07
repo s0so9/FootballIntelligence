@@ -72,6 +72,9 @@ export function Dashboard() {
   const { isInCombine, toggleCombine, combineItems, removeFromCombine, clearCombine } = useCombine();
 
   useEffect(() => {
+    let isMounted = true;
+    const abortController = new AbortController();
+
     async function fetchDashboardData() {
       try {
         setLoading(true);
@@ -81,47 +84,75 @@ export function Dashboard() {
 
         // Fetch upcoming matches (7 days)
         const matchesResponse = await getUpcomingMatches(7);
+        
+        if (!isMounted) return;
+        
         const matches = matchesResponse.matches;
+        console.log(`[Dashboard] Found ${matches.length} matches, fetching predictions in parallel...`);
 
-        console.log(`[Dashboard] Found ${matches.length} matches, fetching predictions...`);
+        // Fetch predictions in PARALLEL (not sequential) for all matches
+        // Use Promise.allSettled to not block on failures
+        const predictionPromises = matches.map(async (match) => {
+          try {
+            const prediction = await getMatchPrediction(match.id);
+            return { match, prediction, success: true as const };
+          } catch (err) {
+            console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
+            return { match, error: err, success: false as const };
+          }
+        });
 
-        // Fetch predictions for each match and filter for mensione_pick
+        const results = await Promise.allSettled(predictionPromises);
+        
+        if (!isMounted) return;
+
+        // Filter for successful predictions with mensione_pick (not PASS)
         const picksData: MensionePickData[] = [];
         let failedCount = 0;
         let insufficientDataCount = 0;
-        
-        for (const match of matches) {
-          try {
-            const prediction = await getMatchPrediction(match.id);
+
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value.success) {
+            const { match, prediction } = result.value;
             
             if (prediction.mensione_pick && !prediction.mensione_pick.pass_decision) {
-              picksData.push({
-                match,
-                prediction, // Store full prediction, not just pick
-              });
+              picksData.push({ match, prediction });
             }
-          } catch (err) {
+          } else {
             failedCount++;
-            // Check if it's a 400 "Insufficient data" error
-            if (err instanceof Error && err.message.includes('Insufficient data')) {
-              insufficientDataCount++;
+            // Check for insufficient data errors
+            if (result.status === 'fulfilled' && !result.value.success) {
+              const error = result.value.error;
+              if (error instanceof Error && error.message.includes('Insufficient data')) {
+                insufficientDataCount++;
+              }
             }
-            // Skip match if prediction fails
-            console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
           }
         }
 
         console.log(`[Dashboard] Successfully fetched ${picksData.length} picks (${failedCount} failed, ${insufficientDataCount} insufficient data)`);
-        setMensionePicksData(picksData);
+        
+        if (isMounted) {
+          setMensionePicksData(picksData);
+        }
       } catch (err) {
-        console.error('[Dashboard] Error fetching dashboard data:', err);
-        setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu');
+        if (isMounted) {
+          console.error('[Dashboard] Error fetching dashboard data:', err);
+          setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     fetchDashboardData();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, []);
 
   // Fetch live matches and poll every 20 seconds
