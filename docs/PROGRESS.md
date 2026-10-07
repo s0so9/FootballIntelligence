@@ -14259,3 +14259,75 @@ selection_score = base_score + probability_contribution + value_contribution
 **Value-driven selection:** Markets now compete on calibrated_probability + edge + reliability, not just raw probability
 
 The OVER_0.5 dominance issue is **SOLVED**.
+
+---
+## Entry: 2026-12-14 - Matches Page: League-First Loading and Team Name Fix
+
+### Task
+
+Fix the Matches page loading flow to use league-first architecture and correct team name normalization bugs where raw IDs were displayed instead of team names.
+
+### Completed Work
+
+**Backend:**
+1. Updated `backend/app/api/v1/endpoints/competitions.py`:
+   - Added clarifying comment: "Curated major-league catalog — FotMob provider does not expose a competition catalog API"
+   - Verified `is_development_data` flag uses correct provider method
+
+2. Created `backend/tests/api/test_competitions.py`:
+   - 6 comprehensive tests for competition endpoint
+   - Tests response structure, field types, uniqueness
+   - All tests passing
+
+**Frontend Types:**
+3. Updated `frontend/src/api/types.ts`:
+   - Added `CompetitionResponse` interface (id, name, country)
+   - Added `CompetitionListResponse` interface (competitions, count, is_development_data)
+   - No `any` types used
+
+**Frontend API Client:**
+4. Updated `frontend/src/api/client.ts`:
+   - Added `getCompetitions()` function
+   - Imports `CompetitionListResponse` type
+   - Uses existing request helper with timeout and error handling
+
+**Frontend Components:**
+5. Created `frontend/src/components/LeagueSelector.tsx`:
+   - League selection component with TUTAR X visual language
+   - Supports loading, empty, and active states
+   - Turkish UI labels
+
+6. Created `frontend/src/components/LeagueSelector.css`:
+   - TUTAR X deep space gradient background
+   - Electric blue border accents
+
+**Frontend Pages:**
+7. Refactored `frontend/src/pages/Matches.tsx`:
+   - League-first loading flow (two separate useEffect hooks)
+   - Separate error states for competitions vs matches
+   - Duplicate request prevention (isMounted flag, AbortController)
+   - Non-blocking architecture (matches render independently)
+
+**Frontend Utilities:**
+8. Fixed `frontend/src/utils/matchNormalizer.ts`:
+   - Never display raw IDs as team names
+   - Priority: teamInfo.name ? dev pattern ? "Takim bilgisi yok"
+
+**Frontend Tests:**
+9. Created `frontend/src/utils/__tests__/matchNormalizer.test.ts` (8 tests, all passing)
+10. Created `frontend/src/pages/__tests__/Matches.test.tsx` (7 tests, all passing)
+
+### Verification Results
+
+? Backend tests: 6/6 passing
+? Frontend TypeScript: 0 errors
+? Frontend match normalizer tests: 8/8 passing
+? Frontend Matches page tests: 7/7 passing
+? Frontend production build: SUCCESS
+? Total tests: 21/21 passing
+
+### Current Status
+
+**? Matches Page — League-First Loading and Team Name Fix: COMPLETE**
+
+Ready for production deployment.

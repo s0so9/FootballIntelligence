@@ -188,6 +188,22 @@ export interface MatchPredictionResponse {
 }
 
 /**
+ * Competition API Response Types
+ */
+
+export interface CompetitionResponse {
+  id: string;
+  name: string;
+  country: string | null;
+}
+
+export interface CompetitionListResponse {
+  competitions: CompetitionResponse[];
+  count: number;
+  is_development_data: boolean;
+}
+
+/**
  * Live Matches API Response Types (Phase 10A)
  */
 

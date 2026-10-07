@@ -9,6 +9,7 @@ import type {
   MatchDetailResponse,
   MatchPredictionResponse,
   LiveMatchesResponse,
+  CompetitionListResponse,
 } from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -91,6 +92,13 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
       'Unable to connect to the backend server'
     );
   }
+}
+
+/**
+ * Get list of available competitions.
+ */
+export async function getCompetitions(): Promise<CompetitionListResponse> {
+  return request<CompetitionListResponse>('/competitions');
 }
 
 /**
