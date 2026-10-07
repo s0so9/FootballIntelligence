@@ -91,9 +91,8 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onCloseMobile }: Si
       <div className="sidebar__brand">
         <div className="sidebar__logo">
           <div className="sidebar__logo-image-container">
-            {/* TUTAR X LOGO: replace with official logo when provided */}
             <img 
-              src="/tutar-x-logo.png" 
+              src="/tutarx.jpg" 
               alt="TUTAR X" 
               className="sidebar__logo-image"
             />
