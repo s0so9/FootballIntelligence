@@ -18,12 +18,53 @@ When no market qualifies, issues a PASS with explicit reasoning.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 
 from app.prediction.market_derivation import MarketProbabilities
 from app.prediction.confidence_engine import ConfidenceAssessment
 from app.prediction.uncertainty_engine import UncertaintyLevel  # NEW: Group 5 - For uncertainty level checks
+from app.services.odds_service import OddsService, ValueAssessment, MarketOdds  # NEW: İddaa integration
 
+
+
+@dataclass
+class CandidateEvaluation:
+    """Detailed evaluation of a market candidate for debugging/analysis."""
+    
+    market: str
+    selection: str
+    
+    # Probabilities
+    model_probability: float
+    calibrated_probability: float  # Same as model_probability after calibration
+    implied_probability: Optional[float]
+    
+    # Odds
+    fair_odds: float
+    bookmaker_odds: Optional[float]
+    
+    # Value metrics
+    edge: Optional[float]
+    expected_value: Optional[float]
+    value_classification: str
+    
+    # Reliability components
+    confidence: float
+    model_agreement: float
+    data_quality: float
+    uncertainty: Optional[float]
+    
+    # Scoring breakdown
+    base_score: float              # From confidence + agreement + quality
+    probability_contribution: float  # Contribution from probability
+    value_contribution: float        # Contribution from odds/value
+    high_base_rate_penalty: float    # Penalty if applicable (1.0 = no penalty)
+    selection_score: float           # Final composite score
+    
+    # Decision
+    qualified: bool
+    rejection_reason: Optional[str]
+    selection_reason: Optional[str]
 
 
 @dataclass
@@ -41,12 +82,18 @@ class BestTip:
     fair_odds: float               # Fair odds from model probability
     bookmaker_odds: Optional[float]  # Bookmaker odds (None when unavailable)
     odds_movement: Optional[str]   # "rising", "falling", "stable" or None
-    value_classification: str      # "STRONG_VALUE", "VALUE", "NEUTRAL", "NEGATIVE_VALUE"
+    value_classification: str      # "STRONG_VALUE", "VALUE", "NEUTRAL", "NEGATIVE_VALUE", "NO_ODDS"
     risk_level: str                # "LOW", "MEDIUM", "HIGH"
     selection_score: float         # Overall selection score 0.0-1.0
     selector_reason: str           # Why this market was selected
     timestamp: datetime
     pipeline_version: str
+    
+    # NEW: Expected value for value assessment
+    expected_value: Optional[float] = None  # EV percentage (e.g., 0.08 = 8% EV)
+    
+    # NEW: Candidate evaluations for debugging
+    all_candidates: Optional[List[CandidateEvaluation]] = None
 
 
 @dataclass
@@ -55,11 +102,15 @@ class PassDecision:
     
     match_id: str
     pass_reason: str   # "insufficient_data", "weak_agreement", "poor_calibration",
-                       # "negative_value", "no_qualifying_market", "high_uncertainty"
+                       # "negative_value", "insufficient_value", "no_qualifying_market", 
+                       # "high_uncertainty"
     evaluated_markets_count: int
     best_market_details: Optional[Dict[str, Any]]  # Details of closest market that didn't qualify
     timestamp: datetime
     pipeline_version: str
+    
+    # NEW: All evaluated candidates for analysis
+    all_candidates: Optional[List[CandidateEvaluation]] = None
 
 
 class SmartMarketSelector:
@@ -146,6 +197,9 @@ class SmartMarketSelector:
             )
         
         # Apply filters
+        # NEW: If odds_data exists, require positive EV for selection
+        require_positive_ev = odds_data is not None and len(odds_data) > 0
+        
         qualifying = self._filter_candidates(
             candidates=candidates,
             min_confidence=self.min_confidence,
@@ -153,7 +207,8 @@ class SmartMarketSelector:
             min_edge=self.min_edge,
             max_risk_level=self.max_risk_level,
             uncertainty_assessment=uncertainty_assessment,  # NEW: Group 5
-            max_uncertainty=self.max_uncertainty  # NEW: Group 5
+            max_uncertainty=self.max_uncertainty,  # NEW: Group 5
+            require_positive_ev_when_odds_exist=require_positive_ev  # NEW: Value requirement
         )
         
         if not qualifying:
@@ -196,15 +251,21 @@ class SmartMarketSelector:
         # Select best
         best = qualifying[0]
         
-        # Build selector reason
-        selector_reason = (
-            f"Selected {best['market']}: "
-            f"probability={best['probability']:.2f}, "
-            f"confidence={best['confidence']:.2f}, "
-            f"model_agreement={best['model_agreement']:.2f}, "
-            f"risk={best['risk_level']}, "
+        # Build selector reason (enhanced with value info)
+        selector_reason_parts = [
+            f"Selected {best['market']}: probability={best['probability']:.2f}",
+            f"confidence={best['confidence']:.2f}",
+            f"model_agreement={best['model_agreement']:.2f}",
+            f"risk={best['risk_level']}",
             f"value={best['value_classification']}"
-        )
+        ]
+        
+        # Add EV if available
+        if best.get('expected_value') is not None:
+            ev_pct = best['expected_value'] * 100
+            selector_reason_parts.append(f"EV={ev_pct:+.1f}%")
+        
+        selector_reason = ", ".join(selector_reason_parts)
         
         return BestTip(
             match_id=match_id,
@@ -222,8 +283,10 @@ class SmartMarketSelector:
             risk_level=best['risk_level'],
             selection_score=best['selection_score'],
             selector_reason=selector_reason,
+            expected_value=best.get('expected_value'),  # NEW: Include EV
             timestamp=datetime.utcnow(),
-            pipeline_version=pipeline_version
+            pipeline_version=pipeline_version,
+            all_candidates=None  # TODO: Add candidate diagnostics when needed
         )
     
     def _build_candidates(
@@ -367,7 +430,13 @@ class SmartMarketSelector:
         data_quality: float,
         odds_data: Optional[Dict[str, float]]
     ) -> Dict[str, Any]:
-        """Build a single candidate market with all analysis fields.
+        """Build a single candidate market with value-aware scoring.
+        
+        NEW SCORING FORMULA (fixes OVER_0.5 dominance):
+        - Base score from reliability (confidence + agreement + quality)
+        - Probability contribution (reduced from 35% to dynamic)
+        - Value contribution (based on EV when odds available)
+        - High base-rate protection (penalties for trivial markets without value)
         
         Returns:
             Dict containing all candidate fields
@@ -375,47 +444,64 @@ class SmartMarketSelector:
         # Calculate fair odds
         fair_odds = 1.0 / probability if probability > 0 else 0.0
         
-        # Get bookmaker odds
-        bookmaker_odds = odds_data.get(market) if odds_data else None
+        # Get odds and calculate value
+        market_odds = OddsService.get_market_odds(
+            odds_data=odds_data,
+            market=market
+        )
         
-        # Calculate edge
-        edge = None
-        if bookmaker_odds and bookmaker_odds > 0:
-            implied_prob = 1.0 / bookmaker_odds
-            edge = probability - implied_prob
+        value_assessment = ValueAssessment.from_market_odds(
+            market=market,
+            model_probability=probability,
+            market_odds=market_odds
+        )
         
-        # Value classification
-        if edge is None:
-            value_classification = "NEUTRAL"
-        elif edge >= 0.10:
-            value_classification = "STRONG_VALUE"
-        elif edge >= 0.05:
-            value_classification = "VALUE"
-        elif edge >= 0.0:
-            value_classification = "NEUTRAL"
-        else:
-            value_classification = "NEGATIVE_VALUE"
+        # Extract value metrics
+        bookmaker_odds = value_assessment.bookmaker_odds
+        edge = value_assessment.edge
+        value_classification = value_assessment.value_classification
         
-        # Risk level
+        # NEW SCORING FORMULA
+        # 1. Base score from reliability/confidence (NOT probability)
+        base_score = (
+            0.40 * confidence +
+            0.30 * model_agreement +
+            0.30 * data_quality
+        )
+        
+        # 2. Probability contribution (REDUCED and CAPPED)
+        # Use Kelly-like criterion: weight by probability but cap contribution
+        # This prevents OVER_0.5 from dominating purely on probability
+        probability_contribution = min(probability * 0.5, 0.35)  # Max 0.35
+        
+        # 3. Value contribution (NEW - replaces tiny edge bonus)
+        value_contribution = OddsService.calculate_value_contribution(
+            value_assessment=value_assessment,
+            use_conservative_thresholds=True  # Require meaningful EV
+        )
+        
+        # 4. Composite selection score
+        selection_score = base_score + probability_contribution + value_contribution
+        
+        # 5. High base-rate protection (NEW)
+        # Apply penalty to trivial high-probability markets without value
+        selection_score_with_protection = OddsService.apply_high_base_rate_protection(
+            market=market,
+            probability=probability,
+            value_assessment=value_assessment,
+            base_selection_score=selection_score
+        )
+        
+        high_base_rate_penalty = selection_score_with_protection / selection_score if selection_score > 0 else 1.0
+        selection_score = selection_score_with_protection
+        
+        # Risk level (unchanged)
         if confidence >= 0.7 and model_agreement >= 0.8 and data_quality >= 0.7:
             risk_level = "LOW"
         elif confidence >= 0.5 and model_agreement >= 0.6 and data_quality >= 0.5:
             risk_level = "MEDIUM"
         else:
             risk_level = "HIGH"
-        
-        # Selection score
-        selection_score = (
-            0.35 * probability +
-            0.30 * confidence +
-            0.20 * model_agreement +
-            0.15 * data_quality
-        )
-        
-        # Add edge bonus (capped)
-        if edge is not None and edge > 0:
-            edge_bonus = 0.10 * min(edge, 0.2)
-            selection_score = min(1.0, selection_score + edge_bonus)
         
         return {
             'market': market,
@@ -427,10 +513,17 @@ class SmartMarketSelector:
             'fair_odds': fair_odds,
             'bookmaker_odds': bookmaker_odds,
             'edge': edge,
+            'expected_value': value_assessment.expected_value,
             'value_classification': value_classification,
             'risk_level': risk_level,
             'selection_score': selection_score,
-            'odds_movement': None  # Not implemented yet
+            'odds_movement': None,  # Not implemented yet
+            
+            # NEW: Scoring breakdown for diagnostics
+            'base_score': base_score,
+            'probability_contribution': probability_contribution,
+            'value_contribution': value_contribution,
+            'high_base_rate_penalty': high_base_rate_penalty
         }
     
     def _filter_candidates(
@@ -441,7 +534,8 @@ class SmartMarketSelector:
         min_edge: float,
         max_risk_level: str,
         uncertainty_assessment=None,  # NEW: Group 5 - Optional[UncertaintyAssessment]
-        max_uncertainty: float = 0.7  # NEW: Group 5
+        max_uncertainty: float = 0.7,  # NEW: Group 5
+        require_positive_ev_when_odds_exist: bool = False  # NEW: Strict value requirement
     ):
         """Filter candidates by thresholds.
         
@@ -458,6 +552,15 @@ class SmartMarketSelector:
                 if uncertainty_assessment.overall_uncertainty >= max_uncertainty:
                     # Force PASS when uncertainty exceeds threshold
                     return []
+        
+        # NEW: Check if ANY candidate has odds with positive EV
+        # If odds exist but all show negative/insufficient EV, enforce strict filtering
+        candidates_with_odds = [c for c in candidates if c.get('expected_value') is not None]
+        if candidates_with_odds and require_positive_ev_when_odds_exist:
+            max_ev = max([c['expected_value'] for c in candidates_with_odds])
+            if max_ev < 0.03:  # No market has EV >= 3%
+                # Force PASS - insufficient value across all markets with odds
+                return []
         
         qualifying = []
         for c in candidates:
@@ -496,10 +599,9 @@ class SmartMarketSelector:
             Pass reason string
         """
         # NEW: Group 5 - Check for high uncertainty first
-        # Simplified to single numeric threshold for consistency with filter
         if uncertainty_assessment is not None:
             if hasattr(uncertainty_assessment, 'overall_uncertainty'):
-                if uncertainty_assessment.overall_uncertainty >= max_uncertainty:
+                if uncertainty_assessment.overall_uncertainty >= self.max_uncertainty:
                     return "high_uncertainty"
         
         if not candidates:
@@ -514,6 +616,16 @@ class SmartMarketSelector:
         all_below_probability = all(c['probability'] < min_probability for c in candidates)
         if all_below_probability:
             return "weak_agreement"
+        
+        # NEW: Check if all have insufficient value (when odds available)
+        candidates_with_ev = [c for c in candidates if c.get('expected_value') is not None]
+        if candidates_with_ev:
+            all_insufficient_value = all(
+                c.get('expected_value', 0) < 0.03  # Less than 3% EV
+                for c in candidates_with_ev
+            )
+            if all_insufficient_value:
+                return "insufficient_value"
         
         # Check if all have negative edge
         candidates_with_edge = [c for c in candidates if c['edge'] is not None]

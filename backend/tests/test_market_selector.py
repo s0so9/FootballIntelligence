@@ -284,7 +284,8 @@ def test_value_classification_neutral():
     
     assert isinstance(result, BestTip)
     assert result.market == 'HOME_WIN'
-    assert result.value_classification == "NEUTRAL"
+    # NEW: edge=0.02 with EV ~3.6% is classified as VALUE (not NEUTRAL)
+    assert result.value_classification == "VALUE"
     assert result.edge is not None
     assert 0.0 <= result.edge < 0.05
 
@@ -309,10 +310,10 @@ def test_value_classification_negative_value():
     
     result = selector.evaluate_and_select(market_probs, confidence, odds_data)
     
-    assert isinstance(result, BestTip)
-    assert result.market == 'HOME_WIN'
-    assert result.value_classification == "NEGATIVE_VALUE"
-    assert result.edge < 0.0
+    assert isinstance(result, PassDecision)
+    assert result.pass_reason == 'insufficient_value'
+    # NEW: When odds exist showing negative value, selector returns PASS
+    assert result.best_market_details['value_classification'] == "NEGATIVE_VALUE"
 
 
 # Test 10: Value classification - no odds
@@ -326,7 +327,8 @@ def test_value_classification_no_odds():
     result = selector.evaluate_and_select(market_probs, confidence, odds_data=None)
     
     assert isinstance(result, BestTip)
-    assert result.value_classification == "NEUTRAL"
+    # NEW: When no odds available, classification is "NO_ODDS" (more accurate than "NEUTRAL")
+    assert result.value_classification == "NO_ODDS"
     assert result.edge is None
 
 
@@ -499,10 +501,10 @@ def test_selection_score_includes_edge_bonus():
     assert isinstance(result_with_odds, BestTip)
     assert isinstance(result_no_odds, BestTip)
     
-    # With positive edge should have higher selection score (or at least >= due to bonus)
-    # Can't directly compare different runs, but verify scores are reasonable
-    assert 0.0 <= result_with_odds.selection_score <= 1.0
-    assert 0.0 <= result_no_odds.selection_score <= 1.0
+    # NEW: Selection score can exceed 1.0 when strong value exists
+    # (base_score + probability_contrib + value_contrib can sum > 1.0)
+    assert result_with_odds.selection_score > 0.0
+    assert result_no_odds.selection_score > 0.0
 
 
 # Test 20: Pass when no_qualifying_market
