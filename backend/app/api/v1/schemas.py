@@ -96,11 +96,11 @@ class MatchPredictionResponse(BaseModel):
     btts_probability: float = Field(..., description="Both teams to score probability")
     predicted_score: Optional[str] = Field(
         None,
-        description="Most likely scoreline (e.g., '3-1') - distinct from MENSIONE PICK"
+        description="Most likely scoreline (e.g., '3-1') - distinct from TUTAR X PICK"
     )
     mensione_pick: Optional[Dict[str, Any]] = Field(
         None,
-        description="MENSIONE recommended pick with market, confidence, and reasoning"
+        description="TUTAR X recommended pick with market, confidence, and reasoning (field name: mensione_pick for backward compatibility)"
     )
     prediction_version_id: Optional[str] = Field(
         None,

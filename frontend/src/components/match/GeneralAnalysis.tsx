@@ -1,7 +1,7 @@
 /**
  * GeneralAnalysis Component
  * 
- * Displays general match analysis including primary MENSIONE PICK,
+ * Displays general match analysis including primary TUTAR X PICK,
  * predicted score, 1X2 probabilities, xG, BTTS, and key indicators.
  */
 
@@ -70,7 +70,7 @@ export default function GeneralAnalysis({
 }: GeneralAnalysisProps) {
   const { mensione_pick } = prediction
   
-  // Parse MENSIONE pick if available
+  // Parse TUTAR X pick if available
   let mensioneMarket = ''
   let mensioneOutcome = ''
   if (mensione_pick) {
@@ -81,7 +81,7 @@ export default function GeneralAnalysis({
 
   return (
     <div className="general-analysis">
-      {/* Primary MENSIONE PICK - Prominent placement at top */}
+      {/* Primary TUTAR X PICK - Prominent placement at top */}
       {mensione_pick && (
         <section className="general-analysis__primary-pick">
           <MensionePickCard

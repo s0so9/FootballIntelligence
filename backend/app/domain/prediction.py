@@ -314,7 +314,7 @@ class ModelRun(BaseModel):
         protected_namespaces = ()
 
 
-# Supporting structures for MENSIONE Prediction Engine Core
+# Supporting structures for TUTAR X Prediction Engine Core
 
 class PlayerImpactResult(BaseModel):
     """Result of player impact analysis."""

@@ -2,7 +2,7 @@
  * MensionePickCard Component - Premium Football Intelligence Card
  * 
  * Premium betting lounge + football analytics terminal experience.
- * MENSIONE green identity with restrained gold accents.
+ * TUTAR X green identity with restrained gold accents.
  * Custom CSS money-bag confidence indicators.
  */
 
@@ -230,7 +230,7 @@ export default function MensionePickCard({
         
         {/* Pick Info Row */}
         <div className="collapsed-header__pick">
-          <div className="pick-badge">MENSIONE PICK</div>
+          <div className="pick-badge">TUTAR X PICK</div>
           <div className="pick-selection">
             <span className="pick-market">{marketName}</span>
             <span className="pick-outcome">{outcome}</span>
@@ -331,9 +331,9 @@ export default function MensionePickCard({
             {/* GENEL TAB */}
             {activeTab === 'general' && (
               <div id="tab-general" role="tabpanel" className="tab-panel">
-            {/* MENSIONE PICK - Hero Section */}
+            {/* TUTAR X PICK - Hero Section */}
             <div className="mensione-pick-hero">
-              <div className="mensione-pick-hero__badge">MENSIONE PICK</div>
+              <div className="mensione-pick-hero__badge">TUTAR X PICK</div>
               <div className="mensione-pick-hero__market">{marketName}</div>
               <div className="mensione-pick-hero__selection">{outcome}</div>
             </div>

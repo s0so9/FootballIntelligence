@@ -28,9 +28,10 @@ from app.database.session import get_db
 from app.database.models import Match as MatchDB, MatchStatistic
 from app.providers.fotmob import FotMobFootballProvider
 from app.providers.manager import ProviderManager
-from app.providers.models import ProviderMatch
+from app.providers.models import ProviderMatch, ProviderMatchStats
 from app.domain.match import Match as DomainMatch
 from app.domain.enums import MatchStatus
+from app.ingestion.match_ingestion import MatchIngester
 
 
 # Configuration
@@ -162,7 +163,8 @@ class HistoricalImporter:
         print(f"Discovered {len(fixtures)} fixtures\n")
         
         # Filter to finished matches
-        finished = [f for f in fixtures if f.get('status') == 'FINISHED']
+        from app.domain.enums import MatchStatus
+        finished = [f for f in fixtures if f.get('status') == MatchStatus.FINISHED.value]
         self.stats.finished_matches = len(finished)
         print(f"Finished matches: {len(finished)}\n")
         
@@ -215,16 +217,19 @@ class HistoricalImporter:
                 
                 # Extract lightweight fixture info
                 for match in matches:
+                    # Get status as enum value or string
+                    status_str = match.status.value if hasattr(match.status, 'value') else str(match.status)
+                    
                     fixture = {
-                        'match_id': match.id,
+                        'match_id': match.source_id,
                         'home_team_id': match.home_team_id,
                         'away_team_id': match.away_team_id,
                         'scheduled_at': match.scheduled_at,
-                        'status': match.status.value if hasattr(match.status, 'value') else str(match.status),
+                        'status': status_str,
                         'home_score': match.home_score,
                         'away_score': match.away_score,
                         'competition_id': match.competition_id,
-                        'season_id': match.season_id,
+                        'season': match.season,
                         'provider_match': match  # Keep for detail fetch
                     }
                     all_fixtures.append(fixture)
@@ -253,10 +258,16 @@ class HistoricalImporter:
         Returns:
             Fixtures not yet in database
         """
-        # Get existing match IDs
+        # Get existing match IDs using repository
+        from app.database.repository import MatchRepository
+        match_repo = MatchRepository(self.session)
+        
+        # Query for existing matches by provider IDs
         match_ids = [f['match_id'] for f in fixtures]
-        existing = self.session.query(MatchDB.id).filter(
-            MatchDB.id.in_(match_ids)
+        
+        # Check which ones already exist
+        existing = self.session.query(MatchDB.provider_id).filter(
+            MatchDB.provider_id.in_(match_ids)
         ).all()
         existing_ids = {row[0] for row in existing}
         
@@ -286,10 +297,10 @@ class HistoricalImporter:
             # Commit batch
             try:
                 self.session.commit()
-                print(f"  ✓ Batch {batch_num} committed\n")
+                print(f"  [OK] Batch {batch_num} committed\n")
             except Exception as e:
                 self.session.rollback()
-                print(f"  ✗ Batch {batch_num} failed: {e}\n")
+                print(f"  [FAIL] Batch {batch_num} failed: {e}\n")
                 self.stats.errors += 1
     
     async def _process_batch(self, batch: List[Dict]):
@@ -336,83 +347,90 @@ class HistoricalImporter:
                 self.stats.errors += 1
     
     async def _ingest_match(self, match: ProviderMatch):
-        """Ingest match into database.
+        """Ingest match into database using existing ingestion service.
         
         Args:
             match: Provider match object
         """
         try:
-            # Check if exists
-            existing = self.session.query(MatchDB).filter(
-                MatchDB.id == match.id
-            ).first()
+            # Use existing MatchIngester service
+            ingester = MatchIngester(self.session)
             
-            if existing:
-                # Update
-                existing.home_score = match.home_score
-                existing.away_score = match.away_score
-                existing.status = match.status.value if hasattr(match.status, 'value') else str(match.status)
-                existing.outcome = match.outcome.value if match.outcome else None
-                self.stats.updated_matches += 1
-            else:
-                # Insert
-                match_db = MatchDB(
-                    id=match.id,
-                    competition_id=match.competition_id,
-                    season_id=match.season_id,
-                    home_team_id=match.home_team_id,
-                    away_team_id=match.away_team_id,
-                    scheduled_at=match.scheduled_at,
-                    status=match.status.value if hasattr(match.status, 'value') else str(match.status),
-                    home_score=match.home_score,
-                    away_score=match.away_score,
-                    home_score_ht=match.home_score_ht,
-                    away_score_ht=match.away_score_ht,
-                    outcome=match.outcome.value if match.outcome else None,
-                    round=match.round
-                )
-                self.session.add(match_db)
+            # Ingest match (upserts automatically)
+            match_db = ingester.ingest_match(match)
+            
+            # Track if new or updated
+            if match_db.created_at == match_db.updated_at:
                 self.stats.new_matches += 1
+            else:
+                self.stats.updated_matches += 1
             
             # Track coverage
             if match.home_score is not None and match.away_score is not None:
                 self.stats.with_scores += 1
             
-            # Store statistics if available
-            if hasattr(match, 'statistics') and match.statistics:
-                await self._store_statistics(match)
+            # Fetch and store statistics separately
+            # Only for finished matches to avoid wasting API calls
+            if match.status == MatchStatus.FINISHED:
+                await self._fetch_and_store_statistics(match.source_id, match_db.id)
             
         except Exception as e:
-            print(f"  Error ingesting {match.id}: {e}")
+            print(f"  Error ingesting {match.source_id}: {e}")
             self.stats.errors += 1
     
-    async def _store_statistics(self, match: ProviderMatch):
-        """Store match statistics.
+    async def _fetch_and_store_statistics(self, match_id: str, match_db_id: str):
+        """Fetch and store match statistics.
         
         Args:
-            match: Provider match with statistics
+            match_id: Provider match ID
+            match_db_id: Internal database match ID
         """
         try:
-            stats = match.statistics
+            # Fetch statistics from FotMob directly
+            # ProviderManager doesn't expose fotmob attribute, use direct provider
+            from app.config import Settings
+            from app.providers.fotmob import FotMobFootballProvider
             
-            # Check for shots
-            if hasattr(stats, 'home_shots') and stats.home_shots is not None:
-                self.stats.with_shots += 1
+            settings = Settings()
+            fotmob = FotMobFootballProvider(
+                base_url=settings.fotmob_base_url,
+                timeout_seconds=settings.provider_timeout_seconds,
+                retry_count=min(settings.provider_retry_count, 1)
+            )
             
-            if hasattr(stats, 'home_shots_on_target') and stats.home_shots_on_target is not None:
-                self.stats.with_sot += 1
+            home_stats, away_stats = await fotmob.get_match_statistics(match_id)
             
-            if hasattr(stats, 'home_xg') and stats.home_xg is not None:
-                self.stats.with_xg += 1
+            if not home_stats and not away_stats:
+                return
             
-            if hasattr(stats, 'home_possession') and stats.home_possession is not None:
-                self.stats.with_possession += 1
+            # Use existing MatchIngester to store statistics
+            ingester = MatchIngester(self.session)
             
-            # Store in TeamMatchStatistic table
-            # (Implementation depends on existing schema)
+            # Store home team statistics
+            if home_stats:
+                ingester.ingest_match_stats(home_stats, match_db_id)
+                
+                # Track coverage (only count once per match)
+                if home_stats.shots_total is not None:
+                    self.stats.with_shots += 1
+                
+                if home_stats.shots_on_target is not None:
+                    self.stats.with_sot += 1
+                
+                if home_stats.xg is not None:
+                    self.stats.with_xg += 1
+                
+                if home_stats.possession_percentage is not None:
+                    self.stats.with_possession += 1
             
+            # Store away team statistics
+            if away_stats:
+                ingester.ingest_match_stats(away_stats, match_db_id)
+                
         except Exception as e:
-            print(f"  Error storing statistics for {match.id}: {e}")
+            # Statistics fetch failure shouldn't stop match import
+            print(f"  Warning: Could not fetch statistics for {match_id}: {e}")
+            self.stats.errors += 1
 
 
 async def main():
@@ -445,15 +463,30 @@ async def main():
         print("End date cannot be in the future")
         return 1
     
-    # Initialize providers
-    fotmob = FotMobFootballProvider()
+    # Initialize providers with config
+    from app.config import Settings
+    settings = Settings()
+    
+    fotmob = FotMobFootballProvider(
+        base_url=settings.fotmob_base_url,
+        timeout_seconds=settings.provider_timeout_seconds,
+        retry_count=min(settings.provider_retry_count, 1)
+    )
     
     # Create provider manager
     from app.providers.ryzellx import RyzellxFootballProvider
-    from app.providers.openligadb import OpenLigaDBProvider
+    from app.providers.openligadb import OpenLigaDBFootballProvider
     
-    ryzellx = RyzellxFootballProvider()
-    openligadb = OpenLigaDBProvider()
+    ryzellx = RyzellxFootballProvider(
+        base_url=settings.ryzellx_base_url,
+        timeout_seconds=settings.provider_timeout_seconds,
+        retry_count=settings.provider_retry_count
+    )
+    openligadb = OpenLigaDBFootballProvider(
+        base_url=settings.openligadb_base_url,
+        timeout_seconds=settings.provider_timeout_seconds,
+        retry_count=settings.provider_retry_count
+    )
     
     provider_manager = ProviderManager(
         ryzellx=ryzellx,

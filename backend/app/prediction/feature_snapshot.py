@@ -1,7 +1,7 @@
 """Canonical feature snapshot for match prediction pipeline.
 
 This module defines the single canonical feature representation used across the entire
-MENSIONE Intelligence Pipeline. The snapshot contains all available data for a match
+TUTAR X Intelligence Pipeline. The snapshot contains all available data for a match
 without fabrication - missing data remains explicitly None.
 """
 

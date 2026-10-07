@@ -1,4 +1,4 @@
-"""Smart Market Selector for MENSIONE canonical pipeline.
+"""Smart Market Selector for TUTAR X canonical pipeline.
 
 Evaluates all available betting markets and selects the best tip or issues a PASS decision.
 
@@ -63,7 +63,7 @@ class PassDecision:
 
 
 class SmartMarketSelector:
-    """Smart market selector for the MENSIONE canonical pipeline.
+    """Smart market selector for the TUTAR X canonical pipeline.
     
     Evaluates all available markets from MarketProbabilities and selects the best tip
     based on probability, confidence, edge, and risk assessment.

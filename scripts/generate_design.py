@@ -1,4 +1,4 @@
-"""Generate the complete MENSIONE Prediction Engine design document."""
+"""Generate the complete TUTAR X Prediction Engine design document."""
 
 DESIGN_SECTIONS = """
 [The design document continues from Section 4...]
@@ -21,7 +21,7 @@ DESIGN_SECTIONS = """
 ## 10. MARKET DERIVATION
 [Deriving all markets from score distribution]
 
-## 11. MENSIONE PICK GENERATION
+## 11. TUTAR X PICK GENERATION
 [Ranking logic, confidence thresholds, EV calculation]
 
 ## 12. PREDICTION VERSIONING AND PERSISTENCE

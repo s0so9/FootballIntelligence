@@ -1,10 +1,12 @@
-# Football Intelligence Platform
+# TUTAR X - Football Intelligence Platform
+
+TUTAR X — Maçın geleceğini veriden oku.
 
 Professional football analytics, prediction, and live analysis platform.
 
 ## Overview
 
-Football Intelligence is a comprehensive football analytics system capable of:
+TUTAR X is a comprehensive football analytics system capable of:
 
 - Collecting and storing football data
 - Analyzing teams, players, and matches

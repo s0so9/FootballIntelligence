@@ -77,31 +77,44 @@ export function Dashboard() {
         setLoading(true);
         setError(null);
 
+        console.log('[Dashboard] Fetching upcoming matches...');
+
         // Fetch upcoming matches (7 days)
         const matchesResponse = await getUpcomingMatches(7);
         const matches = matchesResponse.matches;
 
+        console.log(`[Dashboard] Found ${matches.length} matches, fetching predictions...`);
+
         // Fetch predictions for each match and filter for mensione_pick
         const picksData: MensionePickData[] = [];
+        let failedCount = 0;
+        let insufficientDataCount = 0;
         
         for (const match of matches) {
           try {
             const prediction = await getMatchPrediction(match.id);
             
-            if (prediction.mensione_pick) {
+            if (prediction.mensione_pick && !prediction.mensione_pick.pass_decision) {
               picksData.push({
                 match,
                 prediction, // Store full prediction, not just pick
               });
             }
           } catch (err) {
+            failedCount++;
+            // Check if it's a 400 "Insufficient data" error
+            if (err instanceof Error && err.message.includes('Insufficient data')) {
+              insufficientDataCount++;
+            }
             // Skip match if prediction fails
             console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
           }
         }
 
+        console.log(`[Dashboard] Successfully fetched ${picksData.length} picks (${failedCount} failed, ${insufficientDataCount} insufficient data)`);
         setMensionePicksData(picksData);
       } catch (err) {
+        console.error('[Dashboard] Error fetching dashboard data:', err);
         setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu');
       } finally {
         setLoading(false);
@@ -155,7 +168,7 @@ export function Dashboard() {
     return (
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1 className="dashboard-title">MENSIONE PICKS</h1>
+          <h1 className="dashboard-title">TUTAR X PICKS</h1>
           <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
         </div>
         <div className="dashboard-layout">
@@ -177,7 +190,7 @@ export function Dashboard() {
     return (
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1 className="dashboard-title">MENSIONE PICKS</h1>
+          <h1 className="dashboard-title">TUTAR X PICKS</h1>
           <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
         </div>
         <div className="error-state">
@@ -201,14 +214,15 @@ export function Dashboard() {
       </div>
 
       <div className="dashboard-layout">
-        {/* Main area - MENSIONE picks */}
+        {/* Main area - TUTAR X picks */}
         <main className="dashboard-main">
           {mensionePicksData.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">⚽</div>
               <p className="empty-title">Şu anda MENSIONE seçimi yok</p>
               <p className="empty-description">
-                Yeni tahmin önerileri modeller tarafından analiz edildiğinde burada görünecektir.
+                Yaklaşan maçlar için yeterli veri mevcut olmayabilir veya modeller tarafından 
+                güvenilir tahmin üretilememiş olabilir. Lütfen daha sonra tekrar kontrol edin.
               </p>
             </div>
           ) : (

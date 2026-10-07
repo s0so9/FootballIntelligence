@@ -580,6 +580,29 @@ class OpenLigaDBFootballProvider:
         )
         return []
     
+    async def get_matches_by_range(
+        self,
+        start_date: date,
+        end_date: date
+    ) -> List[ProviderMatch]:
+        """Get matches in date range.
+        
+        STUB: OpenLigaDB not used for date-range queries.
+        Use Ryzellx or FotMob for date-range match schedules instead.
+        
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+            
+        Returns:
+            Empty list (not implemented)
+        """
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_matches_by_range not implemented - "
+            f"use Ryzellx or FotMob for date-range match schedules"
+        )
+        return []
+    
     async def get_live_matches(self) -> List:
         """Get currently live matches.
         

@@ -41,7 +41,7 @@ class LatencyMetrics(BaseModel):
     # Latency calculations (all optional, None if timestamps unavailable)
     provider_to_mensione_ms: Optional[float] = Field(
         None,
-        description="Milliseconds from provider event to MENSIONE receipt"
+        description="Milliseconds from provider event to TUTAR X receipt (field name kept for backward compatibility)"
     )
     processing_ms: Optional[float] = Field(
         None,

@@ -7,11 +7,11 @@ This service coordinates the canonical MENSIONE Intelligence Pipeline:
 4. Calibration → calibrates ensemble probabilities
 5. Confidence → assesses confidence from real pipeline values
 6. Market Derivation → derives all markets from score distributions
-7. MENSIONE Pick → generates recommended pick from markets
+7. TUTAR X Pick → generates recommended pick from markets
 8. AnalysisContext → populates context for AI Analyst
 
 The pipeline implements:
-- Predicted Score vs MENSIONE PICK separation
+- Predicted Score vs TUTAR X PICK separation
 - Multi-model ensemble with computed agreement (NOT hardcoded)
 - Real confidence assessment from data quality, model agreement, calibration
 - Comprehensive market derivation
@@ -753,7 +753,7 @@ class PredictionService:
         4. Calibration → calibrate ensemble probabilities
         5. Confidence → assess confidence from real pipeline values
         6. Market Derivation → derive all markets from score distribution
-        7. MENSIONE Pick → generate recommended pick
+        7. TUTAR X Pick → generate recommended pick
         8. Versioning → create immutable prediction version
         9. AnalysisContext → populate context for AI Analyst
         
@@ -871,7 +871,7 @@ class PredictionService:
                 import logging
                 logging.error(f"Market derivation failed: {e}", exc_info=True)
         
-        # STEP 8: Generate MENSIONE PICK using SmartMarketSelector
+        # STEP 8: Generate TUTAR X PICK using SmartMarketSelector
         mensione_pick = None
         pipeline_version = "1.0.0"
         if market_probs:

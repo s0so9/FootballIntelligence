@@ -1,13 +1,13 @@
-"""MENSIONE Pick generator.
+"""TUTAR X Pick generator (internal module name: mensione_pick for backward compatibility).
 
 Generates recommended betting picks from market probabilities and confidence assessment.
 
-The MENSIONE PICK is EXPLICITLY DISTINCT from the Predicted Score.
+The TUTAR X PICK is EXPLICITLY DISTINCT from the Predicted Score.
 
 Example:
     Predicted Score: 3-1
     Score Distribution: 3-1 (18%), 2-1 (14%), 3-0 (11%), ...
-    MENSIONE PICK: HOME OVER 1.5
+    TUTAR X PICK: HOME OVER 1.5
 
 The pick is chosen from market rankings based on:
 1. Expected Value (EV) when odds available: EV = (model_prob * market_odds) - 1
@@ -25,10 +25,10 @@ from app.prediction.confidence_engine import ConfidenceAssessment
 
 @dataclass
 class MensionePick:
-    """MENSIONE recommended pick with confidence and reasoning.
+    """TUTAR X recommended pick with confidence and reasoning.
     
     This is SEPARATE from the predicted score. The predicted score is the most
-    likely scoreline from the distribution. The MENSIONE PICK is the recommended
+    likely scoreline from the distribution. The TUTAR X PICK is the recommended
     market outcome based on value analysis.
     """
     
@@ -123,10 +123,10 @@ class MensionePickGenerator:
     3. Calculate EV and edge if odds available
     4. Rank markets by score (EV + edge when available, else conviction)
     5. Filter by minimum confidence threshold
-    6. Select top-ranked market as MENSIONE PICK
+    6. Select top-ranked market as TUTAR X PICK
     7. Build reasoning factors from data
     
-    The MENSIONE PICK is separate from the predicted score. A match with
+    The TUTAR X PICK is separate from the predicted score. A match with
     predicted score 3-1 might have pick "HOME OVER 1.5" if that market
     offers the best value.
     """
@@ -137,7 +137,7 @@ class MensionePickGenerator:
         min_probability: float = 0.55,
         min_edge: float = 0.0
     ):
-        """Initialize MENSIONE pick generator.
+        """Initialize TUTAR X pick generator (class name kept for backward compatibility).
         
         Args:
             min_confidence: Minimum confidence threshold for generating pick
@@ -154,7 +154,7 @@ class MensionePickGenerator:
         confidence_assessment: ConfidenceAssessment,
         odds_data: Optional[Dict[str, float]] = None
     ) -> Optional[MensionePick]:
-        """Generate MENSIONE pick from market probabilities.
+        """Generate TUTAR X pick from market probabilities.
         
         Args:
             market_probs: Derived market probabilities

@@ -87,19 +87,20 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onCloseMobile }: Si
       }`}
       aria-label="Main navigation"
     >
-      {/* MENSIONE Brand */}
+      {/* TUTAR X Brand */}
       <div className="sidebar__brand">
         <div className="sidebar__logo">
           <div className="sidebar__logo-image-container">
+            {/* TUTAR X LOGO: replace with official logo when provided */}
             <img 
-              src="/torres.jpg" 
-              alt="MENSIONE" 
+              src="/tutar-x-logo.png" 
+              alt="TUTAR X" 
               className="sidebar__logo-image"
             />
           </div>
         </div>
         {!collapsed && (
-          <p className="sidebar__tagline">Football Intelligence</p>
+          <p className="sidebar__tagline">Maçın geleceğini veriden oku.</p>
         )}
       </div>
 

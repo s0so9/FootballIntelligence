@@ -21,7 +21,7 @@ Conservative request patterns:
 
 import logging
 from datetime import datetime, date, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import httpx
 
 from app.providers.exceptions import (
@@ -35,6 +35,7 @@ from app.providers.cache import (
     ProviderCache,
     LIVE_DATA_TTL,
     UPCOMING_FIXTURES_TTL,
+    HISTORICAL_MATCH_TTL,
 )
 from app.providers.models import (
     ProviderMatch,
@@ -43,6 +44,7 @@ from app.providers.models import (
     ProviderPlayer,
     ProviderStanding,
     ProviderLiveMatch,
+    ProviderMatchStats,
 )
 from app.domain.enums import MatchStatus, MatchOutcome
 
@@ -586,6 +588,185 @@ class FotMobFootballProvider:
             ),
         )
     
+    def _extract_match_statistics(
+        self,
+        data: Dict[str, Any],
+        match_id: str,
+        home_team_id: str,
+        away_team_id: str
+    ) -> Tuple[Optional[ProviderMatchStats], Optional[ProviderMatchStats]]:
+        """Extract match statistics from FotMob matchDetails response.
+        
+        Args:
+            data: Raw matchDetails data from FotMob
+            match_id: Match ID
+            home_team_id: Home team ID
+            away_team_id: Away team ID
+            
+        Returns:
+            Tuple of (home_stats, away_stats), either may be None if unavailable
+        """
+        from app.providers.models import ProviderMatchStats
+        
+        now = datetime.now(timezone.utc)
+        
+        # Extract stats from content.stats.Periods.All
+        content = data.get("content", {})
+        if not content:
+            return (None, None)
+        
+        stats_data = content.get("stats", {})
+        if not stats_data:
+            return (None, None)
+        
+        periods = stats_data.get("Periods", {})
+        all_period = periods.get("All", {})
+        stat_groups = all_period.get("stats", [])
+        
+        if not stat_groups:
+            return (None, None)
+        
+        # Extract home/away values from nested structure
+        home_values = {}
+        away_values = {}
+        
+        for group in stat_groups:
+            group_stats = group.get("stats", [])
+            
+            for stat in group_stats:
+                key = stat.get("key")
+                if not key:
+                    continue
+                
+                raw_stats = stat.get("rawStats", [])
+                if len(raw_stats) >= 2 and raw_stats[0] and raw_stats[1]:
+                    home_value = raw_stats[0].get("value")
+                    away_value = raw_stats[1].get("value")
+                    
+                    home_values[key] = home_value
+                    away_values[key] = away_value
+        
+        if not home_values and not away_values:
+            return (None, None)
+        
+        # Map FotMob keys to our ProviderMatchStats fields
+        def create_stats(values: Dict, team_id: str) -> ProviderMatchStats:
+            return ProviderMatchStats(
+                provider=self.PROVIDER_NAME,
+                source_id=f"{match_id}_{team_id}",
+                fetched_at=now,
+                match_id=match_id,
+                team_id=team_id,
+                period="full",
+                # Goals - not in stats, need from match data
+                goals_scored=None,
+                goals_conceded=None,
+                # Expected goals
+                xg=float(values.get("expected_goals")) if values.get("expected_goals") is not None else None,
+                xg_against=None,  # Would need opponent's xg
+                # Shots
+                shots_total=int(values.get("total_shots")) if values.get("total_shots") is not None else None,
+                shots_on_target=int(values.get("ShotsOnTarget")) if values.get("ShotsOnTarget") is not None else None,
+                shots_off_target=int(values.get("ShotsOffTarget")) if values.get("ShotsOffTarget") is not None else None,
+                shots_blocked=int(values.get("blocked_shots")) if values.get("blocked_shots") is not None else None,
+                # Possession
+                possession_percentage=float(values.get("BallPossesion")) if values.get("BallPossesion") is not None else None,
+                # Passing
+                passes_completed=int(values.get("accurate_passes")) if values.get("accurate_passes") is not None else None,
+                passes_attempted=int(values.get("passes")) if values.get("passes") is not None else None,
+                pass_accuracy=None,  # Could calculate from above
+                # Set pieces
+                corners=int(values.get("corners")) if values.get("corners") is not None else None,
+                free_kicks=None,  # Not directly available
+                offsides=int(values.get("Offsides")) if values.get("Offsides") is not None else None,
+                # Discipline
+                yellow_cards=int(values.get("yellow_cards")) if values.get("yellow_cards") is not None else None,
+                red_cards=int(values.get("red_cards")) if values.get("red_cards") is not None else None,
+                fouls_committed=int(values.get("fouls")) if values.get("fouls") is not None else None,
+                # Defensive
+                tackles=int(values.get("matchstats.headers.tackles")) if values.get("matchstats.headers.tackles") is not None else None,
+                interceptions=int(values.get("interceptions")) if values.get("interceptions") is not None else None,
+                clearances=int(values.get("clearances")) if values.get("clearances") is not None else None,
+                saves=int(values.get("keeper_saves")) if values.get("keeper_saves") is not None else None,
+            )
+        
+        home_stats = create_stats(home_values, home_team_id) if home_values else None
+        away_stats = create_stats(away_values, away_team_id) if away_values else None
+        
+        return (home_stats, away_stats)
+    
+    async def get_match_statistics(
+        self,
+        match_id: str,
+        period: str = 'full'
+    ) -> Tuple[Optional[ProviderMatchStats], Optional[ProviderMatchStats]]:
+        """Get match statistics from FotMob matchDetails.
+        
+        Args:
+            match_id: FotMob match ID
+            period: Period to fetch ('full' only supported by FotMob)
+            
+        Returns:
+            Tuple of (home_stats, away_stats), both None if not found
+            
+        Raises:
+            ProviderError: On request failure (except 404)
+        """
+        from app.providers.models import ProviderMatchStats
+        
+        # Check cache
+        cache_key = f"{self.PROVIDER_NAME}:stats:{match_id}:{period}"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
+                return cached
+        
+        # Fetch match details (includes statistics)
+        try:
+            endpoint = "/api/data/matchDetails"
+            params = {"matchId": match_id}
+            data = await self._request("GET", endpoint, params=params)
+            
+            # Extract team IDs from match data first
+            general_data = data.get("general", {})
+            home_team_data = general_data.get("homeTeam", {})
+            away_team_data = general_data.get("awayTeam", {})
+            
+            home_team_id = str(home_team_data.get("id", ""))
+            away_team_id = str(away_team_data.get("id", ""))
+            
+            if not home_team_id or not away_team_id:
+                # Fallback to header.teams
+                header_data = data.get("header", {})
+                teams = header_data.get("teams", [])
+                if len(teams) >= 2:
+                    home_team_id = str(teams[0].get("id", ""))
+                    away_team_id = str(teams[1].get("id", ""))
+            
+            if not home_team_id or not away_team_id:
+                logger.warning(f"[{self.PROVIDER_NAME}] Could not extract team IDs for match {match_id}")
+                return (None, None)
+            
+            # Extract statistics
+            home_stats, away_stats = self._extract_match_statistics(
+                data, match_id, home_team_id, away_team_id
+            )
+            
+            # Cache result
+            if self.cache:
+                ttl = HISTORICAL_MATCH_TTL  # Statistics are static after match
+                self.cache.set(cache_key, (home_stats, away_stats), ttl_seconds=ttl)
+            
+            logger.info(f"[{self.PROVIDER_NAME}] Fetched statistics for match {match_id}")
+            return (home_stats, away_stats)
+            
+        except ProviderNotFoundError:
+            logger.info(f"[{self.PROVIDER_NAME}] Statistics for match {match_id} not found")
+            return (None, None)
+        except ProviderError:
+            raise
+    
     async def get_matches_by_date(self, date_obj: date) -> List[ProviderMatch]:
         """Get matches for a specific date.
         
@@ -724,7 +905,7 @@ class FotMobFootballProvider:
             today = date.today()
             if end_date < today:
                 # Historical data - longer TTL
-                ttl = FINISHED_MATCH_TTL
+                ttl = HISTORICAL_MATCH_TTL
             elif start_date > today:
                 # Future data - medium TTL
                 ttl = UPCOMING_FIXTURES_TTL

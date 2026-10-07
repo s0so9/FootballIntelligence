@@ -33,8 +33,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Football Intelligence API",
-    description="Professional football analytics and prediction platform",
+    title="TUTAR X API",
+    description="TUTAR X - Maçın geleceğini veriden oku. Professional football analytics and prediction platform.",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -60,7 +60,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "service": "Football Intelligence API",
+        "service": "TUTAR X API",
         "version": "0.1.0",
         "database": "connected" if app_state.ingestion_service else "not_initialized",
     }
@@ -70,7 +70,7 @@ async def health_check():
 async def root():
     """Root endpoint."""
     return {
-        "message": "Football Intelligence API",
+        "message": "TUTAR X API",
         "version": "0.1.0",
         "docs": "/docs",
     }

@@ -107,10 +107,10 @@ class SofaScoreFootballProvider:
         await self._client.aclose()
     
     def _resolve_sofascore_id(self, mensione_id: str) -> Optional[str]:
-        """Resolve MENSIONE internal ID to SofaScore ID.
+        """Resolve TUTAR X internal ID to SofaScore ID.
         
         Args:
-            mensione_id: MENSIONE internal match/team ID
+            mensione_id: TUTAR X internal match/team ID (parameter name kept for backward compatibility)
             
         Returns:
             SofaScore ID if mapped, None otherwise

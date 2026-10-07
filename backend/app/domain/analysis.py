@@ -120,7 +120,7 @@ class AnalysisContext(BaseModel):
     
     # === Predicted Score ===
     predicted_score: Optional[str] = Field(
-        None, description="Most likely scoreline (e.g., '3-1') - distinct from MENSIONE PICK"
+        None, description="Most likely scoreline (e.g., '3-1') - distinct from TUTAR X PICK"
     )
     
     # === Calibration Information ===
@@ -131,9 +131,9 @@ class AnalysisContext(BaseModel):
         None, description="Historical model accuracy"
     )
     
-    # === MENSIONE PICK ===
+    # === TUTAR X PICK ===
     mensione_pick: Optional[Dict[str, Any]] = Field(
-        None, description="MENSIONE recommended pick (distinct from predicted_score)"
+        None, description="TUTAR X recommended pick (field name: mensione_pick for backward compatibility)"
     )
     
     # === Prediction Versioning ===
@@ -213,7 +213,7 @@ class AnalysisContext(BaseModel):
         None, description="Real-time data latency metrics"
     )
     provider_to_mensione_ms: Optional[float] = Field(
-        None, description="Latency from provider event to MENSIONE receipt (milliseconds)"
+        None, description="Latency from provider event to TUTAR X receipt (milliseconds, field name kept for backward compatibility)"
     )
     total_latency_ms: Optional[float] = Field(
         None, description="Total end-to-end latency (milliseconds)"

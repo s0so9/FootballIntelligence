@@ -89,7 +89,7 @@ class PredictionVersion:
     notes: List[str] = field(default_factory=list)
     """Any notes or warnings about this version"""
     
-    # Frozen MENSIONE Pick (stored at prediction time for track record)
+    # Frozen TUTAR X Pick (stored at prediction time for track record)
     selected_market: Optional[str] = None
     """Selected market identifier (e.g. 'HOME_WIN', 'OVER_2_5', 'BTTS_YES')"""
     
@@ -194,7 +194,7 @@ class PredictionVersionManager:
             confidence_score: Confidence score
             notes: Optional notes
             allow_stage_overwrite: If True, allow multiple versions for same stage
-            mensione_pick: Optional MENSIONE pick data (BestTip or PassDecision dict)
+            mensione_pick: Optional TUTAR X pick data (BestTip or PassDecision dict, parameter name kept for backward compatibility)
         
         Returns:
             Created PredictionVersion
@@ -225,7 +225,7 @@ class PredictionVersionManager:
             notes=notes or []
         )
         
-        # Populate frozen pick fields from mensione_pick if provided
+        # Populate frozen pick fields from tutar_x_pick (mensione_pick parameter) if provided
         if mensione_pick is not None:
             if isinstance(mensione_pick, dict):
                 # BestTip dict has 'market' key; PassDecision dict has 'pass_decision': True

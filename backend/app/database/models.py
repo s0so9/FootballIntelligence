@@ -425,7 +425,7 @@ class PredictionVersionDB(BaseModel, Base):
     # Notes
     notes = Column(JSON, nullable=True)  # List of strings
     
-    # Frozen MENSIONE Pick (immutable after creation)
+    # Frozen TUTAR X Pick (immutable after creation, field names kept for backward compatibility)
     selected_market = Column(String(50), nullable=True)
     selection_text = Column(String(200), nullable=True)
     selection_probability = Column(Float, nullable=True)

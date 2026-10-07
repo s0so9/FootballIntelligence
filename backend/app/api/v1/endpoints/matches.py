@@ -339,7 +339,7 @@ async def get_match(
         }
     },
     summary="Get match prediction",
-    description="Get prediction, MENSIONE PICK, versioned prediction, market analysis, and easy match detection for a specific match.",
+    description="Get prediction, TUTAR X PICK, versioned prediction, market analysis, and easy match detection for a specific match.",
 )
 async def get_match_prediction(
     match_id: str,
@@ -354,11 +354,11 @@ async def get_match_prediction(
     - Expected goals (xG)
     - BTTS probability
     - Predicted score (most likely scoreline)
-    - MENSIONE PICK (recommended market with confidence and reasoning)
+    - TUTAR X PICK (recommended market with confidence and reasoning)
     - Prediction version ID (immutable versioning)
     - Easy Match detection result
     
-    MENSIONE PICK Structure:
+    TUTAR X PICK Structure:
     The mensione_pick field contains either a BestTip or a PassDecision.
     
     BestTip (when a qualifying market is found):
@@ -415,7 +415,7 @@ async def get_match_prediction(
         db_session=db
     )
     
-    # Generate full MENSIONE prediction (Phase 1 pipeline: Poisson → Markets → Pick → Versioning)
+    # Generate full TUTAR X prediction (Phase 1 pipeline: Poisson → Markets → Pick → Versioning)
     analysis_context = prediction_service.generate_full_prediction(
         match=match,
         odds_data=None  # No real bookmaker odds available in development

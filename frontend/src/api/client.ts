@@ -29,10 +29,14 @@ export class ApiError extends Error {
 }
 
 /**
- * Make an HTTP request to the API.
+ * Make an HTTP request to the API with timeout.
  */
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+
+  // Create abort controller for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
   try {
     const response = await fetch(url, {
@@ -41,7 +45,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
         'Content-Type': 'application/json',
         ...options?.headers,
       },
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       let detail = `HTTP ${response.status}: ${response.statusText}`;
@@ -62,8 +69,19 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 
     return await response.json();
   } catch (error) {
+    clearTimeout(timeoutId);
+
     if (error instanceof ApiError) {
       throw error;
+    }
+
+    // Handle abort/timeout
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ApiError(
+        'Request timed out after 30 seconds',
+        undefined,
+        'The server took too long to respond'
+      );
     }
 
     // Network or other errors
