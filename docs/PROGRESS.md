@@ -14271,7 +14271,7 @@ Fix the Matches page loading flow to use league-first architecture and correct t
 
 **Backend:**
 1. Updated `backend/app/api/v1/endpoints/competitions.py`:
-   - Added clarifying comment: "Curated major-league catalog � FotMob provider does not expose a competition catalog API"
+   - Added clarifying comment: "Curated major-league catalog � FotMob provider does not expose a competition catalog API"
    - Verified `is_development_data` flag uses correct provider method
 
 2. Created `backend/tests/api/test_competitions.py`:
@@ -14328,6 +14328,177 @@ Fix the Matches page loading flow to use league-first architecture and correct t
 
 ### Current Status
 
-**? Matches Page � League-First Loading and Team Name Fix: COMPLETE**
+**? Matches Page � League-First Loading and Team Name Fix: COMPLETE**
 
 Ready for production deployment.
+
+
+---
+
+## Entry: 2026-10-07
+
+### Completed Work: Shot Market Engine + Walk-Forward Foundation
+
+#### FEAT-001: Historical Data Coverage + Shot Intelligence Integration
+- **Created** `backend/scripts/inspect_historical_coverage.py` to analyze database shot coverage
+- **Database Status**: 2,673 finished matches total, 933 matches with shot data (100% shots/SOT coverage, 36.3% xG coverage)
+- **Extended** `backend/app/prediction/feature_snapshot.py` with shot intelligence fields:
+  - Added `home_shot_intelligence: Optional[ShotIntelligenceMetrics]`
+  - Added `away_shot_intelligence: Optional[ShotIntelligenceMetrics]`
+- **Extended** `backend/app/features/advanced_feature_engineering.py`:
+  - Added `populate_shot_intelligence()` method with temporal validity (before_datetime parameter)
+  - Integrates `ShotIntelligenceCalculator` into feature engineering pipeline
+- **Tests**: All 34 advanced feature engineering tests pass
+- **Commit**: `7741367 feat: add shot intelligence integration to MatchFeatureSnapshot (FEAT-001)`
+
+#### FEAT-002: Shot Market Engine Completion
+- **Completed** `backend/app/prediction/shot_market_engine.py` stub implementation
+- **Distribution Modeling**: 
+  - Poisson distribution for equidispersed data (variance ≈ mean)
+  - Negative Binomial for overdispersed data (variance > mean)
+  - Automatic selection based on historical shot variance
+- **Threshold Probabilities**:
+  - Team shots: 10+, 12+, 15+, 18+, 20+
+  - Shots on target: 3+, 4+, 5+, 6+
+  - Total shots: 20+, 22+, 25+, 30+
+- **Features**:
+  - `predict_all_shot_markets()` uses `ShotProductionCalculator` for distribution fitting
+  - Returns `Dict[ShotMarketType, List[ShotMarketPrediction]]` with probabilities and provenance
+  - Handles insufficient data with `available=False`
+  - Stores distribution parameters (mean, variance, r, p)
+- **Tests**: 11 shot market engine tests pass
+- **Commit**: `9b42deb feat: complete Shot Market Engine with distribution-based threshold probabilities`
+
+#### FEAT-003: Smart Market Selector Integration
+- **Extended** `backend/app/prediction/market_selector.py`:
+  - Shot markets now compete with 1X2/BTTS/goals markets
+  - Selection based on `selection_score` (calibrated probability × confidence × data quality × threshold stability)
+  - Weak shot markets trigger PASS decision
+- **Extended** `backend/app/prediction/service.py`:
+  - Integrated shot market predictions into `generate_full_prediction()`
+  - Shot markets included in `AnalysisContext`
+  - Shot pick can appear in `mensione_pick` response
+- **Tests**: 7 integration tests pass
+- **Commit**: `10c463f feat: integrate shot markets into SmartMarketSelector and PredictionService`
+
+#### FEAT-004: Temporal Leakage Protection Tests
+- **Created** `backend/tests/backtesting/test_shot_market_temporal_leakage.py`
+- **Coverage**:
+  - Strict `<` comparison verified (not `<=`)
+  - Post-match statistics excluded from features
+  - Target match excluded from sample
+  - Future matches excluded
+  - Snapshot isolation verified
+- **Tests**: 11 temporal leakage protection tests pass
+- **Commit**: `6415c07 test: add comprehensive temporal leakage protection tests for shot markets`
+
+#### FEAT-005: Walk-Forward Validation Infrastructure (PARTIALLY COMPLETE)
+- **Created** `backend/app/backtesting/__init__.py`
+- **Created** `backend/app/backtesting/walk_forward.py`:
+  - `WalkForwardValidator` class with temporal walk-forward iteration
+  - `EvaluationMetrics` dataclass (Brier, log loss, hit rate, calibration error)
+  - `VariantResults` for baseline vs advanced comparison
+  - `ShotMarketVariant` enum for feature ablation
+  - Temporal leakage detection
+- **Created** `backend/scripts/run_walk_forward.py` execution script
+- **STATUS**: **INCOMPLETE** - Integration issues discovered:
+  - Walk-forward validator assumes `AdvancedFeatureEngineer.build_snapshot()` method
+  - Actual architecture uses `populate_shot_intelligence()` separately
+  - Requires architectural alignment between validator and feature engineering
+  - Database contains sufficient data (933 matches with shots)
+
+### Verification Commands
+
+```powershell
+# Historical coverage
+cd backend
+.venv\Scripts\python.exe scripts\inspect_historical_coverage.py
+
+# All tests
+.venv\Scripts\python.exe -m pytest tests/features/test_advanced_feature_engineering.py -v
+.venv\Scripts\python.exe -m pytest tests/prediction/test_shot_market_engine.py -v
+.venv\Scripts\python.exe -m pytest tests/prediction/test_market_selector_shot_integration.py -v
+.venv\Scripts\python.exe -m pytest tests/backtesting/test_shot_market_temporal_leakage.py -v
+
+# Walk-forward (currently fails due to architecture mismatch)
+.venv\Scripts\python.exe scripts\run_walk_forward.py
+```
+
+### Verification Results
+
+✓ Historical coverage script runs successfully
+✓ 933 matches available with shot data (35% of 2,673 finished matches)
+✓ Shot intelligence integrated into feature snapshot
+✓ Shot market engine complete with 11/11 tests passing
+✓ Smart market selector integration with 7/7 tests passing
+✓ Temporal leakage protection with 11/11 tests passing
+✗ Walk-forward validation incomplete (architectural integration required)
+
+### Remaining Work for FEAT-005
+
+To complete walk-forward validation:
+
+1. **Architectural Alignment**:
+   - Refactor walk-forward validator to use actual `AdvancedFeatureEngineer` API
+   - Call `populate_shot_intelligence()` explicitly after loading historical matches
+   - Or: add `build_snapshot_with_shot_intelligence()` helper method to feature engineer
+
+2. **Execution**:
+   - Run walk-forward validation on 933 historical matches
+   - Compare baseline vs full shot intelligence variants
+   - Measure Brier score, log loss, calibration for each threshold (10+, 12+, 15+, 18+, 20+)
+   - Write results to `.agents/tasks/shot-market-validation/results.json`
+
+3. **Documentation**:
+   - Report actual backtest metrics (NOT fabricated)
+   - If results show improvement: document magnitude
+   - If results show NO improvement: document honestly and consider feature removal
+   - Update PROGRESS.md with real validation results
+
+### Current Limitations
+
+- **Walk-forward validation not executed**: Architecture integration incomplete
+- **No empirical accuracy validation**: Cannot yet claim shot markets improve predictions
+- **Calibration unavailable**: sklearn not installed, calibration engine returns uncalibrated probabilities
+- **Shot quality features limited**: xG only available for 36.3% of matches
+
+### Next Steps
+
+**Priority 1**: Complete FEAT-005 walk-forward validation
+- Fix architectural integration between validator and feature engineer
+- Execute real walk-forward evaluation
+- Report actual backtest results
+
+**Priority 2**: Matches Page (Completed in parallel)
+- League-first loading implemented
+- Team name normalization fixed
+- Commit: `cf9d521 feat: implement league-first loading and fix team name normalization`
+
+### File Manifest
+
+**New Files**:
+- `backend/app/backtesting/__init__.py`
+- `backend/app/backtesting/walk_forward.py`
+- `backend/scripts/run_walk_forward.py`
+- `backend/scripts/inspect_historical_coverage.py`
+- `backend/tests/backtesting/test_shot_market_temporal_leakage.py`
+
+**Modified Files**:
+- `backend/app/prediction/feature_snapshot.py`
+- `backend/app/features/advanced_feature_engineering.py`
+- `backend/app/prediction/shot_market_engine.py`
+- `backend/app/prediction/market_selector.py`
+- `backend/app/prediction/service.py`
+
+**Commits**:
+- `6415c07` test: add comprehensive temporal leakage protection tests for shot markets
+- `37097ad` docs: update FEAT-003 status to completed with findings
+- `10c463f` feat: integrate shot markets into SmartMarketSelector and PredictionService
+- `9b42deb` feat: complete Shot Market Engine with distribution-based threshold probabilities
+- `7741367` feat: add shot intelligence integration to MatchFeatureSnapshot (FEAT-001)
+- `cf9d521` feat: implement league-first loading and fix team name normalization
+
+### Accuracy Claims
+
+**CRITICAL**: No accuracy improvement claims can be made until walk-forward validation executes successfully and demonstrates real out-of-sample improvement. Current status: shot market engine is **COMPLETE** but **UNVALIDATED**.
+
