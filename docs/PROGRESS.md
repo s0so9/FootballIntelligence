@@ -14633,3 +14633,259 @@ npm run build
 - No timeout: completes before 30s limit
 - UX: Fast, responsive, graceful degradation
 
+
+
+---
+
+## Entry: 2026-10-07 (Part 3)
+
+### Completed Work: Dashboard Bounded Concurrency + Request Cancellation
+
+#### Problem Identified
+
+**Previous Fix**: Changed from sequential to parallel prediction fetching using `Promise.allSettled()`
+
+**Remaining Issue**: `Promise.allSettled()` fires **all** prediction requests simultaneously
+- 50 matches = 50 simultaneous HTTP requests
+- Browser connection limit: typically 6-8 per domain
+- Backend overload risk with burst traffic
+- Memory pressure from many pending promises
+
+**Secondary Issue**: AbortController not properly wired to HTTP layer
+- Dashboard cleanup called `abortController.abort()`
+- But API client's `request()` function didn't accept external AbortSignal
+- Unmounting Dashboard didn't actually cancel pending requests
+
+#### Fix Implemented
+
+##### 1. Bounded Concurrency
+
+**Added**: `executeWithConcurrency()` helper function in Dashboard.tsx
+
+```typescript
+async function executeWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrencyLimit: number
+): Promise<PromiseSettledResult<T>[]>
+```
+
+**Implementation**:
+- Maintains execution pool of max N concurrent promises
+- Uses `Promise.race()` to wait for slot availability
+- Executes next task when previous completes
+- Preserves result ordering despite concurrent execution
+
+**Concurrency Limit**: **6 simultaneous prediction requests**
+- Balances speed vs backend load
+- Respects typical browser connection limits
+- Prevents request burst overwhelming backend
+
+**Technical Pattern**:
+```typescript
+// Create lazy task functions (not executed immediately)
+const predictionTasks = matches.map(match => 
+  () => getMatchPrediction(match.id, signal)
+);
+
+// Execute with bounded concurrency
+const results = await executeWithConcurrency(predictionTasks, 6);
+```
+
+##### 2. Request Cancellation Support
+
+**Extended API Client**: `frontend/src/api/client.ts`
+
+**Changes to `request()` function**:
+```typescript
+async function request<T>(endpoint: string, options?: RequestInit)
+```
+
+**Added**:
+1. Check for caller-provided `AbortSignal` in options
+2. Early abort check before making request
+3. Event listener to forward caller abort to internal controller
+4. Proper signal merging (timeout + caller cancellation)
+
+**Extended `getMatchPrediction()`**:
+```typescript
+export async function getMatchPrediction(
+  matchId: string,
+  signal?: AbortSignal  // NEW: optional cancellation signal
+): Promise<MatchPredictionResponse>
+```
+
+**Dashboard Integration**:
+```typescript
+// Pass AbortSignal to every prediction request
+() => getMatchPrediction(match.id, abortController.signal)
+
+// Cleanup cancels all pending requests
+return () => {
+  isMounted = false;
+  abortController.abort();
+};
+```
+
+##### 3. Proper Cleanup
+
+**Prevents**:
+- Memory leaks from abandoned promises
+- Console warnings about state updates after unmount
+- Wasted backend computation for cancelled requests
+
+**Mechanism**:
+1. `isMounted` flag guards all state updates
+2. `abortController.abort()` cancels pending HTTP requests
+3. Requests check abort status and skip logging if cancelled
+
+#### Code Changes
+
+**frontend/src/api/client.ts**:
+- Lines 31-46: Extended `request()` to accept and merge AbortSignal
+- Lines 188-195: Extended `getMatchPrediction()` signature with optional signal parameter
+
+**frontend/src/pages/Dashboard.tsx**:
+- Lines 60-90: Added `executeWithConcurrency()` helper function
+- Lines 95-150: Refactored prediction fetching to use bounded concurrency
+- Lazy task creation (functions returning promises, not executed immediately)
+- Pass `abortController.signal` to every prediction request
+- Skip warning logs if request was aborted
+
+#### Verification Commands
+
+```powershell
+cd frontend
+
+# Type check
+npm run type-check
+
+# Tests
+npm run test
+
+# Build
+npm run build
+```
+
+#### Verification Results
+
+✓ **TypeScript Type Check**: Passes without errors
+```
+Exit Code: 0
+```
+
+✓ **Frontend Build**: Success (no bundle size increase)
+```
+dist/assets/index-D4M5LiwH.js   279.93 kB │ gzip: 79.42 kB
+✓ built in 5.95s
+```
+
+✓ **Tests**: 77/86 passing
+```
+Test Files  1 failed | 6 passed (7)
+Tests       9 failed | 77 passed (86)
+Duration    2.04s
+```
+
+**Test Failures**: All 9 failures in `src/components/predictions/AIConfidence.test.tsx`
+- Error: Turkish text encoding issue (`'Çok yüksek'` vs `'├çok y├╝ksek'`)
+- **NOT related to Dashboard changes**
+- Pre-existing test issue with character encoding
+
+#### Browser/API Verification (Backend Required)
+
+**Cannot verify with live backend** (backend not running during implementation)
+
+**Expected Behavior** (when backend available):
+
+✅ **Bounded Concurrency**:
+- Network tab shows max 6 simultaneous prediction requests
+- No 50-request burst
+- Controlled execution pool visible in waterfall
+
+✅ **Request Cancellation**:
+- Unmounting Dashboard cancels pending requests
+- Cancelled requests show as "cancelled" in Network tab
+- No console warnings about state updates after unmount
+
+✅ **Performance**:
+- Dashboard loads within 5-10 seconds (depends on slowest prediction)
+- Not (50 matches / 6 batch) × 3s = 25s sequential batches
+- Concurrent execution within each batch of 6
+
+✅ **Graceful Degradation**:
+- Individual prediction failures don't block Dashboard
+- Available picks render immediately
+- Loading state always resolves
+
+#### Files Changed
+
+**Modified**:
+- `frontend/src/api/client.ts` (23 lines changed: +21, -2)
+- `frontend/src/pages/Dashboard.tsx` (66 lines changed: +59, -7)
+
+**Total**: 2 files, 89 lines changed
+
+#### Commit
+
+- `a34f1a3` feat: add bounded concurrency and request cancellation to Dashboard
+
+#### Performance Analysis
+
+**Before (unlimited parallel)**:
+- All 50 requests fire simultaneously
+- Browser queues requests (connection limit)
+- Backend receives burst traffic
+- Memory: 50 pending promises + HTTP buffers
+
+**After (bounded concurrency = 6)**:
+- Max 6 requests execute simultaneously
+- Backend receives controlled load
+- Memory: 6 active promises + minimal queue
+- Execution: (50 / 6) = ~9 batches, concurrent within batch
+
+**Expected Load Time** (with backend):
+- Slowest prediction: ~3-5 seconds
+- Concurrent batches: executes 6 at a time
+- Total time: max(all predictions in each batch) ≈ 5-10 seconds
+- **Not** sequential: (50 / 6) × 3s = 25s
+
+#### Remaining Limitations
+
+1. **Backend Performance Not Verified**: Backend was not running during implementation
+   - Actual load times unknown
+   - Cannot measure real concurrency behavior
+   - Network tab verification pending
+
+2. **Concurrency Limit Hard-Coded**: Currently set to 6
+   - Could be environment variable or config
+   - Could adapt based on available matches
+   - No runtime tuning
+
+3. **No Progressive Rendering**: Dashboard waits for all predictions
+   - Could render matches as predictions complete
+   - Could show skeleton loaders for pending predictions
+   - Could update in real-time as results arrive
+
+4. **Test Encoding Issue**: AIConfidence tests failing due to character encoding
+   - Turkish characters displaying incorrectly
+   - Test environment charset issue
+   - Not related to Dashboard functionality
+
+#### Next Steps
+
+**When Backend Available**:
+1. Start backend server
+2. Open Dashboard in browser (http://localhost:5173/)
+3. Open browser DevTools → Network tab
+4. Verify max 6 simultaneous prediction requests
+5. Verify loading completes within 10 seconds
+6. Verify unmount cancellation works (navigate away during load)
+7. Measure actual load time with realistic data
+
+**Future Optimizations**:
+1. Progressive rendering: show picks as they complete
+2. Batch prediction endpoint: `POST /api/v1/predictions/batch`
+3. Adaptive concurrency based on network conditions
+4. Prediction result caching
+5. Request priority (visible matches first)
+
