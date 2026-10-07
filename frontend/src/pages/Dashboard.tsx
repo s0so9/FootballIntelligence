@@ -203,7 +203,7 @@ export function Dashboard() {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h1 className="dashboard-title">MENSIONE PICKS</h1>
+        <h1 className="dashboard-title">TUTAR X PICKS</h1>
         <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
         
         <div className="dashboard-filters">
@@ -219,7 +219,7 @@ export function Dashboard() {
           {mensionePicksData.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">⚽</div>
-              <p className="empty-title">Şu anda MENSIONE seçimi yok</p>
+              <p className="empty-title">Şu anda TUTAR X seçimi yok</p>
               <p className="empty-description">
                 Yaklaşan maçlar için yeterli veri mevcut olmayabilir veya modeller tarafından 
                 güvenilir tahmin üretilememiş olabilir. Lütfen daha sonra tekrar kontrol edin.

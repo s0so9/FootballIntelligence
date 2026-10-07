@@ -23,7 +23,7 @@ export default function PerformanceOverview({
 
   return (
     <div className="performance-overview">
-      <h2 className="performance-overview__title">MENSIONE Performans Takibi</h2>
+      <h2 className="performance-overview__title">TUTAR X Performans Takibi</h2>
       
       {/* Time period filters */}
       <div className="filter-tabs" role="tablist">
@@ -79,7 +79,7 @@ export default function PerformanceOverview({
           <div className="empty-state-icon">🎯</div>
           <h3 className="empty-state-title">Performans Verisi Henüz Mevcut Değil</h3>
           <p className="empty-state-description">
-            MENSIONE tahminlerinin başarı takibi gelecek güncellemelerde eklenecektir.
+            TUTAR X tahminlerinin başarı takibi gelecek güncellemelerde eklenecektir.
             Sistem tahminlerin sonuçlarını otomatik olarak değerlendirerek
             burada performans istatistiklerini gösterecek.
           </p>
