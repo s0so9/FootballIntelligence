@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "Integrate shot markets into Smart Market Selector and Prediction Service. Extends market_selector.py to evaluate shot market predictions alongside existing 1X2/BTTS/goals markets, selecting the best shot market or issuing PASS if weak. Integrates shot market prediction into service.py generate_full_prediction() flow, preserving all existing prediction functionality.",
-  "status": "pending",
+  "status": "completed",
   "steps": [
     "Read backend/app/prediction/market_selector.py to understand the evaluate_and_select() signature and CandidateEvaluation structure. Read backend/app/prediction/service.py to understand generate_full_prediction() flow and where shot markets should be integrated.",
     "Extend SmartMarketSelector.evaluate_and_select() to accept optional shot_market_predictions parameter: shot_market_predictions: Optional[Dict[ShotMarketType, List[ShotMarketPrediction]]] = None. When provided, iterate through shot markets and evaluate each threshold as a candidate using the same selection logic as existing markets (probability, confidence, data quality, uncertainty).",
@@ -29,5 +29,5 @@
     "cd backend && .venv\\Scripts\\python.exe -m pytest tests/prediction/test_service.py -v — existing service tests still pass (no regression)"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Shot market integration completed successfully. SmartMarketSelector now: (1) accepts shot_market_predictions parameter in evaluate_and_select(), (2) evaluates shot market thresholds as candidates using _build_shot_market_candidates() helper, (3) calculates shot-market-specific confidence using _calculate_shot_market_confidence() considering base confidence, data quality, sample size, and variance/stability, (4) shot markets compete with 1X2/BTTS/goals markets on selection_score (not just probability), (5) weak shot markets (low confidence < 0.6 after penalties, high uncertainty, insufficient data) fail qualification and trigger PASS decision with explicit rejection reason. PredictionService.generate_full_prediction() now: (1) initializes ShotMarketEngine if db_session available, (2) calls shot_market_engine.predict_all_shot_markets() after market derivation (STEP 7.5), (3) passes shot_market_predictions to market_selector.evaluate_and_select() along with home_team_name and away_team_name for readable market labels, (4) stores shot market predictions in prediction_data using _serialize_shot_markets() helper for AnalysisContext. Shot market confidence calculation applies penalties: sample_size < 5 → 50% penalty, < 10 → 30% penalty, < 15 → 15% penalty; high coefficient of variation > 0.8 → 20% penalty, > 0.6 → 10% penalty. All 7 integration tests pass: shot_markets_evaluated_alongside_1x2, best_shot_market_selected_when_highest_score, weak_shot_markets_trigger_pass, shot_market_with_insufficient_data_excluded, shot_market_candidate_structure_matches_evaluation, shot_on_target_markets_evaluated, total_shots_markets_evaluated. All existing 1X2/BTTS/goals prediction functionality preserved - no regression."
 }
