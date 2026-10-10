@@ -1386,9 +1386,64 @@ class DevelopmentProvider(FootballDataProvider):
         to_date: Optional[date] = None,
         status: Optional[str] = None,
     ) -> List[Match]:
-        """Get mock matches with optional filters."""
+        """Get mock matches with optional filters and dynamic status updates."""
+        from datetime import datetime, timezone
+        
         matches = self._matches.copy()
         
+        # Update match statuses dynamically based on current time
+        current_time = datetime.now(timezone.utc)
+        updated_matches = []
+        
+        for match in matches:
+            # Create a copy of the match to avoid modifying the original
+            updated_match = Match(
+                id=match.id,
+                competition_id=match.competition_id,
+                season_id=match.season_id,
+                home_team_id=match.home_team_id,
+                away_team_id=match.away_team_id,
+                venue_id=match.venue_id,
+                scheduled_at=match.scheduled_at,
+                status=match.status,  # Will be updated below
+                home_score=match.home_score,
+                away_score=match.away_score,
+                round=match.round,
+                created_at=match.created_at,
+                updated_at=match.updated_at,
+            )
+            
+            # Only update SCHEDULED matches - preserve other statuses
+            if match.status == MatchStatus.SCHEDULED:
+                # Make scheduled_at timezone-aware if it isn't already
+                if match.scheduled_at.tzinfo is None:
+                    match_time = match.scheduled_at.replace(tzinfo=timezone.utc)
+                else:
+                    match_time = match.scheduled_at
+                
+                time_diff = current_time - match_time
+                hours_passed = time_diff.total_seconds() / 3600
+                
+                # SAFE STATUS UPDATES: Only update status based on time, never add fake scores
+                if hours_passed > 4:  # Match clearly finished (conservative 4 hour window)
+                    updated_match.status = MatchStatus.FINISHED
+                    # SAFETY: Never add fake scores - only update status
+                    # Real scores must come from actual provider data or remain None
+                elif 1.5 < hours_passed <= 4:
+                    # Match recently finished - conservative approach
+                    updated_match.status = MatchStatus.FINISHED
+                    # SAFETY: No fake scores for recently finished matches
+                elif 0.1 < hours_passed <= 1.5:
+                    # Match likely in progress - very conservative
+                    updated_match.status = MatchStatus.LIVE
+                    # SAFETY: No fake live scores
+                # else: match is in future or just started, keep SCHEDULED
+            
+            updated_matches.append(updated_match)
+        
+        matches = updated_matches
+        
+        # Apply original filters
         if competition_id:
             matches = [m for m in matches if m.competition_id == competition_id]
         
@@ -1410,10 +1465,59 @@ class DevelopmentProvider(FootballDataProvider):
         return matches
     
     def get_match(self, match_id: str) -> Optional[Match]:
-        """Get a specific mock match."""
+        """Get a specific mock match with dynamic status updates."""
+        from datetime import datetime, timezone
+        import hashlib
+        
         for match in self._matches:
             if match.id == match_id:
-                return match
+                # Apply the same dynamic status updates as in get_matches
+                current_time = datetime.now(timezone.utc)
+                
+                # Create a copy to avoid modifying the original
+                updated_match = Match(
+                    id=match.id,
+                    competition_id=match.competition_id,
+                    season_id=match.season_id,
+                    home_team_id=match.home_team_id,
+                    away_team_id=match.away_team_id,
+                    venue_id=match.venue_id,
+                    scheduled_at=match.scheduled_at,
+                    status=match.status,
+                    home_score=match.home_score,
+                    away_score=match.away_score,
+                    round=match.round,
+                    created_at=match.created_at,
+                    updated_at=match.updated_at,
+                )
+                
+                # Only update SCHEDULED matches - preserve other statuses
+                if match.status == MatchStatus.SCHEDULED:
+                    # Make scheduled_at timezone-aware if it isn't already
+                    if match.scheduled_at.tzinfo is None:
+                        match_time = match.scheduled_at.replace(tzinfo=timezone.utc)
+                    else:
+                        match_time = match.scheduled_at
+                    
+                    time_diff = current_time - match_time
+                    hours_passed = time_diff.total_seconds() / 3600
+                    
+                    # SAFE STATUS UPDATES: Only update status, never add fake scores
+                    if hours_passed > 4:
+                        # Match clearly finished (conservative 4 hour window)
+                        updated_match.status = MatchStatus.FINISHED
+                        # SAFETY: Never add fake scores - preserve None scores
+                    elif 1.5 < hours_passed <= 4:
+                        # Match recently finished - conservative approach  
+                        updated_match.status = MatchStatus.FINISHED
+                        # SAFETY: No fake scores for recently finished matches
+                    elif 0.1 < hours_passed <= 1.5:
+                        # Match likely in progress - very conservative
+                        updated_match.status = MatchStatus.LIVE
+                        # SAFETY: No fake live scores
+                    # else: match is in the future, keep SCHEDULED status
+                
+                return updated_match
         return None
     
     # === Statistics ===

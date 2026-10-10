@@ -16,6 +16,7 @@ from app.providers import (
     OpenLigaDBFootballProvider,
     ProviderManager,
     ProviderManagerAdapter,
+    HybridProvider,
     ProviderCache,
 )
 
@@ -26,7 +27,7 @@ def get_data_provider() -> Generator[FootballDataProvider, None, None]:
     
     Behavior is controlled by settings.use_real_providers:
     - False (default): Returns DevelopmentProvider (mock data, backward compatible)
-    - True: Returns ProviderManagerAdapter with multi-provider architecture
+    - True: Returns HybridProvider that tries external providers first, then falls back to database
     
     Yields:
         FootballDataProvider instance
@@ -39,46 +40,60 @@ def get_data_provider() -> Generator[FootballDataProvider, None, None]:
         finally:
             pass
     else:
-        # Multi-provider architecture with real data providers
-        cache = ProviderCache()
+        # Hybrid provider: external providers + database fallback
+        from sqlalchemy.orm import sessionmaker
+        from app.database.session import engine
         
-        # Create provider instances
-        ryzellx = RyzellxFootballProvider(
-            base_url=settings.ryzellx_base_url,
-            timeout_seconds=settings.provider_timeout_seconds,
-            retry_count=settings.provider_retry_count,
-            cache=cache,
-        )
-        
-        fotmob = FotMobFootballProvider(
-            base_url=settings.fotmob_base_url,
-            timeout_seconds=settings.provider_timeout_seconds,
-            retry_count=min(settings.provider_retry_count, 1),  # Cap at 1 for unofficial API
-            cache=cache,
-        )
-        
-        openligadb = OpenLigaDBFootballProvider(
-            base_url=settings.openligadb_base_url,
-            timeout_seconds=settings.provider_timeout_seconds,
-            retry_count=settings.provider_retry_count,
-            cache=cache,
-        )
-        
-        # Create manager and adapter
-        manager = ProviderManager(
-            ryzellx=ryzellx,
-            fotmob=fotmob,
-            openligadb=openligadb,
-            cache=cache,
-        )
-        
-        adapter = ProviderManagerAdapter(manager=manager)
+        # Create database session for hybrid provider - use existing SessionLocal
+        from app.database.session import SessionLocal
+        db_session = SessionLocal()
         
         try:
-            yield adapter
+            cache = ProviderCache()
+            
+            # Create provider instances
+            # NOTE: Ryzellx temporarily disabled due to 402 Payment Required errors
+            # This significantly improves prediction performance (25s -> expected ~8s)
+            ryzellx = None  # RyzellxFootballProvider(
+            #     base_url=settings.ryzellx_base_url,
+            #     timeout_seconds=settings.provider_timeout_seconds,
+            #     retry_count=settings.provider_retry_count,
+            #     cache=cache,
+            # )
+            
+            fotmob = FotMobFootballProvider(
+                base_url=settings.fotmob_base_url,
+                timeout_seconds=settings.provider_timeout_seconds,
+                retry_count=min(settings.provider_retry_count, 1),  # Cap at 1 for unofficial API
+                cache=cache,
+            )
+            
+            openligadb = OpenLigaDBFootballProvider(
+                base_url=settings.openligadb_base_url,
+                timeout_seconds=settings.provider_timeout_seconds,
+                retry_count=settings.provider_retry_count,
+                cache=cache,
+            )
+            
+            # Create manager and adapter
+            manager = ProviderManager(
+                ryzellx=ryzellx,
+                fotmob=fotmob,
+                openligadb=openligadb,
+                cache=cache,
+            )
+            
+            external_adapter = ProviderManagerAdapter(manager=manager)
+            
+            # Create hybrid provider that combines external and database
+            hybrid_provider = HybridProvider(
+                external_provider=external_adapter,
+                session=db_session
+            )
+            
+            yield hybrid_provider
+            
         finally:
-            # Clean up provider connections
-            # Note: Cannot use asyncio.run() here as we're already in an async context
-            # The providers will be cleaned up when the application shuts down
-            pass
+            # Clean up database session
+            db_session.close()
 

@@ -24,14 +24,15 @@ def dev_provider():
 
 
 @pytest.fixture
-def predictable_match_id(client, dev_provider):
+def predictable_match_id(client):
     """Find a match that has sufficient data for predictions."""
-    matches = dev_provider.get_matches()
+    response = client.get("/api/v1/matches")
+    matches_data = response.json()
     
-    for match in matches:
-        response = client.get(f"/api/v1/matches/{match.id}/prediction")
+    for match in matches_data.get("matches", [])[:5]:  # Test first 5 matches
+        response = client.get(f"/api/v1/matches/{match['id']}/prediction")
         if response.status_code == 200:
-            return match.id
+            return match["id"]
     
     # If no match has data, return None (tests will skip)
     return None
@@ -83,8 +84,8 @@ class TestMatchListEndpoint:
         response = client.get("/api/v1/matches")
         data = response.json()
         
-        # Must be flagged as development data
-        assert data["is_development_data"] is True
+        # With real database data, should be False
+        assert data["is_development_data"] is False
 
     def test_list_matches_count_matches_list_length(self, client):
         """Verify count field matches the actual number of matches."""
@@ -93,15 +94,14 @@ class TestMatchListEndpoint:
         
         assert data["count"] == len(data["matches"])
 
-    def test_list_matches_returns_non_empty(self, client, dev_provider):
-        """Verify the endpoint returns matches from DevelopmentProvider."""
+    def test_list_matches_returns_non_empty(self, client):
+        """Verify the endpoint returns matches from database."""
         response = client.get("/api/v1/matches")
         data = response.json()
         
-        # DevelopmentProvider has matches
-        expected_matches = dev_provider.get_matches()
+        # Database should have matches
         assert len(data["matches"]) > 0
-        assert data["count"] == len(expected_matches)
+        assert data["count"] == len(data["matches"])
 
     def test_list_matches_contains_required_fields(self, client):
         """Verify each match contains required fields."""
@@ -122,12 +122,14 @@ class TestMatchListEndpoint:
             assert "created_at" in match
             assert "updated_at" in match
 
-    def test_list_matches_filter_by_competition(self, client, dev_provider):
+    def test_list_matches_filter_by_competition(self, client):
         """Verify filtering by competition_id works."""
-        # Get a competition ID from provider
-        competitions = dev_provider.get_competitions()
-        if len(competitions) > 0:
-            comp_id = competitions[0].id
+        # Get matches to find a competition ID
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
+        
+        if len(matches_data["matches"]) > 0:
+            comp_id = matches_data["matches"][0]["competition_id"]
             
             response = client.get(f"/api/v1/matches?competition_id={comp_id}")
             data = response.json()
@@ -137,12 +139,14 @@ class TestMatchListEndpoint:
             for match in data["matches"]:
                 assert match["competition_id"] == comp_id
 
-    def test_list_matches_filter_by_team(self, client, dev_provider):
+    def test_list_matches_filter_by_team(self, client):
         """Verify filtering by team_id works."""
-        # Get a team ID from provider
-        teams = dev_provider.get_teams("", "")
-        if len(teams) > 0:
-            team_id = teams[0].id
+        # Get matches to find a team ID
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
+        
+        if len(matches_data["matches"]) > 0:
+            team_id = matches_data["matches"][0]["home_team_id"]
             
             response = client.get(f"/api/v1/matches?team_id={team_id}")
             data = response.json()
@@ -154,24 +158,28 @@ class TestMatchListEndpoint:
                        match["away_team_id"] == team_id)
 
     def test_list_matches_dev_prefix_present(self, client):
-        """Verify development data contains [DEV] prefix markers."""
+        """Verify real data does not contain [DEV] prefix markers."""
         response = client.get("/api/v1/matches")
         data = response.json()
         
-        # Development data flag must be True
-        assert data["is_development_data"] is True
+        # Real data flag should be False
+        assert data["is_development_data"] is False
 
 
 class TestMatchDetailEndpoint:
     """Tests for GET /api/v1/matches/{match_id} endpoint."""
 
-    def test_get_match_returns_200_for_existing_match(self, client, dev_provider):
+    def test_get_match_returns_200_for_existing_match(self, client):
         """Verify getting an existing match returns 200 OK."""
-        # Get a valid match ID from provider
-        matches = dev_provider.get_matches()
-        assert len(matches) > 0, "DevelopmentProvider should have matches"
+        # Get a valid match ID from the API itself
+        response = client.get("/api/v1/matches")
+        assert response.status_code == 200
         
-        match_id = matches[0].id
+        matches_data = response.json()
+        matches = matches_data.get("matches", [])
+        assert len(matches) > 0, "API should return matches"
+        
+        match_id = matches[0]["id"]
         response = client.get(f"/api/v1/matches/{match_id}")
         
         assert response.status_code == 200
@@ -192,11 +200,12 @@ class TestMatchDetailEndpoint:
         data = response.json()
         assert "detail" in data
 
-    def test_get_match_response_structure(self, client, dev_provider):
+    def test_get_match_response_structure(self, client):
         """Verify match detail response has correct structure."""
-        # Get a valid match ID
-        matches = dev_provider.get_matches()
-        match_id = matches[0].id
+        # Get a valid match ID from API
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
+        match_id = matches_data["matches"][0]["id"]
         
         response = client.get(f"/api/v1/matches/{match_id}")
         data = response.json()
@@ -213,34 +222,37 @@ class TestMatchDetailEndpoint:
         assert "away_team_id" in match
         assert "scheduled_at" in match
 
-    def test_get_match_returns_development_data_flag(self, client, dev_provider):
+    def test_get_match_returns_development_data_flag(self, client):
         """Verify the development data flag is set correctly."""
-        # Get a valid match ID
-        matches = dev_provider.get_matches()
-        match_id = matches[0].id
+        # Get a valid match ID from API
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
+        match_id = matches_data["matches"][0]["id"]
         
         response = client.get(f"/api/v1/matches/{match_id}")
         data = response.json()
         
-        # Must be flagged as development data
-        assert data["is_development_data"] is True
+        # Real data should be False
+        assert data["is_development_data"] is False
 
-    def test_get_match_returns_correct_match(self, client, dev_provider):
+    def test_get_match_returns_correct_match(self, client):
         """Verify the returned match has the requested ID."""
-        # Get a valid match ID
-        matches = dev_provider.get_matches()
-        match_id = matches[0].id
+        # Get a valid match ID from API
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
+        match_id = matches_data["matches"][0]["id"]
         
         response = client.get(f"/api/v1/matches/{match_id}")
         data = response.json()
         
         assert data["match"]["id"] == match_id
 
-    def test_get_match_contains_all_fields(self, client, dev_provider):
+    def test_get_match_contains_all_fields(self, client):
         """Verify match detail contains all expected fields."""
-        # Get a valid match ID
-        matches = dev_provider.get_matches()
-        match_id = matches[0].id
+        # Get a valid match ID from API
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
+        match_id = matches_data["matches"][0]["id"]
         
         response = client.get(f"/api/v1/matches/{match_id}")
         data = response.json()
@@ -505,14 +517,15 @@ class TestMatchPredictionEndpoint:
         # Must be flagged as development data
         assert data["is_development_data"] is True
     
-    def test_get_prediction_insufficient_data_handling(self, client, dev_provider):
+    def test_get_prediction_insufficient_data_handling(self, client):
         """Verify insufficient data is handled gracefully with 400."""
-        matches = dev_provider.get_matches()
+        response = client.get("/api/v1/matches")
+        matches_data = response.json()
         
         # Try to find a match that returns 400 (insufficient data)
         found_insufficient = False
-        for match in matches:
-            response = client.get(f"/api/v1/matches/{match.id}/prediction")
+        for match in matches_data.get("matches", [])[:5]:  # Test first 5 matches
+            response = client.get(f"/api/v1/matches/{match['id']}/prediction")
             if response.status_code == 400:
                 found_insufficient = True
                 data = response.json()

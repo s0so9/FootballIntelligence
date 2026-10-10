@@ -202,13 +202,25 @@ class ProviderManagerAdapter(FootballDataProvider):
         Returns:
             List of matching fixtures
         """
-        if from_date is None:
-            raise NotImplementedError(
-                "Date filter required - provide at least from_date parameter"
-            )
+        # If no date filters provided, use a default range (today and next 30 days)
+        if from_date is None and to_date is None:
+            from datetime import date, timedelta
+            from_date = date.today()
+            to_date = date.today() + timedelta(days=30)
+            logger.debug(f"No date filters provided, using default range: {from_date} to {to_date}")
+        elif from_date is None and to_date is not None:
+            # If only to_date provided, set from_date to 30 days before
+            from datetime import timedelta
+            from_date = to_date - timedelta(days=30)
+            logger.debug(f"Only to_date provided, setting from_date: {from_date}")
+        elif from_date is not None and to_date is None:
+            # If only from_date provided, set to_date to 30 days after
+            from datetime import timedelta
+            to_date = from_date + timedelta(days=30)
+            logger.debug(f"Only from_date provided, setting to_date: {to_date}")
         
         # Determine query type
-        if to_date is None or to_date == from_date:
+        if to_date == from_date:
             # Single date query
             logger.debug(f"Fetching matches for single date: {from_date}")
             provider_matches = await self._exec_async(

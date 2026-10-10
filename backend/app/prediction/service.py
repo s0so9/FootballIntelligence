@@ -1,5 +1,8 @@
 """Prediction service for generating match predictions.
 
+# Force reload for min_matches fix
+import time
+
 This service coordinates the canonical MENSIONE Intelligence Pipeline:
 1. Feature extraction → MatchFeatureSnapshot
 2. ModelOrchestrator → runs all compatible models
@@ -115,10 +118,16 @@ class PredictionService:
         self.provider = provider
         self.db_session = db_session
         self.poisson_model = poisson_model or PoissonModel(max_goals=10)
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"[PREDICTION_SERVICE] Initializing with db_session: {type(db_session) if db_session else None}")
+        
         self.feature_extractor = feature_extractor or MatchFeatureExtractor(
             provider=provider,
-            min_matches=3,
-            recent_matches=5
+            min_matches=1,  # Reduced from 3 to 1 to allow predictions with minimal data
+            recent_matches=5,
+            db_session=db_session  # Pass db_session for optimized queries
         )
         self.market_analyser = market_analyser or MarketAnalyser(
             value_threshold=0.03,
@@ -143,8 +152,25 @@ class PredictionService:
         self.model_orchestrator = ModelOrchestrator.create_default_registry()
         
         # Integration layers
-        self.ensemble_integration = EnsembleIntegration.create_default()
-        self.calibration_integration = CalibrationIntegration.create_default()
+        # Phase 10.3: Use optimized ensemble weights
+        try:
+            from app.prediction.ensemble_optimizer import create_optimized_ensemble
+            optimized_engine = create_optimized_ensemble()
+            self.ensemble_integration = EnsembleIntegration(engine=optimized_engine)
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not load optimized ensemble, using default: {e}")
+            self.ensemble_integration = EnsembleIntegration.create_default()
+        
+        # Load trained calibration if available (Phase 10.3)
+        try:
+            from app.prediction.calibration_loader import create_calibration_integration_with_trained_model
+            self.calibration_integration = create_calibration_integration_with_trained_model()
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not load trained calibration, using default: {e}")
+            self.calibration_integration = CalibrationIntegration.create_default()
+        
         self.confidence_integration = ConfidenceIntegration()
         
         # Data quality gate (simplified check - not full quality engine)
@@ -173,6 +199,9 @@ class PredictionService:
             except ImportError:
                 # Shot market engine not available
                 pass
+            except Exception as e:
+                import logging
+                logging.warning(f"ShotMarketEngine initialization failed: {e}")
         
         # Model metadata
         self.poisson_model_metadata = Model(
@@ -471,7 +500,7 @@ class PredictionService:
         
         Args:
             match: Match being analyzed
-            prediction: Base prediction with probabilities
+            prediction: Calibrated prediction with probabilities
         
         Returns:
             EasyMatchResult or None if prediction unavailable
@@ -479,39 +508,16 @@ class PredictionService:
         if prediction is None:
             return None
         
-        # Re-run Poisson for detailed probabilities
-        features = self.feature_extractor.extract_features(match)
-        home_attack = features.get("home_attack_strength")
-        away_attack = features.get("away_attack_strength")
-        home_defense = features.get("home_defense_strength")
-        away_defense = features.get("away_defense_strength")
-        
-        if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
-            return None
-        
-        home_lambda = self.poisson_model.estimate_lambda_from_features(
-            home_attack, away_defense, 1.0
-        )
-        away_lambda = self.poisson_model.estimate_lambda_from_features(
-            away_attack, home_defense, 1.0
-        )
-        
-        poisson_result = self.poisson_model.predict_from_lambda(home_lambda, away_lambda)
-        
-        # Get over/under probabilities
-        over_under_2_5 = poisson_result.over_under_probabilities.get(2.5)
-        over_2_5_prob = over_under_2_5[0] if over_under_2_5 else None
-        
-        # Detect easy match
+        # Use calibrated probabilities from the main prediction pipeline
+        # instead of recalculating with raw Poisson
         easy_match_result = self.easy_match_detector.detect(
             match_id=match.id,
-            home_win_prob=poisson_result.home_win_probability,
-            draw_prob=poisson_result.draw_probability,
-            away_win_prob=poisson_result.away_win_probability,
-            btts_prob=poisson_result.btts_yes_probability,
-            over_2_5_prob=over_2_5_prob,
-            home_xg=home_lambda,
-            away_xg=away_lambda,
+            home_win_prob=prediction.home_win_probability,
+            draw_prob=prediction.draw_probability,
+            away_win_prob=prediction.away_win_probability,
+            btts_prob=prediction.btts_probability,
+            home_xg=prediction.home_xg,
+            away_xg=prediction.away_xg,
             has_sufficient_historical_data=True,
         )
         
@@ -523,6 +529,7 @@ class PredictionService:
         prediction: Optional[Prediction] = None,
         prediction_markets: Optional[List[PredictionMarket]] = None,
         match_db_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
     ) -> AnalysisContext:
         """Build AnalysisContext for AI Analyst.
         
@@ -534,38 +541,97 @@ class PredictionService:
             prediction: Generated prediction (if available)
             prediction_markets: Generated markets (if available)
             match_db_id: Optional database match ID for database-backed features
+            correlation_id: Optional correlation ID for logging
             
         Returns:
             AnalysisContext with all available information
         """
-        # Get basic entities
+        import time
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if correlation_id is None:
+            correlation_id = "none"
+            
+        context_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Starting")
+        
+        # Get basic entities (with timeout protection)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Getting teams")
         try:
-            teams = self.provider.get_teams(match.competition_id, match.season_id)
-            home_team = next((t for t in teams if t.id == match.home_team_id), None)
-            if home_team is None:
-                home_team = Team(id=match.home_team_id, name=match.home_team_id)
-        except (NotImplementedError, StopIteration):
+            import concurrent.futures
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            def get_teams_with_timeout():
+                return self.provider.get_teams(match.competition_id, match.season_id)
+            
+            # Use ThreadPoolExecutor with 2-second timeout
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_teams_with_timeout)
+                try:
+                    teams = future.result(timeout=2.0)  # 2-second timeout
+                    home_team = next((t for t in teams if t.id == match.home_team_id), None)
+                    if home_team is None:
+                        home_team = Team(id=match.home_team_id, name=match.home_team_id)
+                except concurrent.futures.TimeoutError:
+                    logger.warning(f"[{correlation_id}] Provider call for teams timed out for match {match.id}")
+                    home_team = Team(id=match.home_team_id, name=match.home_team_id)
+        except (NotImplementedError, StopIteration, Exception):
             home_team = Team(id=match.home_team_id, name=match.home_team_id)
         
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Teams lookup complete ({step_time:.1f}ms)")
+        
         try:
-            teams = self.provider.get_teams(match.competition_id, match.season_id)
+            # Reuse teams if we got them above, otherwise timeout-protected call
+            if 'teams' not in locals():
+                def get_teams_with_timeout():
+                    return self.provider.get_teams(match.competition_id, match.season_id)
+                
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(get_teams_with_timeout)
+                    try:
+                        teams = future.result(timeout=2.0)
+                    except concurrent.futures.TimeoutError:
+                        logger.warning(f"[{correlation_id}] Provider call for teams timed out for match {match.id}")
+                        teams = []
+            
             away_team = next((t for t in teams if t.id == match.away_team_id), None)
             if away_team is None:
                 away_team = Team(id=match.away_team_id, name=match.away_team_id)
-        except (NotImplementedError, StopIteration):
+        except (NotImplementedError, StopIteration, Exception):
             away_team = Team(id=match.away_team_id, name=match.away_team_id)
-        
+            
+        # Get competitions
+        step_start = time.time() 
+        logger.info(f"[{correlation_id}] build_analysis_context: Getting competitions")
         try:
-            competitions = self.provider.get_competitions()
-            competition = next((c for c in competitions if c.id == match.competition_id), None)
-            if competition is None:
-                competition = Competition(
-                    id=match.competition_id,
-                    name=match.competition_id,
-                    country="Unknown",
-                    level=1,
-                )
-        except (NotImplementedError, StopIteration):
+            def get_competitions_with_timeout():
+                return self.provider.get_competitions()
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_competitions_with_timeout)
+                try:
+                    competitions = future.result(timeout=2.0)  # 2-second timeout
+                    competition = next((c for c in competitions if c.id == match.competition_id), None)
+                    if competition is None:
+                        competition = Competition(
+                            id=match.competition_id,
+                            name=match.competition_id,
+                            country="Unknown",
+                            level=1,
+                        )
+                except concurrent.futures.TimeoutError:
+                    logger.warning(f"[{correlation_id}] Provider call for competitions timed out for match {match.id}")
+                    competition = Competition(
+                        id=match.competition_id,
+                        name=match.competition_id,
+                        country="Unknown",
+                        level=1,
+                    )
+        except (NotImplementedError, StopIteration, Exception):
             competition = Competition(
                 id=match.competition_id,
                 name=match.competition_id,
@@ -573,7 +639,12 @@ class PredictionService:
                 level=1,
             )
         
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Competitions lookup complete ({step_time:.1f}ms)")
+        
         # Try to extract database-backed features if available
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Extracting database features")
         feature_set = None
         db_features_available = False
         if self.feature_aggregator and match_db_id:
@@ -584,8 +655,16 @@ class PredictionService:
                 # Database features extraction failed, fall back to provider-based
                 pass
         
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Database features complete ({step_time:.1f}ms)")
+        
         # Extract provider-based features (always as fallback)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Extracting provider features")
         features = self.feature_extractor.extract_features(match)
+        
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Provider features complete ({step_time:.1f}ms)")
         
         # Filter features to exclude metadata fields (IDs and timestamps)
         # Keep None values to explicitly represent unavailable data
@@ -608,51 +687,157 @@ class PredictionService:
         if not statistical_features:
             statistical_features = None
         
-        # Get recent matches for form
+        # Get recent matches for form (with timeout protection)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Getting recent matches for form")
         try:
-            all_matches = self.provider.get_matches(
-                competition_id=match.competition_id,
-                season_id=match.season_id,
-            )
-            # Filter to before target match
-            historical = [
-                m for m in all_matches
-                if m.scheduled_at < match.scheduled_at and m.id != match.id
-            ]
-            historical.sort(key=lambda m: m.scheduled_at)
+            import concurrent.futures
+            import logging
             
-            home_recent = [
-                m for m in historical
-                if m.home_team_id == match.home_team_id or m.away_team_id == match.home_team_id
-            ][-5:]
+            def get_comp_matches_with_timeout():
+                return self.provider.get_matches(
+                    competition_id=match.competition_id,
+                    season_id=match.season_id,
+                )
             
-            away_recent = [
-                m for m in historical
-                if m.home_team_id == match.away_team_id or m.away_team_id == match.away_team_id
-            ][-5:]
-        except NotImplementedError:
+            # Use ThreadPoolExecutor with 3-second timeout to prevent blocking
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_comp_matches_with_timeout)
+                try:
+                    all_matches = future.result(timeout=3.0)  # 3-second timeout
+                    
+                    # Filter to before target match (with timezone compatibility)
+                    historical = []
+                    for m in all_matches:
+                        try:
+                            # Convert both datetimes to UTC naive for comparison
+                            m_dt = m.scheduled_at.replace(tzinfo=None) if hasattr(m.scheduled_at, 'tzinfo') and m.scheduled_at.tzinfo else m.scheduled_at
+                            match_dt = match.scheduled_at.replace(tzinfo=None) if hasattr(match.scheduled_at, 'tzinfo') and match.scheduled_at.tzinfo else match.scheduled_at
+                            
+                            if m_dt < match_dt and m.id != match.id:
+                                historical.append(m)
+                        except (AttributeError, TypeError):
+                            # Skip problematic datetime objects
+                            continue
+                    historical.sort(key=lambda m: m.scheduled_at)
+                    
+                    home_recent = [
+                        m for m in historical
+                        if m.home_team_id == match.home_team_id or m.away_team_id == match.home_team_id
+                    ][-5:]
+                    
+                    away_recent = [
+                        m for m in historical
+                        if m.home_team_id == match.away_team_id or m.away_team_id == match.away_team_id
+                    ][-5:]
+                    
+                except concurrent.futures.TimeoutError:
+                    logger.warning(f"[{correlation_id}] Provider call for competition matches timed out after 3 seconds for match {match.id}, using no recent matches")
+                    home_recent = None
+                    away_recent = None
+                    
+        except (NotImplementedError, Exception) as e:
+            logger.warning(f"[{correlation_id}] Provider call for competition matches failed for match {match.id}: {e}, using no recent matches")
             home_recent = None
             away_recent = None
+            
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Recent matches complete ({step_time:.1f}ms)")
         
-        # Get standings
+        # Get head-to-head matches (from database if available)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Getting H2H matches")
+        h2h_matches = None
+        h2h_home_wins = None
+        h2h_draws = None
+        h2h_away_wins = None
+        
+        if self.db_session:
+            try:
+                from app.database.models import Match as DBMatch
+                
+                # Query H2H matches: both home/away and away/home combinations
+                h2h_query = self.db_session.query(DBMatch).filter(
+                    (
+                        ((DBMatch.home_team_id == match.home_team_id) & (DBMatch.away_team_id == match.away_team_id)) |
+                        ((DBMatch.home_team_id == match.away_team_id) & (DBMatch.away_team_id == match.home_team_id))
+                    ),
+                    DBMatch.status == 'finished',
+                    DBMatch.scheduled_at < match.scheduled_at
+                ).order_by(DBMatch.scheduled_at.desc()).limit(10)
+                
+                h2h_matches = h2h_query.all()
+                
+                if h2h_matches:
+                    # Calculate H2H stats from perspective of current match's home team
+                    h2h_home_wins = 0
+                    h2h_draws = 0
+                    h2h_away_wins = 0
+                    
+                    for h2h_match in h2h_matches:
+                        # Determine outcome from current home team's perspective
+                        if h2h_match.outcome:
+                            if h2h_match.home_team_id == match.home_team_id:
+                                # H2H match where current home team was home
+                                if h2h_match.outcome == 'home_win':
+                                    h2h_home_wins += 1
+                                elif h2h_match.outcome == 'draw':
+                                    h2h_draws += 1
+                                elif h2h_match.outcome == 'away_win':
+                                    h2h_away_wins += 1
+                            else:
+                                # H2H match where current home team was away
+                                if h2h_match.outcome == 'away_win':
+                                    h2h_home_wins += 1
+                                elif h2h_match.outcome == 'draw':
+                                    h2h_draws += 1
+                                elif h2h_match.outcome == 'home_win':
+                                    h2h_away_wins += 1
+                    
+                    logger.info(f"[{correlation_id}] Found {len(h2h_matches)} H2H matches: {h2h_home_wins}W-{h2h_draws}D-{h2h_away_wins}L")
+            except Exception as e:
+                logger.warning(f"[{correlation_id}] H2H extraction failed: {e}")
+                h2h_matches = None
+        
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: H2H matches complete ({step_time:.1f}ms)")
+        
+        # Get standings (with timeout protection)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Getting standings")
         try:
-            standings = self.provider.get_standings(
-                competition_id=match.competition_id,
-                season_id=match.season_id,
-            )
-            home_standing = next(
-                (s for s in standings if s.team_id == match.home_team_id),
-                None
-            )
-            away_standing = next(
-                (s for s in standings if s.team_id == match.away_team_id),
-                None
-            )
-        except (NotImplementedError, StopIteration):
+            def get_standings_with_timeout():
+                return self.provider.get_standings(
+                    competition_id=match.competition_id,
+                    season_id=match.season_id,
+                )
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(get_standings_with_timeout)
+                try:
+                    standings = future.result(timeout=2.0)  # 2-second timeout
+                    home_standing = next(
+                        (s for s in standings if s.team_id == match.home_team_id),
+                        None
+                    )
+                    away_standing = next(
+                        (s for s in standings if s.team_id == match.away_team_id),
+                        None
+                    )
+                except concurrent.futures.TimeoutError:
+                    logger.warning(f"[{correlation_id}] Provider call for standings timed out for match {match.id}")
+                    home_standing = None
+                    away_standing = None
+        except (NotImplementedError, StopIteration, Exception):
             home_standing = None
             away_standing = None
+            
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Standings complete ({step_time:.1f}ms)")
         
         # Build team strength dictionaries from features
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Building team strengths")
         home_strength = None
         away_strength = None
         
@@ -663,6 +848,8 @@ class PredictionService:
                 "home_venue_strength": features.get("home_home_strength"),
                 "away_venue_strength": features.get("home_away_strength"),
             }
+            # Filter out None values to avoid AnalysisContext validation errors
+            home_strength = {k: v for k, v in home_strength.items() if v is not None}
         
         if any(v is not None for k, v in features.items() if k.startswith("away_") and k not in ["away_team_id"]):
             away_strength = {
@@ -671,8 +858,15 @@ class PredictionService:
                 "home_venue_strength": features.get("away_home_strength"),
                 "away_venue_strength": features.get("away_away_strength"),
             }
+            # Filter out None values to avoid AnalysisContext validation errors
+            away_strength = {k: v for k, v in away_strength.items() if v is not None}
+        
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Team strengths complete ({step_time:.1f}ms)")
         
         # Determine data completeness
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Building data completeness")
         data_completeness = {
             "match": True,
             "teams": True,
@@ -696,7 +890,12 @@ class PredictionService:
         if feature_set and feature_set.notes:
             missing_notes.extend(feature_set.notes)
         
+        step_time = (time.time() - step_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Data completeness complete ({step_time:.1f}ms)")
+        
         # Build context
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] build_analysis_context: Building final context")
         context = AnalysisContext(
             match=match,
             home_team=home_team,
@@ -704,6 +903,10 @@ class PredictionService:
             competition=competition,
             home_recent_matches=home_recent,
             away_recent_matches=away_recent,
+            head_to_head_matches=h2h_matches,
+            h2h_home_wins=h2h_home_wins,
+            h2h_draws=h2h_draws,
+            h2h_away_wins=h2h_away_wins,
             home_standing=home_standing,
             away_standing=away_standing,
             home_team_strength=home_strength,
@@ -716,6 +919,10 @@ class PredictionService:
             data_completeness=data_completeness,
             missing_data_notes=missing_notes if missing_notes else None,
         )
+        
+        total_context_time = (time.time() - context_start) * 1000
+        logger.info(f"[{correlation_id}] build_analysis_context: Final context complete ({step_time:.1f}ms)")
+        logger.info(f"[{correlation_id}] build_analysis_context: TOTAL TIME {total_context_time:.1f}ms")
         
         return context
     
@@ -752,7 +959,8 @@ class PredictionService:
         self,
         match: Match,
         stage: PredictionStage = PredictionStage.KICKOFF,
-        odds_data: Optional[Dict[str, float]] = None
+        odds_data: Optional[Dict[str, float]] = None,
+        correlation_id: Optional[str] = None
     ) -> AnalysisContext:
         """Generate complete MENSIONE prediction using canonical pipeline.
         
@@ -776,61 +984,129 @@ class PredictionService:
         Returns:
             AnalysisContext with predicted_score, mensione_pick, confidence, and version_id
         """
+        import time
+        import logging
+        from app.prediction.profiler import get_profiler, reset_profiler
+        
+        logger = logging.getLogger(__name__)
+        
+        if correlation_id is None:
+            correlation_id = "none"
+        
+        # Reset and start profiling
+        reset_profiler()
+        profiler = get_profiler()
+        profiler.start_stage("TOTAL_PIPELINE", match_id=match.id)
+        
         start_time = datetime.now()
+        stage_timings = {}
+        pipeline_start = time.time()
+        
+        logger.info(f"[{correlation_id}] generate_full_prediction: Starting pipeline")
         
         # STEP 1: Extract canonical feature snapshot
+        profiler.start_stage("FEATURE_EXTRACTION", match_id=match.id)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] Step 1: Extracting feature snapshot")
         try:
-            snapshot = self._extract_canonical_snapshot(match)
+            snapshot = self._extract_canonical_snapshot(match, correlation_id)
+            stage_timings["1_feature_snapshot"] = (time.time() - step_start) * 1000
+            logger.info(f"[{correlation_id}] Step 1 complete: {stage_timings['1_feature_snapshot']:.1f}ms")
+            profiler.end_stage(success=True, duration_ms=stage_timings["1_feature_snapshot"])
         except Exception as e:
             # Feature extraction failed - return empty context
-            import logging
-            logging.error(f"Feature snapshot extraction failed: {e}", exc_info=True)
-            return self.build_analysis_context(match=match)
+            stage_timings["1_feature_snapshot_FAILED"] = (time.time() - step_start) * 1000
+            logger.error(f"[{correlation_id}] Feature snapshot extraction failed: {e}", exc_info=True)
+            logger.info(f"[{correlation_id}] Pipeline stage timings: {stage_timings}")
+            profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["1_feature_snapshot_FAILED"])
+            profiler.end_stage()  # End total pipeline
+            return self.build_analysis_context(match=match, correlation_id=correlation_id)
         
         # STEP 2: Run model orchestrator
+        profiler.start_stage("MODEL_ORCHESTRATOR", match_id=match.id)
+        step_start = time.time()
+        logger.info(f"[{correlation_id}] Step 2: Running model orchestrator")
         try:
             orchestration_result = self.model_orchestrator.run_all(snapshot)
+            stage_timings["2_model_orchestrator"] = (time.time() - step_start) * 1000
+            logger.info(f"[{correlation_id}] Step 2 complete: {stage_timings['2_model_orchestrator']:.1f}ms")
+            profiler.end_stage(success=True, models_count=len(orchestration_result.successful_predictions), duration_ms=stage_timings["2_model_orchestrator"])
         except Exception as e:
-            import logging
-            logging.error(f"Model orchestration failed: {e}", exc_info=True)
-            return self.build_analysis_context(match=match)
+            stage_timings["2_model_orchestrator_FAILED"] = (time.time() - step_start) * 1000
+            logger.error(f"[{correlation_id}] Model orchestration failed: {e}", exc_info=True)
+            logger.info(f"[{correlation_id}] Pipeline stage timings: {stage_timings}")
+            profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["2_model_orchestrator_FAILED"])
+            profiler.end_stage()  # End total pipeline
+            return self.build_analysis_context(match=match, correlation_id=correlation_id)
         
         # Check if any models succeeded
         if not orchestration_result.successful_predictions:
             # No models succeeded - return context without prediction
-            return self.build_analysis_context(match=match)
+            logger.info(f"[{correlation_id}] No models succeeded")
+            logger.info(f"[{correlation_id}] Pipeline stage timings: {stage_timings}")
+            profiler.end_stage()  # End total pipeline
+            return self.build_analysis_context(match=match, correlation_id=correlation_id)
         
         # STEP 3: Ensemble - combine predictions
+        profiler.start_stage("ENSEMBLE", match_id=match.id)
+        step_start = time.time()
         try:
             ensemble_result = self.ensemble_integration.combine_predictions(
                 orchestration_result=orchestration_result,
                 context=None
             )
+            stage_timings["3_ensemble"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=True, duration_ms=stage_timings["3_ensemble"])
             
             # Check if ensemble returned a prediction
             if not isinstance(ensemble_result, ModelPrediction):
-                # Ensemble unavailable - use first successful model as fallback
-                ensemble_result = orchestration_result.successful_predictions[0].prediction
+                # Ensemble unavailable - check if we have any successful model predictions
+                if len(orchestration_result.successful_predictions) > 0:
+                    # Use first successful model as fallback
+                    ensemble_result = orchestration_result.successful_predictions[0].prediction
+                else:
+                    # No models available - return unavailable result
+                    logger.info(f"[{correlation_id}] No models available for prediction - insufficient data")
+                    profiler.end_stage(success=False, error="No models available", duration_ms=stage_timings["3_ensemble"])
+                    profiler.end_stage()  # End total pipeline
+                    return self.build_analysis_context(match=match, correlation_id=correlation_id)
         except Exception as e:
             import logging
             logging.error(f"Ensemble failed: {e}", exc_info=True)
+            stage_timings["3_ensemble_FAILED"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["3_ensemble_FAILED"])
             # Fallback to first successful model
-            ensemble_result = orchestration_result.successful_predictions[0].prediction
+            if len(orchestration_result.successful_predictions) > 0:
+                ensemble_result = orchestration_result.successful_predictions[0].prediction
+            else:
+                # No models available - return unavailable result
+                logger.info(f"[{correlation_id}] No models available for prediction - insufficient data")
+                profiler.end_stage(success=False, error="No models available", duration_ms=stage_timings["3_ensemble_FAILED"])
+                profiler.end_stage()  # End total pipeline
+                return self.build_analysis_context(match=match, correlation_id=correlation_id)
         
         # STEP 4: Calibration - calibrate ensemble probabilities
+        profiler.start_stage("CALIBRATION", match_id=match.id)
+        step_start = time.time()
         try:
             calibrated_prediction = self.calibration_integration.calibrate_prediction(
                 prediction=ensemble_result
             )
+            stage_timings["4_calibration"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=True, duration_ms=stage_timings["4_calibration"])
             calibration_metadata = calibrated_prediction.metadata
         except Exception as e:
             import logging
             logging.error(f"Calibration failed: {e}", exc_info=True)
+            stage_timings["4_calibration_FAILED"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["4_calibration_FAILED"])
             # Fallback to uncalibrated
             calibrated_prediction = ensemble_result
             calibration_metadata = {"calibration_status": "failed"}
-        
+
         # STEP 5: Confidence - assess from real pipeline values
+        profiler.start_stage("CONFIDENCE", match_id=match.id)
+        step_start = time.time()
         try:
             confidence_assessment = self.confidence_integration.assess_confidence(
                 snapshot=snapshot,
@@ -838,9 +1114,13 @@ class PredictionService:
                 ensemble_prediction=ensemble_result,
                 calibration_metadata=calibration_metadata
             )
+            stage_timings["5_confidence"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=True, duration_ms=stage_timings["5_confidence"])
         except Exception as e:
             import logging
             logging.error(f"Confidence assessment failed: {e}", exc_info=True)
+            stage_timings["5_confidence_FAILED"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["5_confidence_FAILED"])
             # Fallback to default confidence
             from app.prediction.confidence_engine import ConfidenceComponents, ConfidenceWeights
             confidence_assessment = ConfidenceAssessment(
@@ -859,6 +1139,8 @@ class PredictionService:
             )
         
         # STEP 6: Convert score distribution to tuple format for MarketDerivationEngine
+        profiler.start_stage("MARKET_CONVERSION", match_id=match.id)
+        step_start = time.time()
         score_dist_tuples = {}
         if calibrated_prediction.score_distribution:
             for score_key, prob in calibrated_prediction.score_distribution.items():
@@ -871,17 +1153,30 @@ class PredictionService:
                         score_dist_tuples[(int(h), int(a))] = prob
                 except (ValueError, AttributeError):
                     continue
+        stage_timings["6_market_conversion"] = (time.time() - step_start) * 1000
+        profiler.end_stage(success=True, score_count=len(score_dist_tuples), duration_ms=stage_timings["6_market_conversion"])
         
         # STEP 7: Derive all markets
+        profiler.start_stage("MARKET_DERIVATION", match_id=match.id)
+        step_start = time.time()
         market_probs = None
         if score_dist_tuples:
             try:
                 market_probs = self.market_derivation_engine.derive(score_dist_tuples)
+                stage_timings["7_market_derivation"] = (time.time() - step_start) * 1000
+                profiler.end_stage(success=True, markets_count=8, duration_ms=stage_timings["7_market_derivation"])  # Approximate market count
             except Exception as e:
                 import logging
                 logging.error(f"Market derivation failed: {e}", exc_info=True)
-        
+                stage_timings["7_market_derivation_FAILED"] = (time.time() - step_start) * 1000
+                profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["7_market_derivation_FAILED"])
+        else:
+            stage_timings["7_market_derivation_SKIPPED"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error="No score distribution", duration_ms=stage_timings["7_market_derivation_SKIPPED"])
+
         # NEW: FEAT-003 - STEP 7.5: Predict shot markets if engine available
+        profiler.start_stage("SHOT_MARKETS", match_id=match.id)
+        step_start = time.time()
         shot_market_predictions = None
         if self.shot_market_engine and snapshot:
             try:
@@ -894,25 +1189,57 @@ class PredictionService:
                 # Try to get raw match data from database if available
                 if self.db_session:
                     try:
-                        from app.features.advanced_team_intelligence import get_team_matches_with_stats
+                        # Get matches with statistics for shot market prediction
+                        from app.features.advanced_team_intelligence import AdvancedTeamIntelligenceCalculator
+                        from app.database.models import Match, MatchStatistic, Team
+                        from sqlalchemy import and_
                         
                         # Get matches before prediction timestamp
                         before_datetime = match.scheduled_at if hasattr(match, 'scheduled_at') else datetime.now()
                         
-                        home_matches = get_team_matches_with_stats(
-                            session=self.db_session,
-                            team_id=snapshot.home_team_id,
-                            before_datetime=before_datetime
-                        )
+                        # Fetch historical matches with statistics for both teams
+                        def get_matches_with_stats(team_id: str, limit: int = 20):
+                            matches_query = (
+                                self.db_session.query(Match)
+                                .filter(
+                                    and_(
+                                        (Match.home_team_id == team_id) | (Match.away_team_id == team_id),
+                                        Match.scheduled_at < before_datetime,
+                                        Match.status == 'FINISHED'
+                                    )
+                                )
+                                .order_by(Match.scheduled_at.desc())
+                                .limit(limit)
+                            )
+                            
+                            matches_with_stats = []
+                            for m in matches_query:
+                                # Get match statistics for this match
+                                home_stats = self.db_session.query(MatchStatistic).filter_by(
+                                    match_id=m.id, team_id=m.home_team_id
+                                ).first()
+                                away_stats = self.db_session.query(MatchStatistic).filter_by(
+                                    match_id=m.id, team_id=m.away_team_id
+                                ).first()
+                                
+                                if home_stats and away_stats:
+                                    from app.features.advanced_team_intelligence import MatchWithStatistics
+                                    matches_with_stats.append(MatchWithStatistics(
+                                        match=m,
+                                        home_statistics=home_stats,
+                                        away_statistics=away_stats
+                                    ))
+                            
+                            return matches_with_stats
                         
-                        away_matches = get_team_matches_with_stats(
-                            session=self.db_session,
-                            team_id=snapshot.away_team_id,
-                            before_datetime=before_datetime
-                        )
+                        home_matches = get_matches_with_stats(snapshot.home_team_id)
+                        away_matches = get_matches_with_stats(snapshot.away_team_id)
+                        
                     except Exception as match_fetch_error:
                         import logging
                         logging.debug(f"Could not fetch match data for shot markets: {match_fetch_error}")
+                        home_matches = None
+                        away_matches = None
                 
                 # Predict shot markets
                 shot_market_predictions = self.shot_market_engine.predict_all_shot_markets(
@@ -921,11 +1248,20 @@ class PredictionService:
                     away_matches=away_matches,
                     before_datetime=match.scheduled_at if hasattr(match, 'scheduled_at') else None
                 )
+                stage_timings["7.5_shot_markets"] = (time.time() - step_start) * 1000
+                profiler.end_stage(success=True, shot_markets_count=len(shot_market_predictions) if shot_market_predictions else 0, duration_ms=stage_timings["7.5_shot_markets"])
             except Exception as e:
                 import logging
                 logging.error(f"Shot market prediction failed: {e}", exc_info=True)
+                stage_timings["7.5_shot_markets_FAILED"] = (time.time() - step_start) * 1000
+                profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["7.5_shot_markets_FAILED"])
+        else:
+            stage_timings["7.5_shot_markets_UNAVAILABLE"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error="Shot engine unavailable", duration_ms=stage_timings["7.5_shot_markets_UNAVAILABLE"])
         
         # STEP 8: Generate TUTAR X PICK using SmartMarketSelector
+        profiler.start_stage("MARKET_SELECTOR", match_id=match.id)
+        step_start = time.time()
         mensione_pick = None
         pipeline_version = "1.0.0"
         if market_probs:
@@ -948,7 +1284,8 @@ class PredictionService:
                     pipeline_version=pipeline_version,
                     shot_market_predictions=shot_market_predictions,  # NEW: FEAT-003
                     home_team_name=home_team_name,  # NEW: FEAT-003
-                    away_team_name=away_team_name   # NEW: FEAT-003
+                    away_team_name=away_team_name,   # NEW: FEAT-003
+                    match_id=match.id  # NEW: Pass actual match ID
                 )
                 
                 # Convert BestTip or PassDecision to dict for AnalysisContext
@@ -983,11 +1320,20 @@ class PredictionService:
                         "timestamp": mensione_result.timestamp.isoformat(),
                         "pipeline_version": mensione_result.pipeline_version
                     }
+                stage_timings["8_market_selector"] = (time.time() - step_start) * 1000
+                profiler.end_stage(success=True, pick_made=mensione_pick is not None, duration_ms=stage_timings["8_market_selector"])
             except Exception as e:
                 import logging
                 logging.error(f"SmartMarketSelector failed: {e}", exc_info=True)
+                stage_timings["8_market_selector_FAILED"] = (time.time() - step_start) * 1000
+                profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["8_market_selector_FAILED"])
+        else:
+            stage_timings["8_market_selector_SKIPPED"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error="No market probabilities", duration_ms=stage_timings["8_market_selector_SKIPPED"])
         
         # STEP 9: Extract predicted score (most likely scoreline)
+        profiler.start_stage("PREDICTED_SCORE", match_id=match.id)
+        step_start = time.time()
         predicted_score = None
         if market_probs and market_probs.exact_score_top:
             predicted_score = market_probs.exact_score_top[0][0]
@@ -1000,13 +1346,21 @@ class PredictionService:
                     predicted_score = f"{score_key[0]}-{score_key[1]}"
                 else:
                     predicted_score = str(score_key)
+        stage_timings["9_predicted_score"] = (time.time() - step_start) * 1000
+        profiler.end_stage(success=predicted_score is not None, score=predicted_score, duration_ms=stage_timings["9_predicted_score"])
         
         # STEP 10: Collect model metadata for versioning
+        profiler.start_stage("VERSION_METADATA", match_id=match.id)
+        step_start = time.time()
         models_used = {}
         for model_output in orchestration_result.successful_predictions:
             models_used[model_output.model_id] = model_output.model_version
+        stage_timings["10_version_metadata"] = (time.time() - step_start) * 1000
+        profiler.end_stage(success=True, models_count=len(models_used), duration_ms=stage_timings["10_version_metadata"])
         
         # STEP 11: Create versioned prediction with full pipeline metadata
+        profiler.start_stage("PREDICTION_VERSIONING", match_id=match.id)
+        step_start = time.time()
         prediction_data = {
             "home_win_prob": calibrated_prediction.home_win_prob,
             "draw_prob": calibrated_prediction.draw_prob,
@@ -1049,11 +1403,17 @@ class PredictionService:
                 ],
                 mensione_pick=mensione_pick
             )
+            stage_timings["11_prediction_versioning"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=True, version_id=version.version_id if version else None, duration_ms=stage_timings["11_prediction_versioning"])
         except Exception as e:
             import logging
             logging.error(f"Prediction versioning failed: {e}", exc_info=True)
+            stage_timings["11_prediction_versioning_FAILED"] = (time.time() - step_start) * 1000
+            profiler.end_stage(success=False, error=str(e), duration_ms=stage_timings["11_prediction_versioning_FAILED"])
         
         # STEP 12: Build legacy Prediction object for backward compatibility
+        profiler.start_stage("LEGACY_PREDICTION", match_id=match.id)
+        step_start = time.time()
         # Convert score distribution from tuple keys to string keys for legacy Prediction
         legacy_score_distribution = {}
         if calibrated_prediction.score_distribution:
@@ -1095,16 +1455,26 @@ class PredictionService:
             except (ValueError, AttributeError):
                 pass
         
+        stage_timings["12_legacy_prediction"] = (time.time() - step_start) * 1000
+        profiler.end_stage(success=True, duration_ms=stage_timings["12_legacy_prediction"])
+        
         # STEP 13: Generate markets for AnalysisContext (reuse market_probs)
+        profiler.start_stage("ANALYSIS_MARKETS", match_id=match.id)
+        step_start = time.time()
         markets = None
         if market_probs:
             markets = self._convert_market_probs_to_prediction_markets(match, market_probs)
+        stage_timings["13_analysis_markets"] = (time.time() - step_start) * 1000
+        profiler.end_stage(success=markets is not None, markets_count=len(markets) if markets else 0, duration_ms=stage_timings["13_analysis_markets"])
         
         # STEP 14: Build enriched AnalysisContext
+        profiler.start_stage("ANALYSIS_CONTEXT", match_id=match.id)
+        step_start = time.time()
         context = self.build_analysis_context(
             match=match,
             prediction=legacy_prediction,
-            prediction_markets=markets
+            prediction_markets=markets,
+            correlation_id=correlation_id
         )
         
         # Add MENSIONE-specific fields
@@ -1113,16 +1483,34 @@ class PredictionService:
         context.prediction_version_id = version.version_id if version else None
         # confidence_assessment is embedded in confidence dict in prediction_version_data
         
-        # Calculate execution time
-        execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
+        # Add form data from snapshot to context (for API response)
+        if snapshot.home_form:
+            context.home_form = snapshot.home_form
+        if snapshot.away_form:
+            context.away_form = snapshot.away_form
         
-        # Add pipeline metadata to context
-        # Pipeline metadata is already stored in prediction_version
-        # No need to add to context which doesn't have that field
+        # Add shot markets to context (FEAT-003)
+        if shot_market_predictions:
+            serialized_shot_markets = self._serialize_shot_markets(shot_market_predictions)
+            context.shot_markets = serialized_shot_markets
+        
+        stage_timings["14_analysis_context"] = (time.time() - step_start) * 1000
+        profiler.end_stage(success=True, duration_ms=stage_timings["14_analysis_context"])
+        
+        # Calculate execution time and finish profiling
+        execution_time_ms = (datetime.now() - start_time).total_seconds() * 1000
+        total_pipeline_time = (time.time() - pipeline_start) * 1000
+        
+        # Log final timing summary
+        logger.info(f"[{correlation_id}] PIPELINE COMPLETE: {total_pipeline_time:.1f}ms")
+        logger.info(f"[{correlation_id}] Stage timings: {stage_timings}")
+        
+        # End total pipeline profiling
+        profiler.end_stage(success=True, total_stages=len(stage_timings), duration_ms=total_pipeline_time)
         
         return context
     
-    def _extract_canonical_snapshot(self, match: Match) -> MatchFeatureSnapshot:
+    def _extract_canonical_snapshot(self, match: Match, correlation_id: Optional[str] = None) -> MatchFeatureSnapshot:
         """Extract canonical feature snapshot with data quality assessment.
         
         Args:
@@ -1131,11 +1519,18 @@ class PredictionService:
         Returns:
             MatchFeatureSnapshot with data quality report
         """
+        import time
+        import logging
+        logger = logging.getLogger(__name__)
+        substep_start = time.time()
+        
         # Extract features using existing extractor
         features = self.feature_extractor.extract_features(match)
+        logger.info(f"  [snapshot] extract_features: {(time.time() - substep_start) * 1000:.2f}ms")
         
         # DEVELOPMENT FALLBACK: Provide baseline values for missing features
         # This preserves determinism while allowing prediction generation
+        substep_start = time.time()
         is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
         if is_dev_data:
             # Provide baseline strength values if missing
@@ -1147,22 +1542,27 @@ class PredictionService:
                 features["home_defense_strength"] = 1.0
             if features.get("away_defense_strength") is None:
                 features["away_defense_strength"] = 1.0
+        logger.info(f"  [snapshot] dev_fallback: {(time.time() - substep_start) * 1000:.2f}ms")
         
         # Run data quality assessment using DataQualityGate
+        substep_start = time.time()
         data_quality_report = self.data_quality_gate.assess(features)
+        logger.info(f"  [snapshot] data_quality_gate: {(time.time() - substep_start) * 1000:.2f}ms")
         
         # Extract feature_set if feature_aggregator available
+        substep_start = time.time()
         feature_set = None
         if self.feature_aggregator:
             try:
-                feature_set = self.feature_aggregator.aggregate_features(
-                    home_team_id=match.home_team_id,
-                    away_team_id=match.away_team_id,
-                    match_date=match.scheduled_at if hasattr(match, 'scheduled_at') else datetime.now()
+                feature_set = self.feature_aggregator.extract_features_for_match(
+                    match_id=match.id
                 )
-            except Exception:
+            except Exception as e:
                 # Feature aggregation failed, continue with basic features
+                import logging
+                logging.error(f"[FEATURE_AGGREGATOR_EXCEPTION] {type(e).__name__}: {str(e)}", exc_info=True)
                 pass
+        logger.info(f"  [snapshot] feature_aggregator: {(time.time() - substep_start) * 1000:.2f}ms")
         
         # Build snapshot
         snapshot = extract_feature_snapshot(
@@ -1177,17 +1577,28 @@ class PredictionService:
             market_info=None  # TODO: extract from odds_data if available
         )
         
+        # Add H2H features if available (will be populated later when analysis_context is built)
+        # This is a placeholder for future H2H integration
+        
         # COMPATIBILITY: If snapshot has no strength metrics (feature_set was None),
         # populate from the flat features dict to ensure models can run
-        if snapshot.home_strength is None or snapshot.away_strength is None:
+        needs_home_strength = (snapshot.home_strength is None or 
+                              snapshot.home_strength.goals_scored_per_match is None)
+        needs_away_strength = (snapshot.away_strength is None or 
+                              snapshot.away_strength.goals_scored_per_match is None)
+        
+        if needs_home_strength or needs_away_strength:
             from app.prediction.feature_snapshot import TeamStrengthMetrics, FormMetrics
             
             # Populate home strength from features
-            if snapshot.home_strength is None:
+            if needs_home_strength:
+                home_goals_scored = features.get("home_recent_avg_goals_scored") or features.get("home_goals_scored_avg") or features.get("home_goal_scoring_rate")
+                home_goals_conceded = features.get("home_recent_avg_goals_conceded") or features.get("home_goals_conceded_avg") or features.get("home_goal_conceding_rate")
+                
                 snapshot.home_strength = TeamStrengthMetrics(
-                    goals_scored_per_match=features.get("home_recent_avg_goals_scored") or features.get("home_goals_scored_avg") or features.get("home_goal_scoring_rate"),
+                    goals_scored_per_match=home_goals_scored,
                     xg_per_match=features.get("home_xg_avg"),
-                    goals_conceded_per_match=features.get("home_recent_avg_goals_conceded") or features.get("home_goals_conceded_avg") or features.get("home_goal_conceding_rate"),
+                    goals_conceded_per_match=home_goals_conceded,
                     xg_against_per_match=features.get("home_xg_conceded_avg"),
                     points_per_match=features.get("home_form_points_per_match") or features.get("home_points_per_match"),
                     elo_rating=features.get("home_elo"),
@@ -1196,11 +1607,14 @@ class PredictionService:
                 )
             
             # Populate away strength from features
-            if snapshot.away_strength is None:
+            if needs_away_strength:
+                away_goals_scored = features.get("away_recent_avg_goals_scored") or features.get("away_goals_scored_avg") or features.get("away_goal_scoring_rate")
+                away_goals_conceded = features.get("away_recent_avg_goals_conceded") or features.get("away_goals_conceded_avg") or features.get("away_goal_conceding_rate")
+                
                 snapshot.away_strength = TeamStrengthMetrics(
-                    goals_scored_per_match=features.get("away_recent_avg_goals_scored") or features.get("away_goals_scored_avg") or features.get("away_goal_scoring_rate"),
+                    goals_scored_per_match=away_goals_scored,
                     xg_per_match=features.get("away_xg_avg"),
-                    goals_conceded_per_match=features.get("away_recent_avg_goals_conceded") or features.get("away_goals_conceded_avg") or features.get("away_goal_conceding_rate"),
+                    goals_conceded_per_match=away_goals_conceded,
                     xg_against_per_match=features.get("away_xg_conceded_avg"),
                     points_per_match=features.get("away_form_points_per_match") or features.get("away_points_per_match"),
                     elo_rating=features.get("away_elo"),
@@ -1218,7 +1632,7 @@ class PredictionService:
                     goals_for=int(features.get("home_recent_goals_scored", 0)) if features.get("home_recent_goals_scored") is not None else None,
                     goals_against=int(features.get("home_recent_goals_conceded", 0)) if features.get("home_recent_goals_conceded") is not None else None,
                     goal_difference=None,  # Calculate if needed
-                    points_per_match=features.get("home_form_points_per_match"),
+                    points_per_match=features.get("home_form_points_per_match") or features.get("home_form_score"),
                     win_rate=features.get("home_win_rate"),
                     clean_sheet_rate=features.get("home_clean_sheet_rate"),
                     matches_analyzed=int(features.get("home_match_count", 5)) if features.get("home_match_count") is not None else 5,
@@ -1233,11 +1647,69 @@ class PredictionService:
                     goals_for=int(features.get("away_recent_goals_scored", 0)) if features.get("away_recent_goals_scored") is not None else None,
                     goals_against=int(features.get("away_recent_goals_conceded", 0)) if features.get("away_recent_goals_conceded") is not None else None,
                     goal_difference=None,  # Calculate if needed
-                    points_per_match=features.get("away_form_points_per_match"),
+                    points_per_match=features.get("away_form_points_per_match") or features.get("away_form_score"),
                     win_rate=features.get("away_win_rate"),
                     clean_sheet_rate=features.get("away_clean_sheet_rate"),
                     matches_analyzed=int(features.get("away_match_count", 5)) if features.get("away_match_count") is not None else 5,
                 )
+        
+        # FEAT-003: Populate shot intelligence if database session is available
+        if self.db_session:
+            try:
+                from app.features.advanced_feature_engineering import AdvancedFeatureEngineer
+                from app.features.advanced_team_intelligence import MatchWithStatistics
+                from app.database.models import Match, MatchStatistic
+                from sqlalchemy import and_
+                
+                # Get all matches with statistics for shot intelligence
+                before_datetime = snapshot.scheduled_at
+                
+                def get_all_matches_with_stats(limit: int = 100):
+                    """Get all recent matches with statistics for shot intelligence calculation."""
+                    matches_query = (
+                        self.db_session.query(Match)
+                        .filter(
+                            and_(
+                                Match.scheduled_at < before_datetime,
+                                Match.status == 'FINISHED'
+                            )
+                        )
+                        .order_by(Match.scheduled_at.desc())
+                        .limit(limit)
+                    )
+                    
+                    matches_with_stats = []
+                    for m in matches_query:
+                        home_stats = self.db_session.query(MatchStatistic).filter_by(
+                            match_id=m.id, team_id=m.home_team_id
+                        ).first()
+                        away_stats = self.db_session.query(MatchStatistic).filter_by(
+                            match_id=m.id, team_id=m.away_team_id
+                        ).first()
+                        
+                        if home_stats and away_stats:
+                            matches_with_stats.append(MatchWithStatistics(
+                                match=m,
+                                home_statistics=home_stats,
+                                away_statistics=away_stats
+                            ))
+                    
+                    return matches_with_stats
+                
+                # Get historical matches
+                all_matches = get_all_matches_with_stats()
+                
+                advanced_engineer = AdvancedFeatureEngineer()
+                advanced_engineer.populate_shot_intelligence(
+                    snapshot=snapshot,
+                    home_team_id=snapshot.home_team_id,
+                    away_team_id=snapshot.away_team_id,
+                    matches_with_stats=all_matches,
+                    before_datetime=before_datetime
+                )
+            except Exception as e:
+                import logging
+                logging.warning(f"Shot intelligence population failed: {e}")
         
         return snapshot
     
@@ -1257,58 +1729,83 @@ class PredictionService:
         """
         markets = []
         
-        # 1X2
-        if hasattr(market_probs, 'home_win_prob'):
-            markets.append(PredictionMarket(
-                id=str(uuid.uuid4()),
-                prediction_id="",  # Set by caller
-                type=PredictionMarketType.HOME_WIN,
-                probability=market_probs.home_win_prob,
-                fair_odds=market_probs.home_win_odds if hasattr(market_probs, 'home_win_odds') else None,
-                confidence_score=None,
-            ))
+        # 1X2 Market (MATCH_RESULT)
+        if hasattr(market_probs, 'home_win') and hasattr(market_probs, 'draw') and hasattr(market_probs, 'away_win'):
+            # Validate probabilities
+            if all(0.0 <= p <= 1.0 for p in [market_probs.home_win, market_probs.draw, market_probs.away_win]):
+                markets.append(PredictionMarket(
+                    id=str(uuid.uuid4()),
+                    prediction_id="",  # Set by caller
+                    market_type=PredictionMarketType.MATCH_RESULT,
+                    probabilities={
+                        "home": market_probs.home_win,
+                        "draw": market_probs.draw,
+                        "away": market_probs.away_win,
+                    },
+                    line=None,
+                ))
         
-        if hasattr(market_probs, 'draw_prob'):
-            markets.append(PredictionMarket(
-                id=str(uuid.uuid4()),
-                prediction_id="",
-                type=PredictionMarketType.DRAW,
-                probability=market_probs.draw_prob,
-                fair_odds=market_probs.draw_odds if hasattr(market_probs, 'draw_odds') else None,
-                confidence_score=None,
-            ))
+        # Over/Under Markets
+        if hasattr(market_probs, 'over_under') and market_probs.over_under:
+            for line, (over_prob, under_prob) in market_probs.over_under.items():
+                # Validate probabilities
+                if 0.0 <= over_prob <= 1.0 and 0.0 <= under_prob <= 1.0:
+                    markets.append(PredictionMarket(
+                        id=str(uuid.uuid4()),
+                        prediction_id="",
+                        market_type=PredictionMarketType.OVER_UNDER,
+                        line=line,
+                        probabilities={
+                            "over": over_prob,
+                            "under": under_prob,
+                        },
+                    ))
         
-        if hasattr(market_probs, 'away_win_prob'):
-            markets.append(PredictionMarket(
-                id=str(uuid.uuid4()),
-                prediction_id="",
-                type=PredictionMarketType.AWAY_WIN,
-                probability=market_probs.away_win_prob,
-                fair_odds=market_probs.away_win_odds if hasattr(market_probs, 'away_win_odds') else None,
-                confidence_score=None,
-            ))
+        # BTTS Market
+        if hasattr(market_probs, 'btts_yes') and hasattr(market_probs, 'btts_no'):
+            # Validate probabilities
+            if 0.0 <= market_probs.btts_yes <= 1.0 and 0.0 <= market_probs.btts_no <= 1.0:
+                markets.append(PredictionMarket(
+                    id=str(uuid.uuid4()),
+                    prediction_id="",
+                    market_type=PredictionMarketType.BTTS,
+                    probabilities={
+                        "yes": market_probs.btts_yes,
+                        "no": market_probs.btts_no,
+                    },
+                    line=None,
+                ))
         
-        # Over/Under 2.5
-        if hasattr(market_probs, 'over_2_5_prob'):
-            markets.append(PredictionMarket(
-                id=str(uuid.uuid4()),
-                prediction_id="",
-                type=PredictionMarketType.OVER_2_5,
-                probability=market_probs.over_2_5_prob,
-                fair_odds=market_probs.over_2_5_odds if hasattr(market_probs, 'over_2_5_odds') else None,
-                confidence_score=None,
-            ))
+        # Combined Market: Over 2.5 + BTTS Yes
+        if hasattr(market_probs, 'over_2_5_and_btts_yes'):
+            # Validate probability
+            if 0.0 <= market_probs.over_2_5_and_btts_yes <= 1.0:
+                markets.append(PredictionMarket(
+                    id=str(uuid.uuid4()),
+                    prediction_id="",
+                    market_type=PredictionMarketType.OVER_2_5_AND_BTTS,
+                    probabilities={
+                        "yes": market_probs.over_2_5_and_btts_yes,
+                        "no": 1.0 - market_probs.over_2_5_and_btts_yes,
+                    },
+                    line=2.5,  # Reference line for the "over" part
+                ))
         
-        # BTTS
-        if hasattr(market_probs, 'btts_yes_prob'):
-            markets.append(PredictionMarket(
-                id=str(uuid.uuid4()),
-                prediction_id="",
-                type=PredictionMarketType.BTTS,
-                probability=market_probs.btts_yes_prob,
-                fair_odds=market_probs.btts_yes_odds if hasattr(market_probs, 'btts_yes_odds') else None,
-                confidence_score=None,
-            ))
+        # Exact Score Market (top 10 scorelines)
+        if hasattr(market_probs, 'exact_score_top') and market_probs.exact_score_top:
+            top_scores = {}
+            for score_str, prob in market_probs.exact_score_top[:10]:
+                if 0.0 <= prob <= 1.0:
+                    top_scores[score_str] = prob
+            
+            if top_scores:
+                markets.append(PredictionMarket(
+                    id=str(uuid.uuid4()),
+                    prediction_id="",
+                    market_type=PredictionMarketType.CORRECT_SCORE,
+                    probabilities=top_scores,
+                    line=None,
+                ))
         
         return markets
     

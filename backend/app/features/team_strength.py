@@ -71,6 +71,9 @@ class TeamStrengthCalculator(FeatureCalculator):
         
         # Check if we have sufficient data
         if len(finished_matches) < self.min_matches:
+            # INSUFFICIENT DATA: Return None to indicate missing team strength data
+            # This prevents fabrication of statistics and forces models to handle uncertainty
+            # The prediction system should use league averages or other appropriate priors
             return {
                 f"{prefix}attack_strength": None,
                 f"{prefix}defense_strength": None,
@@ -78,6 +81,9 @@ class TeamStrengthCalculator(FeatureCalculator):
                 f"{prefix}away_strength": None,
                 f"{prefix}goal_scoring_rate": None,
                 f"{prefix}goal_conceding_rate": None,
+                # PoissonModel-compatible feature names also set to None
+                f"{prefix}goals_scored_avg": None,
+                f"{prefix}goals_conceded_avg": None,
             }
         
         team_id = team_history.team_id
@@ -104,6 +110,9 @@ class TeamStrengthCalculator(FeatureCalculator):
             f"{prefix}away_strength": away_strength,
             f"{prefix}goal_scoring_rate": attack_strength,  # Same as attack strength
             f"{prefix}goal_conceding_rate": defense_strength,  # Same as defense strength
+            # Add PoissonModel-compatible feature names
+            f"{prefix}goals_scored_avg": attack_strength,
+            f"{prefix}goals_conceded_avg": defense_strength,
         }
     
     def _calculate_venue_strength(self, matches: List[Match], team_id: str) -> Optional[float]:

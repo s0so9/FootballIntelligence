@@ -201,6 +201,17 @@ class NegativeBinomialModel(PredictionModel):
     def _calc_1x2(
         scorelines: Dict[Tuple[int, int], float],
     ) -> Tuple[float, float, float]:
+        """Calculate 1X2 probabilities from scoreline matrix.
+        
+        The scoreline matrix uses a truncated distribution (finite max_goals),
+        so the sum may be slightly less than 1.0. We normalize the 1X2 vector
+        to ensure it sums to exactly 1.0, preserving relative probability ratios.
+        
+        This is mathematically valid because:
+        1. The truncated distribution captures most probability mass
+        2. 1X2 outcomes are mutually exclusive and exhaustive
+        3. Normalization preserves P(home_win) / P(draw) / P(away_win) ratios
+        """
         home_win = draw = away_win = 0.0
         for (h, a), p in scorelines.items():
             if h > a:
@@ -209,6 +220,14 @@ class NegativeBinomialModel(PredictionModel):
                 draw += p
             else:
                 away_win += p
+        
+        # Normalize to ensure sum = 1.0
+        total = home_win + draw + away_win
+        if total > 0.0:
+            home_win /= total
+            draw /= total
+            away_win /= total
+        
         return home_win, draw, away_win
 
     @staticmethod

@@ -6,13 +6,13 @@ from enum import Enum
 class MatchStatus(str, Enum):
     """Match status enumeration."""
 
-    SCHEDULED = "scheduled"
-    LIVE = "live"
-    HALF_TIME = "half_time"
-    FINISHED = "finished"
-    POSTPONED = "postponed"
-    CANCELLED = "cancelled"
-    SUSPENDED = "suspended"
+    SCHEDULED = "SCHEDULED"
+    LIVE = "LIVE"
+    HALF_TIME = "HALF_TIME"
+    FINISHED = "FINISHED"
+    POSTPONED = "POSTPONED"
+    CANCELLED = "CANCELLED"
+    SUSPENDED = "SUSPENDED"
 
 
 class MatchEventType(str, Enum):
@@ -44,6 +44,7 @@ class PredictionMarketType(str, Enum):
     MATCH_RESULT = "match_result"  # 1X2
     OVER_UNDER = "over_under"
     BTTS = "btts"  # Both Teams To Score
+    OVER_2_5_AND_BTTS = "over_2_5_and_btts"  # Combined market: Over 2.5 goals AND both teams score
     DOUBLE_CHANCE = "double_chance"  # Phase 5: Double chance market (e.g., 1X, 12, X2)
     HANDICAP = "handicap"  # Phase 5: Handicap/Asian handicap market
     CORRECT_SCORE = "correct_score"

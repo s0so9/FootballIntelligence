@@ -58,6 +58,7 @@ from app.features.shot_production import (
     ShotProduction,
     ShotProductionCalculator,
 )
+from app.features.snapshot_cache import FeatureSnapshotCache, CacheKey
 from app.features.common_opponent_intelligence import (
     CommonOpponentIntelligence,
     CommonOpponentCalculator,
@@ -201,16 +202,19 @@ class AdvancedFeatureEngineer:
     def __init__(
         self,
         create_interactions: bool = False,
-        interactions: Optional[List[InteractionFeature]] = None
+        interactions: Optional[List[InteractionFeature]] = None,
+        feature_cache: Optional[FeatureSnapshotCache] = None
     ):
         """Initialize feature engineer.
         
         Args:
             create_interactions: Whether to create interaction features
             interactions: Explicit list of interactions to compute (default: CANDIDATE_INTERACTIONS)
+            feature_cache: Optional cache for feature snapshot deduplication
         """
         self.create_interactions = create_interactions
         self.interactions = interactions if interactions is not None else CANDIDATE_INTERACTIONS
+        self.feature_cache = feature_cache
     
     def engineer_features(
         self,
@@ -245,23 +249,49 @@ class AdvancedFeatureEngineer:
         if prediction_timestamp is None:
             prediction_timestamp = before_datetime
         
+        # Clear cache at start of prediction
+        if self.feature_cache:
+            self.feature_cache.clear()
+        
         features: Dict[str, Optional[float]] = {}
         feature_metadata: Dict[str, AdvancedFeatureMetadata] = {}
         quality_scores: List[float] = []
         quality_weights: List[float] = []
         
-        # 1. Advanced Team Intelligence (Group 1)
+        # 1. Advanced Team Intelligence (Group 1) - WITH CACHING
         team_intel_calc = AdvancedTeamIntelligenceCalculator(session=None, min_matches=5)
-        home_team_metrics = team_intel_calc.calculate_advanced_metrics(
-            team_id=home_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
-        away_team_metrics = team_intel_calc.calculate_advanced_metrics(
-            team_id=away_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
+        
+        # Home team
+        home_cache_key = CacheKey(home_team_id, "recent", prediction_timestamp, "team_intelligence")
+        if self.feature_cache:
+            home_team_metrics = self.feature_cache.get(home_cache_key)
+        else:
+            home_team_metrics = None
+        
+        if home_team_metrics is None:
+            home_team_metrics = team_intel_calc.calculate_advanced_metrics(
+                team_id=home_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(home_cache_key, home_team_metrics)
+        
+        # Away team
+        away_cache_key = CacheKey(away_team_id, "recent", prediction_timestamp, "team_intelligence")
+        if self.feature_cache:
+            away_team_metrics = self.feature_cache.get(away_cache_key)
+        else:
+            away_team_metrics = None
+        
+        if away_team_metrics is None:
+            away_team_metrics = team_intel_calc.calculate_advanced_metrics(
+                team_id=away_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(away_cache_key, away_team_metrics)
         
         # Extract team intelligence features
         self._extract_team_metrics(
@@ -278,21 +308,43 @@ class AdvancedFeatureEngineer:
             quality_scores.append(away_team_metrics.data_quality_score)
             quality_weights.append(0.25)
         
-        # 2. Opponent Adjustment (Group 1)
+        # 2. Opponent Adjustment (Group 1) - WITH CACHING
         # Note: OpponentAdjustmentCalculator needs EloRatingSystem, passing None for now
         # In production, this would be wired properly
         try:
             opp_adj_calc = OpponentAdjustmentCalculator(session=None, elo_system=None, min_matches=5)
-            home_adj_metrics = opp_adj_calc.calculate_adjusted_metrics(
-                team_id=home_team_id,
-                matches_with_stats=matches_with_stats,
-                before_datetime=before_datetime
-            )
-            away_adj_metrics = opp_adj_calc.calculate_adjusted_metrics(
-                team_id=away_team_id,
-                matches_with_stats=matches_with_stats,
-                before_datetime=before_datetime
-            )
+            
+            # Home team
+            home_opp_key = CacheKey(home_team_id, "recent", prediction_timestamp, "opponent_adjustment")
+            if self.feature_cache:
+                home_adj_metrics = self.feature_cache.get(home_opp_key)
+            else:
+                home_adj_metrics = None
+            
+            if home_adj_metrics is None:
+                home_adj_metrics = opp_adj_calc.calculate_adjusted_metrics(
+                    team_id=home_team_id,
+                    matches_with_stats=matches_with_stats,
+                    before_datetime=before_datetime
+                )
+                if self.feature_cache:
+                    self.feature_cache.set(home_opp_key, home_adj_metrics)
+            
+            # Away team
+            away_opp_key = CacheKey(away_team_id, "recent", prediction_timestamp, "opponent_adjustment")
+            if self.feature_cache:
+                away_adj_metrics = self.feature_cache.get(away_opp_key)
+            else:
+                away_adj_metrics = None
+            
+            if away_adj_metrics is None:
+                away_adj_metrics = opp_adj_calc.calculate_adjusted_metrics(
+                    team_id=away_team_id,
+                    matches_with_stats=matches_with_stats,
+                    before_datetime=before_datetime
+                )
+                if self.feature_cache:
+                    self.feature_cache.set(away_opp_key, away_adj_metrics)
             
             self._extract_opponent_adjusted(
                 home_adj_metrics, "home", prediction_timestamp, features, feature_metadata
@@ -311,18 +363,40 @@ class AdvancedFeatureEngineer:
             # OpponentAdjustment may fail without Elo system, continue without it
             pass
         
-        # 3. Temporal Intelligence (Group 1)
+        # 3. Temporal Intelligence (Group 1) - WITH CACHING
         temporal_calc = TemporalIntelligenceCalculator(session=None, min_matches=5)
-        home_temporal = temporal_calc.calculate_temporal_metrics(
-            team_id=home_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
-        away_temporal = temporal_calc.calculate_temporal_metrics(
-            team_id=away_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
+        
+        # Home team
+        home_temporal_key = CacheKey(home_team_id, "recent", prediction_timestamp, "temporal_intelligence")
+        if self.feature_cache:
+            home_temporal = self.feature_cache.get(home_temporal_key)
+        else:
+            home_temporal = None
+        
+        if home_temporal is None:
+            home_temporal = temporal_calc.calculate_temporal_metrics(
+                team_id=home_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(home_temporal_key, home_temporal)
+        
+        # Away team
+        away_temporal_key = CacheKey(away_team_id, "recent", prediction_timestamp, "temporal_intelligence")
+        if self.feature_cache:
+            away_temporal = self.feature_cache.get(away_temporal_key)
+        else:
+            away_temporal = None
+        
+        if away_temporal is None:
+            away_temporal = temporal_calc.calculate_temporal_metrics(
+                team_id=away_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(away_temporal_key, away_temporal)
         
         self._extract_temporal(
             home_temporal, "home", prediction_timestamp, features, feature_metadata
@@ -341,20 +415,42 @@ class AdvancedFeatureEngineer:
             quality_scores.append(temporal_quality_away)
             quality_weights.append(0.15)
         
-        # 4. Lineup Intelligence (Group 2)
+        # 4. Lineup Intelligence (Group 2) - WITH CACHING
         lineup_calc = LineupIntelligenceCalculator(session=None)
-        home_lineup = lineup_calc.calculate_lineup_impact(
-            team_id=home_team_id,
-            player_absences=[],  # No player absence data in this context
-            historical_matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
-        away_lineup = lineup_calc.calculate_lineup_impact(
-            team_id=away_team_id,
-            player_absences=[],  # No player absence data in this context
-            historical_matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
+        
+        # Home team
+        home_lineup_key = CacheKey(home_team_id, "recent", prediction_timestamp, "lineup_intelligence")
+        if self.feature_cache:
+            home_lineup = self.feature_cache.get(home_lineup_key)
+        else:
+            home_lineup = None
+        
+        if home_lineup is None:
+            home_lineup = lineup_calc.calculate_lineup_impact(
+                team_id=home_team_id,
+                player_absences=[],  # No player absence data in this context
+                historical_matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(home_lineup_key, home_lineup)
+        
+        # Away team
+        away_lineup_key = CacheKey(away_team_id, "recent", prediction_timestamp, "lineup_intelligence")
+        if self.feature_cache:
+            away_lineup = self.feature_cache.get(away_lineup_key)
+        else:
+            away_lineup = None
+        
+        if away_lineup is None:
+            away_lineup = lineup_calc.calculate_lineup_impact(
+                team_id=away_team_id,
+                player_absences=[],  # No player absence data in this context
+                historical_matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(away_lineup_key, away_lineup)
         
         self._extract_lineup(
             home_lineup, "home", prediction_timestamp, features, feature_metadata
@@ -370,18 +466,41 @@ class AdvancedFeatureEngineer:
             quality_scores.append(away_lineup.data_quality)
             quality_weights.append(0.10)
         
-        # 5. Tactical Matchup (Group 2)
+        # 5. Tactical Matchup (Group 2) - WITH CACHING
         tactical_calc = TacticalMatchupCalculator(session=None, min_matches=5)
-        home_tactical_profile = tactical_calc.calculate_tactical_profile(
-            team_id=home_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
-        away_tactical_profile = tactical_calc.calculate_tactical_profile(
-            team_id=away_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
+        
+        # Home team tactical profile
+        home_tactical_key = CacheKey(home_team_id, "recent", prediction_timestamp, "tactical_profile")
+        if self.feature_cache:
+            home_tactical_profile = self.feature_cache.get(home_tactical_key)
+        else:
+            home_tactical_profile = None
+        
+        if home_tactical_profile is None:
+            home_tactical_profile = tactical_calc.calculate_tactical_profile(
+                team_id=home_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(home_tactical_key, home_tactical_profile)
+        
+        # Away team tactical profile
+        away_tactical_key = CacheKey(away_team_id, "recent", prediction_timestamp, "tactical_profile")
+        if self.feature_cache:
+            away_tactical_profile = self.feature_cache.get(away_tactical_key)
+        else:
+            away_tactical_profile = None
+        
+        if away_tactical_profile is None:
+            away_tactical_profile = tactical_calc.calculate_tactical_profile(
+                team_id=away_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(away_tactical_key, away_tactical_profile)
+        
         tactical_matchup = tactical_calc.calculate_matchup(
             home_profile=home_tactical_profile,
             away_profile=away_tactical_profile
@@ -395,18 +514,40 @@ class AdvancedFeatureEngineer:
             quality_scores.append(tactical_matchup.data_quality_score)
             quality_weights.append(0.10)
         
-        # 6. Shot Intelligence (Group 2)
+        # 6. Shot Intelligence (Group 2) - WITH CACHING
         shot_intel_calc = ShotIntelligenceCalculator(session=None, min_matches=5)
-        home_shot_intel = shot_intel_calc.calculate_shot_metrics(
-            team_id=home_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
-        away_shot_intel = shot_intel_calc.calculate_shot_metrics(
-            team_id=away_team_id,
-            matches_with_stats=matches_with_stats,
-            before_datetime=before_datetime
-        )
+        
+        # Home team
+        home_shot_key = CacheKey(home_team_id, "recent", prediction_timestamp, "shot_intelligence")
+        if self.feature_cache:
+            home_shot_intel = self.feature_cache.get(home_shot_key)
+        else:
+            home_shot_intel = None
+        
+        if home_shot_intel is None:
+            home_shot_intel = shot_intel_calc.calculate_shot_metrics(
+                team_id=home_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(home_shot_key, home_shot_intel)
+        
+        # Away team
+        away_shot_key = CacheKey(away_team_id, "recent", prediction_timestamp, "shot_intelligence")
+        if self.feature_cache:
+            away_shot_intel = self.feature_cache.get(away_shot_key)
+        else:
+            away_shot_intel = None
+        
+        if away_shot_intel is None:
+            away_shot_intel = shot_intel_calc.calculate_shot_metrics(
+                team_id=away_team_id,
+                matches_with_stats=matches_with_stats,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(away_shot_key, away_shot_intel)
         
         self._extract_shot_intelligence(
             home_shot_intel, "home", prediction_timestamp, features, feature_metadata
@@ -422,12 +563,8 @@ class AdvancedFeatureEngineer:
             quality_scores.append(away_shot_intel.data_quality_score)
             quality_weights.append(0.075)
         
-        # 7. Shot Production (Group 2)
+        # 7. Shot Production (Group 2) - WITH CACHING
         shot_prod_calc = ShotProductionCalculator(session=None, min_matches=5)
-        
-        # Extract shot counts for production calculation
-        home_shot_counts = [s for s in (home_shot_intel.shots_total_per_match,) if s is not None] if home_shot_intel.sample_size > 0 else []
-        away_shot_counts = [s for s in (away_shot_intel.shots_total_per_match,) if s is not None] if away_shot_intel.sample_size > 0 else []
         
         # Build actual shot count lists from matches
         home_shot_counts = []
@@ -442,16 +579,37 @@ class AdvancedFeatureEngineer:
             if mws.match.away_team_id == away_team_id and mws.away_statistics and mws.away_statistics.shots_total is not None:
                 away_shot_counts.append(float(mws.away_statistics.shots_total))
         
-        home_shot_prod = shot_prod_calc.calculate(
-            team_id=home_team_id,
-            shot_counts=home_shot_counts,
-            before_datetime=before_datetime
-        )
-        away_shot_prod = shot_prod_calc.calculate(
-            team_id=away_team_id,
-            shot_counts=away_shot_counts,
-            before_datetime=before_datetime
-        )
+        # Home team
+        home_shot_prod_key = CacheKey(home_team_id, "recent", prediction_timestamp, "shot_production")
+        if self.feature_cache:
+            home_shot_prod = self.feature_cache.get(home_shot_prod_key)
+        else:
+            home_shot_prod = None
+        
+        if home_shot_prod is None:
+            home_shot_prod = shot_prod_calc.calculate(
+                team_id=home_team_id,
+                shot_counts=home_shot_counts,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(home_shot_prod_key, home_shot_prod)
+        
+        # Away team
+        away_shot_prod_key = CacheKey(away_team_id, "recent", prediction_timestamp, "shot_production")
+        if self.feature_cache:
+            away_shot_prod = self.feature_cache.get(away_shot_prod_key)
+        else:
+            away_shot_prod = None
+        
+        if away_shot_prod is None:
+            away_shot_prod = shot_prod_calc.calculate(
+                team_id=away_team_id,
+                shot_counts=away_shot_counts,
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(away_shot_prod_key, away_shot_prod)
         
         self._extract_shot_production(
             home_shot_prod, "home", prediction_timestamp, features, feature_metadata
@@ -467,15 +625,31 @@ class AdvancedFeatureEngineer:
             quality_scores.append(away_shot_prod.data_quality_score)
             quality_weights.append(0.075)
         
-        # 8. Common Opponent Intelligence (Group 3)
-        common_opp_calc = CommonOpponentCalculator(min_matches_per_opponent=2)
-        common_opp_intel = common_opp_calc.calculate_common_opponent_intelligence(
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_matches_with_stats=matches_with_stats,  # Uses all matches, filters by team
-            away_matches_with_stats=matches_with_stats,  # Uses all matches, filters by team
-            before_datetime=before_datetime
+        # 8. Common Opponent Intelligence (Group 3) - WITH CACHING
+        # Note: Common opponent is pair-specific, cache key includes both teams
+        common_opp_key = CacheKey(
+            f"{home_team_id}__vs__{away_team_id}",
+            "recent", 
+            prediction_timestamp, 
+            "common_opponent"
         )
+        
+        if self.feature_cache:
+            common_opp_intel = self.feature_cache.get(common_opp_key)
+        else:
+            common_opp_intel = None
+        
+        if common_opp_intel is None:
+            common_opp_calc = CommonOpponentCalculator(min_matches_per_opponent=2)
+            common_opp_intel = common_opp_calc.calculate_common_opponent_intelligence(
+                home_team_id=home_team_id,
+                away_team_id=away_team_id,
+                home_matches_with_stats=matches_with_stats,  # Uses all matches, filters by team
+                away_matches_with_stats=matches_with_stats,  # Uses all matches, filters by team
+                before_datetime=before_datetime
+            )
+            if self.feature_cache:
+                self.feature_cache.set(common_opp_key, common_opp_intel)
         
         self._extract_common_opponent(
             common_opp_intel, prediction_timestamp, features, feature_metadata
@@ -534,6 +708,10 @@ class AdvancedFeatureEngineer:
         
         # Validate temporal validity
         feature_set.temporal_validity_checked = feature_set.validate_no_leakage()
+        
+        # Clear cache at end of prediction
+        if self.feature_cache:
+            self.feature_cache.clear()
         
         return feature_set
     

@@ -603,6 +603,45 @@ class OpenLigaDBFootballProvider:
         )
         return []
     
+    def get_matches(
+        self,
+        competition_id: Optional[str] = None,
+        season_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+        status: Optional[str] = None,
+    ) -> List[ProviderMatch]:
+        """Synchronous wrapper for async get_matches_by_range method.
+        
+        This method provides compatibility with the base FootballDataProvider interface
+        which requires a synchronous get_matches method for feature extraction.
+        
+        OpenLigaDB is not used for date-range match schedules, so this returns empty.
+        Use Ryzellx or FotMob for actual match data instead.
+        
+        Args:
+            competition_id: Filter by competition (not supported, ignored)
+            season_id: Filter by season (not supported, ignored)  
+            team_id: Filter by team (not supported, ignored)
+            from_date: Filter matches from this date (not supported, ignored)
+            to_date: Filter matches to this date (not supported, ignored)
+            status: Filter by match status (not supported, ignored)
+            
+        Returns:
+            Empty list (OpenLigaDB not used for match schedules)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] Synchronous get_matches not implemented - "
+            f"use Ryzellx or FotMob for date-range match schedules"
+        )
+        
+        # Return empty list - this allows graceful fallback in MatchFeatureExtractor
+        return []
+    
     async def get_live_matches(self) -> List:
         """Get currently live matches.
         
@@ -651,3 +690,61 @@ class OpenLigaDBFootballProvider:
             f"use Ryzellx for player metadata"
         )
         return None
+    
+    async def get_competitions(self) -> List[ProviderCompetition]:
+        """Get available competitions/leagues from OpenLigaDB.
+        
+        Returns:
+            List of ProviderCompetition objects
+            
+        Raises:
+            ProviderError: On request failure (gracefully degrades to empty list)
+        """
+        # Check cache
+        cache_key = f"{self.PROVIDER_NAME}:competitions"
+        if self.cache:
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
+                return cached
+        
+        # Fetch from API
+        try:
+            endpoint = "/getavailableleagues"
+            data = await self._request("GET", endpoint)
+            
+            # Parse competitions
+            competitions = []
+            now = datetime.now(timezone.utc)
+            
+            if isinstance(data, list):
+                for league_data in data:
+                    try:
+                        competition = ProviderCompetition(
+                            provider=self.PROVIDER_NAME,
+                            source_id=str(league_data.get("leagueId", "")),
+                            fetched_at=now,
+                            source_updated_at=None,
+                            
+                            name=league_data.get("leagueName", ""),
+                            country=None,  # OpenLigaDB doesn't provide this
+                            season=league_data.get("leagueSeason"),
+                            type=None,  # OpenLigaDB doesn't categorize
+                        )
+                        competitions.append(competition)
+                    except Exception as e:
+                        logger.warning(
+                            f"[{self.PROVIDER_NAME}] Failed to normalize competition: {e}"
+                        )
+            
+            # Cache result
+            if self.cache:
+                self.cache.set(cache_key, competitions, ttl_seconds=METADATA_TTL)
+            
+            logger.info(f"[{self.PROVIDER_NAME}] Fetched {len(competitions)} competitions")
+            return competitions
+            
+        except ProviderError:
+            # If request fails, return empty list (graceful degradation)
+            logger.warning(f"[{self.PROVIDER_NAME}] Failed to fetch competitions, returning empty list")
+            return []

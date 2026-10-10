@@ -155,7 +155,8 @@ class SmartMarketSelector:
         model_disagreement=None,       # NEW: Group 5 - Optional[ModelDisagreementResult]
         shot_market_predictions=None,  # NEW: FEAT-003 - Optional[Dict[ShotMarketType, List[ShotMarketPrediction]]]
         home_team_name: Optional[str] = None,  # NEW: FEAT-003 - For readable market names
-        away_team_name: Optional[str] = None   # NEW: FEAT-003 - For readable market names
+        away_team_name: Optional[str] = None,   # NEW: FEAT-003 - For readable market names
+        match_id: Optional[str] = None  # NEW: Pass actual match ID instead of using 'unknown'
     ):
         """Evaluate all available markets and select the best tip or issue a PASS.
         
@@ -171,8 +172,8 @@ class SmartMarketSelector:
         Returns:
             BestTip if a qualifying market is found, PassDecision otherwise
         """
-        # Extract match_id
-        match_id = getattr(market_probs, 'match_id', 'unknown')
+        # Use provided match_id or fallback to 'unknown'
+        actual_match_id = match_id or getattr(market_probs, 'match_id', 'unknown')
         
         # Extract confidence components
         overall_confidence = confidence_assessment.overall_confidence
@@ -202,7 +203,7 @@ class SmartMarketSelector:
         
         if not candidates:
             return PassDecision(
-                match_id=match_id,
+                match_id=actual_match_id,
                 pass_reason="insufficient_data",
                 evaluated_markets_count=0,
                 best_market_details=None,
@@ -248,7 +249,7 @@ class SmartMarketSelector:
             }
             
             return PassDecision(
-                match_id=match_id,
+                match_id=actual_match_id,
                 pass_reason=pass_reason,
                 evaluated_markets_count=len(candidates),
                 best_market_details=best_market_details,
@@ -282,7 +283,7 @@ class SmartMarketSelector:
         selector_reason = ", ".join(selector_reason_parts)
         
         return BestTip(
-            match_id=match_id,
+            match_id=actual_match_id,
             market=best['market'],
             selection=best['selection'],
             probability=best['probability'],

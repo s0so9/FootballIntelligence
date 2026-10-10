@@ -178,10 +178,12 @@ class TestNBMarkets:
         self.result = self.model.predict_from_lambda(1.5, 1.1)
 
     def test_1x2_sum_to_one(self):
+        """1X2 probabilities must sum to exactly 1.0 after normalization."""
         total = (self.result.home_win_probability +
                  self.result.draw_probability +
                  self.result.away_win_probability)
-        assert abs(total - 1.0) < 0.01
+        # After normalization, sum should be exactly 1.0 within floating-point precision
+        assert abs(total - 1.0) < 1e-9, f"1X2 sum = {total:.15f}"
 
     def test_1x2_all_valid(self):
         assert 0 <= self.result.home_win_probability <= 1
@@ -220,6 +222,157 @@ class TestNBMarkets:
         result = self.model.predict_from_lambda(3.0, 3.0)
         over, under = result.over_under_probabilities[2.5]
         assert over > under
+
+
+class TestNBProbabilityNormalization:
+    """Tests for 1X2 probability normalization with truncated distribution.
+    
+    The NB model uses a finite max_goals, creating a truncated distribution.
+    The _calc_1x2 method must normalize probabilities to sum to exactly 1.0.
+    """
+
+    def test_normalization_with_small_floating_point_drift(self):
+        """Test that normalization handles small floating-point errors."""
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
+        result = model.predict_from_lambda(1.5, 1.1)
+        total = (result.home_win_probability + 
+                 result.draw_probability + 
+                 result.away_win_probability)
+        assert abs(total - 1.0) < 1e-9, f"Sum = {total:.15f}"
+
+    def test_normalization_with_high_expected_goals(self):
+        """High expected goals cause more truncation, requiring normalization."""
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
+        # High lambdas → more probability mass beyond max_goals
+        result = model.predict_from_lambda(3.5, 4.0)
+        total = (result.home_win_probability + 
+                 result.draw_probability + 
+                 result.away_win_probability)
+        assert abs(total - 1.0) < 1e-9, f"Sum = {total:.15f}"
+        
+        # All probabilities should still be valid
+        assert 0.0 <= result.home_win_probability <= 1.0
+        assert 0.0 <= result.draw_probability <= 1.0
+        assert 0.0 <= result.away_win_probability <= 1.0
+
+    def test_normalization_preserves_relative_ratios(self):
+        """Normalization should preserve P(home) / P(draw) / P(away) ratios."""
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=8)
+        result = model.predict_from_lambda(2.5, 2.8)
+        
+        # Calculate raw probabilities without normalization
+        home_probs = [model.nb_pmf(k, 2.5) for k in range(9)]
+        away_probs = [model.nb_pmf(k, 2.8) for k in range(9)]
+        
+        raw_home = raw_draw = raw_away = 0.0
+        for h in range(9):
+            for a in range(9):
+                p = home_probs[h] * away_probs[a]
+                if h > a:
+                    raw_home += p
+                elif h == a:
+                    raw_draw += p
+                else:
+                    raw_away += p
+        
+        # Calculate expected ratios
+        raw_total = raw_home + raw_draw + raw_away
+        expected_home_ratio = raw_home / raw_total if raw_total > 0 else 0
+        expected_draw_ratio = raw_draw / raw_total if raw_total > 0 else 0
+        expected_away_ratio = raw_away / raw_total if raw_total > 0 else 0
+        
+        # Normalized probabilities should match expected ratios
+        assert abs(result.home_win_probability - expected_home_ratio) < 1e-9
+        assert abs(result.draw_probability - expected_draw_ratio) < 1e-9
+        assert abs(result.away_win_probability - expected_away_ratio) < 1e-9
+
+    def test_normalization_with_low_expected_goals(self):
+        """Low expected goals should also normalize correctly."""
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
+        result = model.predict_from_lambda(0.5, 0.3)
+        total = (result.home_win_probability + 
+                 result.draw_probability + 
+                 result.away_win_probability)
+        assert abs(total - 1.0) < 1e-9, f"Sum = {total:.15f}"
+
+    def test_normalization_with_extreme_dispersion(self):
+        """Test with very low dispersion (high overdispersion)."""
+        model = NegativeBinomialModel(dispersion=2.0, max_goals=10)
+        result = model.predict_from_lambda(2.0, 2.5)
+        total = (result.home_win_probability + 
+                 result.draw_probability + 
+                 result.away_win_probability)
+        assert abs(total - 1.0) < 1e-9, f"Sum = {total:.15f}"
+
+    def test_all_probabilities_finite_and_non_negative(self):
+        """All output probabilities must be finite and non-negative."""
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
+        result = model.predict_from_lambda(2.5, 2.8)
+        
+        assert math.isfinite(result.home_win_probability)
+        assert math.isfinite(result.draw_probability)
+        assert math.isfinite(result.away_win_probability)
+        
+        assert result.home_win_probability >= 0.0
+        assert result.draw_probability >= 0.0
+        assert result.away_win_probability >= 0.0
+
+    def test_regression_case_0_989078(self):
+        """Regression test for the specific failure case that triggered this fix.
+        
+        Original error:
+        home = 0.05030064179755271
+        draw = 0.07329433089223003
+        away = 0.8654828492854169
+        sum = 0.989078
+        
+        This was caused by truncation without normalization.
+        """
+        # We don't know the exact lambda values that produced these probabilities,
+        # but we can test that ANY lambda values produce properly normalized output
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
+        
+        # Test multiple lambda combinations
+        test_cases = [
+            (0.5, 3.5),  # Heavily favoring away
+            (2.5, 2.8),  # Close expected goals
+            (3.0, 3.5),  # Higher expected goals
+            (1.0, 5.0),  # Very asymmetric
+        ]
+        
+        for home_lambda, away_lambda in test_cases:
+            result = model.predict_from_lambda(home_lambda, away_lambda)
+            total = (result.home_win_probability + 
+                     result.draw_probability + 
+                     result.away_win_probability)
+            assert abs(total - 1.0) < 1e-9, \
+                f"Lambda ({home_lambda}, {away_lambda}): sum = {total:.15f}"
+
+    def test_model_prediction_interface_validation_passes(self):
+        """Test that normalized probabilities pass ModelPrediction validation."""
+        from app.prediction.interfaces import ModelPrediction
+        
+        model = NegativeBinomialModel(dispersion=20.0, max_goals=10)
+        result = model.predict_from_lambda(2.5, 2.8)
+        
+        # This should NOT raise ValidationError
+        model_pred = ModelPrediction(
+            model_id="negative_binomial_v1",
+            home_score_mean=2.5,
+            away_score_mean=2.8,
+            score_distribution=result.scoreline_probabilities,
+            home_win_prob=result.home_win_probability,
+            draw_prob=result.draw_probability,
+            away_win_prob=result.away_win_probability,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+        )
+        
+        # Verify it passes validation
+        total = (model_pred.home_win_prob + 
+                 model_pred.draw_prob + 
+                 model_pred.away_win_prob)
+        assert abs(total - 1.0) < 0.001  # ModelPrediction tolerance
 
 
 class TestNBDeterminism:

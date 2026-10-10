@@ -164,6 +164,11 @@ class AnalysisContext(BaseModel):
     data_completeness: Optional[Dict[str, bool]] = Field(
         None, description="Flags indicating which data sections are available"
     )
+    
+    # === Shot Markets ===
+    shot_markets: Optional[Dict[str, Any]] = Field(
+        None, description="Shot market predictions (team shots, SOT, total shots)"
+    )
     missing_data_notes: Optional[List[str]] = Field(
         None, description="Explicit notes about missing information"
     )
@@ -177,6 +182,13 @@ class AnalysisContext(BaseModel):
     )
     away_form_features: Optional[Dict[str, Any]] = Field(
         None, description="Away team form features (W/D/L, goals, form string)"
+    )
+    # Form metrics (structured form data for API response)
+    home_form: Optional[Any] = Field(
+        None, description="Home team form metrics (FormMetrics object)"
+    )
+    away_form: Optional[Any] = Field(
+        None, description="Away team form metrics (FormMetrics object)"
     )
     attack_defence_home: Optional[Dict[str, Any]] = Field(
         None, description="Home team attack/defence features (goals/xG per match)"

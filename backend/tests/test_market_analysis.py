@@ -7,7 +7,13 @@ from app.prediction.market_analysis import (
     implied_probability_from_odds,
     overround,
     edge,
+    expected_value,
     has_value,
+    classify_value,
+    calculate_value_score,
+    expected_value_percentage,
+    normalize_market_probabilities,
+    ValueClassification,
 )
 
 
@@ -85,6 +91,39 @@ class TestConversionFunctions:
         # Bookmaker underprices (odds too high): negative edge (value!)
         assert edge(0.5, 2.2) < 0
     
+    def test_expected_value(self):
+        """Test expected value calculation."""
+        # 60% prob, 2.0 odds → EV = 0.60 * 2.0 - 1 = 0.20 (20% expected return)
+        assert expected_value(0.60, 2.0) == pytest.approx(0.20)
+        
+        # 86% prob, 1.16 odds → EV = 0.86 * 1.16 - 1 ≈ -0.0024 (no edge scenario)
+        assert abs(expected_value(0.86, 1.16)) < 0.01
+        
+        # 50% prob, 2.0 odds → EV = 0.50 * 2.0 - 1 = 0.0 (break-even)
+        assert expected_value(0.50, 2.0) == pytest.approx(0.0)
+        
+        # 30% prob, 4.0 odds → EV = 0.30 * 4.0 - 1 = 0.20 (20% expected return)
+        assert expected_value(0.30, 4.0) == pytest.approx(0.20)
+        
+        # Negative EV case: 50% prob, 1.8 odds → EV = 0.50 * 1.8 - 1 = -0.10
+        assert expected_value(0.50, 1.8) == pytest.approx(-0.10)
+    
+    def test_expected_value_invalid_inputs(self):
+        """Test expected_value with invalid inputs."""
+        # Invalid probability
+        with pytest.raises(ValueError):
+            expected_value(-0.1, 2.0)
+        
+        with pytest.raises(ValueError):
+            expected_value(1.5, 2.0)
+        
+        # Invalid odds
+        with pytest.raises(ValueError):
+            expected_value(0.5, 0.5)
+        
+        with pytest.raises(ValueError):
+            expected_value(0.5, 0.0)
+    
     def test_has_value(self):
         """Test value detection."""
         # No value when odds match probability
@@ -98,6 +137,95 @@ class TestConversionFunctions:
         
         # No value when edge is below threshold
         assert has_value(0.5, 2.05, threshold=0.03) is False
+
+
+class TestValueIntelligence:
+    """Test Odds & Value Intelligence functionality."""
+    
+    def test_classify_value_strong_value(self):
+        """Test STRONG_VALUE classification."""
+        # 60% fair prob, 2.5 odds = 40% implied
+        # Edge = 0.40 - 0.60 = -0.20 (strong negative edge = strong value)
+        classification = classify_value(0.60, 2.5)
+        assert classification == ValueClassification.STRONG_VALUE
+    
+    def test_classify_value_regular_value(self):
+        """Test VALUE classification."""
+        # 50% fair prob, 2.2 odds = 45.45% implied  
+        # Edge = 0.4545 - 0.50 = -0.0455 (moderate negative edge = value)
+        classification = classify_value(0.50, 2.2)
+        assert classification == ValueClassification.VALUE
+    
+    def test_classify_value_low_value(self):
+        """Test LOW_VALUE classification."""
+        # 50% fair prob, 2.05 odds = 48.78% implied
+        # Edge = 0.4878 - 0.50 = -0.0122 (small negative edge = low value)
+        classification = classify_value(0.50, 2.05)
+        assert classification == ValueClassification.LOW_VALUE
+    
+    def test_classify_value_no_value(self):
+        """Test NO_VALUE classification."""
+        # 50% fair prob, 1.95 odds = 51.28% implied
+        # Edge = 0.5128 - 0.50 = +0.0128 (positive edge = no value)
+        classification = classify_value(0.50, 1.95)
+        assert classification == ValueClassification.NO_VALUE
+    
+    def test_calculate_value_score(self):
+        """Test value score calculation."""
+        # 60% prob, 2.0 odds → EV = 0.20 → Score = 0.40 (20% * 2)
+        score = calculate_value_score(0.60, 2.0)
+        assert score == pytest.approx(0.40)
+        
+        # 50% prob, 2.0 odds → EV = 0.0 → Score = 0.0
+        score = calculate_value_score(0.50, 2.0)
+        assert score == pytest.approx(0.0)
+        
+        # 40% prob, 2.0 odds → EV = -0.20 → Score = 0.0 (clamped)
+        score = calculate_value_score(0.40, 2.0)
+        assert score == pytest.approx(0.0)
+        
+        # Very high EV should be clamped to max_score
+        score = calculate_value_score(0.90, 2.0, max_score=1.0)
+        assert score == pytest.approx(1.0)
+    
+    def test_expected_value_percentage(self):
+        """Test expected value percentage calculation."""
+        # 60% prob, 2.0 odds → 20% expected return
+        ev_pct = expected_value_percentage(0.60, 2.0)
+        assert ev_pct == pytest.approx(20.0)
+        
+        # 50% prob, 2.0 odds → 0% expected return (break-even)
+        ev_pct = expected_value_percentage(0.50, 2.0)
+        assert ev_pct == pytest.approx(0.0)
+        
+        # 40% prob, 2.0 odds → -20% expected return (loss)
+        ev_pct = expected_value_percentage(0.40, 2.0)
+        assert ev_pct == pytest.approx(-20.0)
+    
+    def test_normalize_market_probabilities(self):
+        """Test market probability normalization."""
+        # Standard case: probabilities with overround
+        implied = [0.526, 0.526]  # Sum = 1.052 (5.2% overround)
+        normalized = normalize_market_probabilities(implied)
+        
+        assert len(normalized) == 2
+        assert normalized[0] == pytest.approx(0.50, abs=0.01)
+        assert normalized[1] == pytest.approx(0.50, abs=0.01)
+        assert sum(normalized) == pytest.approx(1.0)
+        
+        # Three-way market
+        implied_3way = [0.45, 0.30, 0.25]  # Already sums to 1.0
+        normalized_3way = normalize_market_probabilities(implied_3way)
+        
+        assert sum(normalized_3way) == pytest.approx(1.0)
+        assert normalized_3way[0] == pytest.approx(0.45)
+        assert normalized_3way[1] == pytest.approx(0.30)
+        assert normalized_3way[2] == pytest.approx(0.25)
+        
+        # Edge case: zero total
+        zero_probs = [0.0, 0.0]
+        normalized_zero = normalize_market_probabilities(zero_probs)
+        assert normalized_zero == [0.0, 0.0]
 
 
 class TestMarketAnalyser:
@@ -193,6 +321,13 @@ class TestMarketAnalyser:
         # Should flag as having value
         assert home_comp.has_value_flag is True
         assert result.any_value_found is True
+        
+        # Check value intelligence fields are populated
+        home_outcome = next(o for o in market_1x2.outcomes if o.label == "home")
+        assert home_outcome.expected_value is not None
+        assert home_outcome.expected_value_percent is not None
+        assert home_outcome.value_classification is not None
+        assert home_outcome.value_score is not None
     
     def test_analyse_match_invalid_probabilities(self):
         """Test handling of invalid probabilities."""
@@ -301,112 +436,152 @@ class TestMarketAnalyser:
         assert result.bookmaker_odds_available is False
 
 
-class TestPhase5MarketIntelligence:
-    """Test Phase 5 market intelligence enhancements."""
+class TestEdgeCasesAndSafety:
+    """Test edge cases and safety constraints for Odds & Value Intelligence."""
     
-    def test_market_outcome_phase5_fields_optional(self):
-        """Test that Phase 5 fields on MarketOutcome are optional."""
-        from app.prediction.market_analysis import MarketOutcome
+    def test_invalid_odds_handling(self):
+        """Test that invalid odds are handled safely."""
+        with pytest.raises(ValueError, match="Invalid decimal odds"):
+            classify_value(0.50, 0.5)  # Odds below 1.0
         
-        # Should create outcome without Phase 5 fields
-        outcome = MarketOutcome(
-            label="home",
-            model_probability=0.50,
-            calibrated_probability=None,
-        )
+        with pytest.raises(ValueError, match="Invalid decimal odds"):
+            expected_value(0.50, 0.0)  # Zero odds
         
-        assert outcome.label == "home"
-        assert outcome.model_probability == 0.50
-        assert outcome.real_odds is None
-        assert outcome.implied_probability is None
-        assert outcome.market_edge is None
-        assert outcome.bookmaker is None
-        assert outcome.odds_timestamp is None
+        with pytest.raises(ValueError, match="Invalid decimal odds"):
+            calculate_value_score(0.50, -1.0)  # Negative odds
     
-    def test_normalize_market_probabilities(self):
-        """Test normalize_market_probabilities helper function."""
-        from app.prediction.market_analysis import normalize_market_probabilities
+    def test_invalid_probability_handling(self):
+        """Test that invalid probabilities are handled safely."""
+        with pytest.raises(ValueError, match="Invalid probability"):
+            classify_value(-0.1, 2.0)  # Negative probability
         
-        # Standard case: probabilities with overround
-        implied = [0.526, 0.526]  # Sum = 1.052 (5.2% overround)
-        normalized = normalize_market_probabilities(implied)
+        with pytest.raises(ValueError, match="Invalid probability"):
+            expected_value(1.5, 2.0)  # Probability > 1
         
-        assert len(normalized) == 2
-        assert normalized[0] == pytest.approx(0.50, abs=0.01)
-        assert normalized[1] == pytest.approx(0.50, abs=0.01)
-        assert sum(normalized) == pytest.approx(1.0)
-        
-        # Three-way market
-        implied_3way = [0.45, 0.30, 0.25]  # Already sums to 1.0
-        normalized_3way = normalize_market_probabilities(implied_3way)
-        
-        assert sum(normalized_3way) == pytest.approx(1.0)
-        assert normalized_3way[0] == pytest.approx(0.45)
-        assert normalized_3way[1] == pytest.approx(0.30)
-        assert normalized_3way[2] == pytest.approx(0.25)
-        
-        # Edge case: zero total
-        zero_probs = [0.0, 0.0]
-        normalized_zero = normalize_market_probabilities(zero_probs)
-        assert normalized_zero == [0.0, 0.0]
+        with pytest.raises(ValueError, match="Invalid probability"):
+            calculate_value_score(2.0, 2.0)  # Probability > 1
     
-    def test_market_analyser_populates_phase5_fields_when_odds_available(self):
-        """Test that MarketAnalyser populates Phase 5 fields when bookmaker odds are supplied."""
-        from app.prediction.market_analysis import MarketAnalyser
+    def test_zero_probability_handling(self):
+        """Test handling of zero probability."""
+        # Zero probability should raise error for fair odds calculation
+        with pytest.raises(ValueError, match="division by zero"):
+            probability_to_fair_odds(0.0)
         
-        analyser = MarketAnalyser(value_threshold=0.03, is_development_data=True)
+        # But should work for other calculations
+        ev = expected_value(0.0, 2.0)
+        assert ev == pytest.approx(-1.0)  # 0 * 2 - 1 = -1
         
-        result = analyser.analyse_match(
-            match_id="test_phase5_1",
-            home_win_prob=0.60,
-            draw_prob=0.25,
-            away_win_prob=0.15,
-            bookmaker_1x2={
-                "home": 2.2,
-                "draw": 3.5,
-                "away": 5.0,
-            },
-        )
-        
-        market_1x2 = result.markets[0]
-        
-        # Find home outcome
-        home_outcome = next(o for o in market_1x2.outcomes if o.label == "home")
-        
-        # Phase 5 fields should be populated
-        assert home_outcome.real_odds == 2.2
-        assert home_outcome.implied_probability == pytest.approx(1/2.2)
-        assert home_outcome.market_edge is not None
-        assert home_outcome.bookmaker == "home"
-        assert home_outcome.odds_timestamp is None  # Placeholder
-        
-        # Verify edge calculation is correct
-        # Edge = implied_probability - fair_probability
-        # Fair prob = 0.60, Implied = 1/2.2 = 0.4545
-        # Edge = 0.4545 - 0.60 = -0.1455 (negative = value)
-        expected_edge = (1/2.2) - 0.60
-        assert home_outcome.market_edge == pytest.approx(expected_edge)
+        classification = classify_value(0.0, 2.0)
+        assert classification == ValueClassification.NO_VALUE  # No edge when prob=0
     
-    def test_phase5_fields_remain_none_when_no_odds(self):
-        """Test that Phase 5 fields remain None when no bookmaker odds supplied."""
-        from app.prediction.market_analysis import MarketAnalyser
-        
+    def test_no_fake_odds_generation(self):
+        """Verify that the system never generates fake bookmaker odds."""
         analyser = MarketAnalyser(is_development_data=True)
         
+        # Create analysis without providing any bookmaker odds
         result = analyser.analyse_match(
-            match_id="test_phase5_2",
+            match_id="no_fake_odds",
             home_win_prob=0.50,
             draw_prob=0.28,
             away_win_prob=0.22,
-            # No bookmaker odds
         )
         
-        market_1x2 = result.markets[0]
+        # Verify no value analysis was performed
+        market = result.markets[0]
         
-        # All outcomes should have None for Phase 5 fields
-        for outcome in market_1x2.outcomes:
+        # No bookmaker comparison should exist
+        assert market.bookmaker_comparison is None
+        assert market.bookmaker_overround is None
+        assert market.has_bookmaker_odds is False
+        
+        # No value intelligence fields should be populated
+        for outcome in market.outcomes:
             assert outcome.real_odds is None
             assert outcome.implied_probability is None
-            assert outcome.market_edge is None
-            assert outcome.bookmaker is None
-            assert outcome.odds_timestamp is None
+            assert outcome.expected_value is None
+            assert outcome.value_classification is None
+        
+        # Match-level flags should reflect no odds available
+        assert result.any_value_found is False
+        assert result.bookmaker_odds_available is False
+    
+    def test_missing_odds_in_partial_market(self):
+        """Test handling when some outcomes have odds but others don't."""
+        analyser = MarketAnalyser(is_development_data=True)
+        
+        result = analyser.analyse_match(
+            match_id="partial_odds",
+            home_win_prob=0.50,
+            draw_prob=0.28,
+            away_win_prob=0.22,
+            bookmaker_1x2={
+                "home": 2.0,
+                # "draw": missing
+                "away": 4.5,
+            },
+        )
+        
+        market = result.markets[0]
+        
+        # Should have comparison for available odds only
+        assert market.bookmaker_comparison is not None
+        assert len(market.bookmaker_comparison) == 2  # Only home and away
+        
+        comparison_labels = [c.label for c in market.bookmaker_comparison]
+        assert "home" in comparison_labels
+        assert "away" in comparison_labels
+        assert "draw" not in comparison_labels
+        
+        # Outcomes should reflect partial data
+        home_outcome = next(o for o in market.outcomes if o.label == "home")
+        draw_outcome = next(o for o in market.outcomes if o.label == "draw")
+        away_outcome = next(o for o in market.outcomes if o.label == "away")
+        
+        # Home and away should have odds data
+        assert home_outcome.real_odds == 2.0
+        assert away_outcome.real_odds == 4.5
+        
+        # Draw should not have odds data
+        assert draw_outcome.real_odds is None
+        assert draw_outcome.expected_value is None
+    
+    def test_deterministic_calculations(self):
+        """Test that calculations are deterministic and repeatable."""
+        test_cases = [
+            (0.50, 2.0),
+            (0.30, 3.33),
+            (0.75, 1.33),
+            (0.05, 20.0),
+        ]
+        
+        for prob, odds in test_cases:
+            # Run calculations multiple times
+            ev1 = expected_value(prob, odds)
+            ev2 = expected_value(prob, odds)
+            
+            score1 = calculate_value_score(prob, odds)
+            score2 = calculate_value_score(prob, odds)
+            
+            class1 = classify_value(prob, odds)
+            class2 = classify_value(prob, odds)
+            
+            # Should be identical
+            assert ev1 == ev2
+            assert score1 == score2
+            assert class1 == class2
+    
+    def test_value_thresholds_configurable(self):
+        """Test that value classification thresholds are configurable."""
+        prob, odds = 0.50, 2.2  # Edge = (1/2.2) - 0.50 = -0.045
+        
+        # Default thresholds
+        default_class = classify_value(prob, odds)
+        assert default_class == ValueClassification.VALUE  # -0.045 > -0.10, -0.045 <= -0.03
+        
+        # Custom thresholds - make everything STRONG_VALUE
+        strong_class = classify_value(prob, odds, strong_threshold=0.02)
+        assert strong_class == ValueClassification.STRONG_VALUE
+        
+        # Custom thresholds - make it NO_VALUE by increasing all thresholds
+        no_value_class = classify_value(prob, odds, strong_threshold=0.15, value_threshold=0.08, low_threshold=0.05)
+        assert no_value_class == ValueClassification.NO_VALUE

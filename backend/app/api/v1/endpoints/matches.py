@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_data_provider
-from app.database import get_db
+from app.database.session import get_db
 from app.api.v1.schemas import (
     MatchListResponse,
     MatchDetailResponse,
@@ -20,8 +20,8 @@ from app.api.v1.schemas import (
     MarketOutcomeResponse,
     BookmakerComparisonResponse,
     EasyMatchResponse,
-    EasyMatchSignalResponse,
     TeamInfoResponse,
+    EasyMatchSignalResponse,
     MatchStatisticsResponse,
 )
 from app.providers import FootballDataProvider
@@ -81,6 +81,7 @@ def _map_market_outcome_to_response(outcome) -> MarketOutcomeResponse:
     """Map MarketOutcome domain model to MarketOutcomeResponse schema.
     
     Phase 5: Includes optional market intelligence fields when available.
+    Odds & Value Intelligence: Includes value classification and scoring fields.
     """
     return MarketOutcomeResponse(
         label=outcome.label,
@@ -93,11 +94,19 @@ def _map_market_outcome_to_response(outcome) -> MarketOutcomeResponse:
         market_edge=outcome.market_edge,
         bookmaker=outcome.bookmaker,
         odds_timestamp=outcome.odds_timestamp,
+        # Odds & Value Intelligence fields (all optional, backward compatible)
+        expected_value=outcome.expected_value,
+        expected_value_percent=outcome.expected_value_percent,
+        value_classification=outcome.value_classification.value if outcome.value_classification else None,
+        value_score=outcome.value_score,
     )
 
 
 def _map_bookmaker_comparison_to_response(comparison) -> BookmakerComparisonResponse:
-    """Map BookmakerComparison domain model to BookmakerComparisonResponse schema."""
+    """Map BookmakerComparison domain model to BookmakerComparisonResponse schema.
+    
+    Odds & Value Intelligence: Includes value classification and scoring fields.
+    """
     return BookmakerComparisonResponse(
         label=comparison.label,
         fair_probability=comparison.fair_probability,
@@ -106,6 +115,11 @@ def _map_bookmaker_comparison_to_response(comparison) -> BookmakerComparisonResp
         implied_probability=comparison.implied_probability,
         edge_value=comparison.edge_value,
         has_value_flag=comparison.has_value_flag,
+        # Odds & Value Intelligence fields (all optional, backward compatible)
+        expected_value=comparison.expected_value,
+        expected_value_percent=comparison.expected_value_percent,
+        value_classification=comparison.value_classification.value if comparison.value_classification else None,
+        value_score=comparison.value_score,
     )
 
 
@@ -182,34 +196,50 @@ async def list_matches(
         )
     
     # Convert domain models to API response schemas
-    # Use provider team names if available (stored as private attributes by adapter)
     match_responses = []
+    
     for match in matches:
-        # Check if provider team names are available (from ProviderManagerAdapter)
-        home_team_name = getattr(match, '_provider_home_team_name', None)
-        away_team_name = getattr(match, '_provider_away_team_name', None)
-        
-        # Create lightweight team info if names are available
+        # Get team info from database instead of provider
         home_team = None
-        if home_team_name:
-            home_team = TeamInfoResponse(
-                id=match.home_team_id,
-                name=home_team_name,
-                short_name=None,
-                code=None,
-                logo_url=None,
-            )
-        
         away_team = None
-        if away_team_name:
-            away_team = TeamInfoResponse(
-                id=match.away_team_id,
-                name=away_team_name,
-                short_name=None,
-                code=None,
-                logo_url=None,
-            )
         
+        try:
+            # Import here to avoid circular imports
+            from app.database.models import Team
+            from app.database.session import get_db
+            
+            db_session = next(get_db())
+            try:
+                if match.home_team_id:
+                    home_team_db = db_session.query(Team).filter_by(id=match.home_team_id).first()
+                    if home_team_db:
+                        from app.domain.entities import Team as DomainTeam
+                        home_team = DomainTeam(
+                            id=home_team_db.id,
+                            name=home_team_db.name,
+                            short_name=home_team_db.short_name,
+                            code=home_team_db.code,
+                            logo_url=home_team_db.logo_url
+                        )
+                
+                if match.away_team_id:
+                    away_team_db = db_session.query(Team).filter_by(id=match.away_team_id).first()
+                    if away_team_db:
+                        from app.domain.entities import Team as DomainTeam
+                        away_team = DomainTeam(
+                            id=away_team_db.id,
+                            name=away_team_db.name,
+                            short_name=away_team_db.short_name,
+                            code=away_team_db.code,
+                            logo_url=away_team_db.logo_url
+                        )
+            finally:
+                db_session.close()
+        except Exception:
+            # If team lookup fails, continue without team info
+            pass
+
+        # Create basic match response
         match_response = MatchResponse(
             id=match.id,
             competition_id=match.competition_id,
@@ -217,8 +247,8 @@ async def list_matches(
             home_team_id=match.home_team_id,
             away_team_id=match.away_team_id,
             venue_id=match.venue_id,
-            home_team=home_team,
-            away_team=away_team,
+            home_team=_map_team_to_response(home_team),
+            away_team=_map_team_to_response(away_team),
             scheduled_at=match.scheduled_at,
             status=match.status,
             home_score=match.home_score,
@@ -232,7 +262,7 @@ async def list_matches(
             minute=match.minute,
             added_time=match.added_time,
             outcome=match.outcome,
-            round=match.round,
+            round=match.round,  # Domain model uses 'round', schema also uses 'round'
             created_at=match.created_at,
             updated_at=match.updated_at,
         )
@@ -244,6 +274,12 @@ async def list_matches(
         count=len(match_responses),
         is_development_data=provider.is_development_data(),
     )
+
+
+@router.get("/health", tags=["health"])
+async def health_check():
+    """Simple health check endpoint for diagnostics."""
+    return {"status": "ok", "message": "matches endpoint is responding"}
 
 
 @router.get(
@@ -276,11 +312,21 @@ async def get_match(
     Raises:
         HTTPException: 404 if match is not found
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"[DEBUG_TEST] get_match called with match_id: {match_id} - This should be visible!")
+    print(f"[CONSOLE_DEBUG] get_match called with match_id: {match_id}")  # Console output
+    
     # Get match from provider
     match = provider.get_match(match_id)
     
+    logger.warning(f"[DEBUG_TEST] provider.get_match returned: {match}")
+    print(f"[CONSOLE_DEBUG] provider.get_match returned: {match}")
+    
     # Return 404 if match doesn't exist
     if match is None:
+        logger.warning(f"[DEBUG_TEST] Returning 404 for match_id: {match_id}")
+        print(f"[CONSOLE_DEBUG] Returning 404 for match_id: {match_id}")
         raise HTTPException(
             status_code=404,
             detail=f"Match with ID '{match_id}' not found"
@@ -370,6 +416,20 @@ async def get_match_prediction(
     provider: FootballDataProvider = Depends(get_data_provider),
     db: Optional[Session] = Depends(get_db),
 ) -> MatchPredictionResponse:
+    import time
+    import uuid
+    import logging
+    
+    # Generate correlation ID for this request
+    correlation_id = str(uuid.uuid4())[:8]
+    logger = logging.getLogger(__name__)
+    
+    stage_timings = {}
+    request_start = time.time()
+    
+    logger.info(f"[{correlation_id}] START prediction request for match {match_id}")
+    print(f"DEBUG: [{correlation_id}] START prediction request for match {match_id}")  # TEST LOG
+    
     """
     Get prediction for a specific match.
     
@@ -423,46 +483,77 @@ async def get_match_prediction(
     Raises:
         HTTPException: 404 if match is not found
     """
-    # Get match from provider
+    # Stage 1: Get match from provider
+    stage_start = time.time()
+    logger.info(f"[{correlation_id}] Stage 1: Getting match from provider")
     match = provider.get_match(match_id)
+    stage_timings["1_match_lookup"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 1 complete: {stage_timings['1_match_lookup']:.1f}ms")
     
     # Return 404 if match doesn't exist
     if match is None:
+        logger.info(f"[{correlation_id}] Match not found, returning 404")
         raise HTTPException(
             status_code=404,
             detail=f"Match with ID '{match_id}' not found"
         )
     
-    # Initialize prediction service with optional database session
+    # Stage 2: Initialize prediction service
+    stage_start = time.time()
+    logger.warning(f"[UNIQUE_TEST_LOG] Processing prediction request for match {match_id} - This should be visible!")
+    logger.info(f"[{correlation_id}] Stage 2: Initializing prediction service")
+    logger.info(f"[{correlation_id}] DB session type at endpoint: {type(db) if db else None}")
+    logger.info(f"[{correlation_id}] DB session is None: {db is None}")
+    
     prediction_service = PredictionService(
         provider=provider,
         db_session=db
     )
+    stage_timings["2_service_init"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 2 complete: {stage_timings['2_service_init']:.1f}ms")
     
-    # Generate full TUTAR X prediction (Phase 1 pipeline: Poisson → Markets → Pick → Versioning)
+    # Stage 3: Generate full TUTAR X prediction
+    stage_start = time.time()
+    logger.info(f"[{correlation_id}] Stage 3: Starting generate_full_prediction")
     analysis_context = prediction_service.generate_full_prediction(
         match=match,
-        odds_data=None  # No real bookmaker odds available in development
+        odds_data=None,  # No real bookmaker odds available in development
+        correlation_id=correlation_id
     )
+    stage_timings["3_full_prediction"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 3 complete: {stage_timings['3_full_prediction']:.1f}ms")
     
-    # Extract prediction from context
+    # Stage 4: Extract prediction from context
+    stage_start = time.time()
+    logger.info(f"[{correlation_id}] Stage 4: Extracting prediction from context")
     prediction = None
     if analysis_context.model_predictions and len(analysis_context.model_predictions) > 0:
         prediction = analysis_context.model_predictions[0]
     
     if prediction is None:
+        total_time = (time.time() - request_start) * 1000
+        logger.info(f"[{correlation_id}] INSUFFICIENT DATA - Total time: {total_time:.1f}ms")
+        logger.info(f"[{correlation_id}] Stage timings: {stage_timings}")
         raise HTTPException(
             status_code=400,
             detail="Insufficient data to generate prediction for this match"
         )
+    stage_timings["4_extract_prediction"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 4 complete: {stage_timings['4_extract_prediction']:.1f}ms")
     
-    # Detect easy match for backward compatibility
+    # Stage 5: Detect easy match
+    stage_start = time.time()
+    logger.info(f"[{correlation_id}] Stage 5: Detecting easy match")
     easy_match_result = prediction_service.detect_easy_match(
         match=match,
         prediction=prediction,
     )
+    stage_timings["5_easy_match_detection"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 5 complete: {stage_timings['5_easy_match_detection']:.1f}ms")
     
-    # Convert easy match result to response schema
+    # Stage 6: Convert easy match result to response schema
+    stage_start = time.time()
+    logger.info(f"[{correlation_id}] Stage 6: Converting easy match result")
     easy_match_response = None
     if easy_match_result:
         easy_match_response = EasyMatchResponse(
@@ -486,8 +577,216 @@ async def get_match_prediction(
             warnings=easy_match_result.warnings,
             data_sufficient=easy_match_result.data_sufficient,
         )
+    stage_timings["6_response_conversion"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 6 complete: {stage_timings['6_response_conversion']:.1f}ms")
+    
+    # Stage 7: Build market analysis from prediction markets
+    stage_start = time.time()
+    logger.info(f"[{correlation_id}] Stage 7: Building market analysis from prediction markets")
+    
+    market_analysis_response = None
+    
+    # Use prediction_markets from analysis_context (generated by our fixed pipeline)
+    if analysis_context.prediction_markets and len(analysis_context.prediction_markets) > 0:
+        logger.info(f"[{correlation_id}] Found {len(analysis_context.prediction_markets)} prediction markets")
+        
+        markets = []
+        
+        # Convert prediction_markets to market_analysis format
+        for prediction_market in analysis_context.prediction_markets:
+            if prediction_market.market_type == 'over_under' and prediction_market.line is not None:
+                line = prediction_market.line
+                probs = prediction_market.probabilities
+                over_prob = probs.get('over', 0.0)
+                under_prob = probs.get('under', 0.0)
+                
+                logger.info(f"[{correlation_id}] Creating Over/Under {line} market: Over={over_prob:.3f}, Under={under_prob:.3f}")
+                
+                # Create market outcomes
+                from app.api.v1.schemas import MarketOutcomeResponse
+                
+                over_outcome = MarketOutcomeResponse(
+                    label=f"Over {line} Goals",
+                    model_probability=over_prob,
+                    calibrated_probability=over_prob,  # Same as model in development
+                    fair_odds=1.0 / over_prob if over_prob > 0 else None,
+                    real_odds=None,
+                    implied_probability=None,
+                    market_edge=None,
+                    bookmaker=None,
+                    odds_timestamp=None,
+                    expected_value=None,
+                    expected_value_percent=None,
+                    value_classification=None,
+                )
+                
+                under_outcome = MarketOutcomeResponse(
+                    label=f"Under {line} Goals", 
+                    model_probability=under_prob,
+                    calibrated_probability=under_prob,  # Same as model in development
+                    fair_odds=1.0 / under_prob if under_prob > 0 else None,
+                    real_odds=None,
+                    implied_probability=None,
+                    market_edge=None,
+                    bookmaker=None,
+                    odds_timestamp=None,
+                    expected_value=None,
+                    expected_value_percent=None,
+                    value_classification=None,
+                )
+                
+                # Create single market analysis (not MarketResponse)
+                market_analysis = MarketAnalysisResponse(
+                    market_type=f"OVER_UNDER_{line}".replace(".", "_"),  # e.g., OVER_UNDER_2_5
+                    line=line,
+                    outcomes=[over_outcome, under_outcome],
+                    bookmaker_comparison=None,
+                    bookmaker_overround=None,
+                    has_bookmaker_odds=False
+                )
+                markets.append(market_analysis)
+            
+            elif prediction_market.market_type == 'over_2_5_and_btts':
+                # Handle combined Over 2.5 + BTTS market
+                probs = prediction_market.probabilities
+                yes_prob = probs.get('yes', 0.0)
+                no_prob = probs.get('no', 0.0)
+                
+                logger.info(f"[{correlation_id}] Creating Over 2.5 + BTTS market: Yes={yes_prob:.3f}, No={no_prob:.3f}")
+                
+                # Create market outcomes
+                yes_outcome = MarketOutcomeResponse(
+                    label="Over 2.5 & Both Teams Score",
+                    model_probability=yes_prob,
+                    calibrated_probability=yes_prob,
+                    fair_odds=1.0 / yes_prob if yes_prob > 0 else None,
+                    real_odds=None,
+                    implied_probability=None,
+                    market_edge=None,
+                    bookmaker=None,
+                    odds_timestamp=None,
+                    expected_value=None,
+                    expected_value_percent=None,
+                    value_classification=None,
+                )
+                
+                no_outcome = MarketOutcomeResponse(
+                    label="Not (Over 2.5 & Both Teams Score)",
+                    model_probability=no_prob,
+                    calibrated_probability=no_prob,
+                    fair_odds=1.0 / no_prob if no_prob > 0 else None,
+                    real_odds=None,
+                    implied_probability=None,
+                    market_edge=None,
+                    bookmaker=None,
+                    odds_timestamp=None,
+                    expected_value=None,
+                    expected_value_percent=None,
+                    value_classification=None,
+                )
+                
+                # Create combined market analysis
+                market_analysis = MarketAnalysisResponse(
+                    market_type="OVER_2_5_AND_BTTS",
+                    line=2.5,  # Reference line
+                    outcomes=[yes_outcome, no_outcome],
+                    bookmaker_comparison=None,
+                    bookmaker_overround=None,
+                    has_bookmaker_odds=False
+                )
+                markets.append(market_analysis)
+            
+            if markets:
+                market_analysis_response = markets  # Already a list of MarketAnalysisResponse
+                logger.info(f"[{correlation_id}] Built market analysis with {len(markets)} Over/Under markets")
+            else:
+                logger.info(f"[{correlation_id}] No Over/Under markets created")
+    else:
+        logger.info(f"[{correlation_id}] No prediction_markets available for market analysis")
+    
+    stage_timings["7_market_analysis"] = (time.time() - stage_start) * 1000
+    logger.info(f"[{correlation_id}] Stage 7 complete: {stage_timings['7_market_analysis']:.1f}ms")
+    
+    # Calculate total time
+    total_time = (time.time() - request_start) * 1000
+    stage_timings["0_TOTAL"] = total_time
+    
+    # Log timing information
+    logger.info(f"[{correlation_id}] TIMING INSTRUMENTATION for {match_id}:")
+    logger.info(f"[{correlation_id}]   Home Team ID: {match.home_team_id}")
+    logger.info(f"[{correlation_id}]   Away Team ID: {match.away_team_id}")
+    for stage, timing_ms in sorted(stage_timings.items()):
+        logger.info(f"[{correlation_id}]   {stage}: {timing_ms:.2f}ms")
     
     # Build response
+    # Extract form data from analysis_context if available
+    from app.api.v1.schemas import TeamFormResponse, HeadToHeadResponse
+    
+    home_form_response = None
+    away_form_response = None
+    h2h_response = None
+    
+    if hasattr(analysis_context, 'home_form') and analysis_context.home_form:
+        hf = analysis_context.home_form
+        home_form_response = TeamFormResponse(
+            wins=hf.wins,
+            draws=hf.draws,
+            losses=hf.losses,
+            points=hf.points,
+            matches_analyzed=hf.matches_analyzed,
+            goals_for=hf.goals_for,
+            goals_against=hf.goals_against,
+            form_string=None  # Not available in FormMetrics yet
+        )
+    
+    if hasattr(analysis_context, 'away_form') and analysis_context.away_form:
+        af = analysis_context.away_form
+        away_form_response = TeamFormResponse(
+            wins=af.wins,
+            draws=af.draws,
+            losses=af.losses,
+            points=af.points,
+            matches_analyzed=af.matches_analyzed,
+            goals_for=af.goals_for,
+            goals_against=af.goals_against,
+            form_string=None  # Not available in FormMetrics yet
+        )
+    
+    # Extract H2H data if available
+    if (hasattr(analysis_context, 'h2h_home_wins') and 
+        analysis_context.h2h_home_wins is not None):
+        # Calculate total goals from H2H matches if available
+        home_goals_total = None
+        away_goals_total = None
+        
+        if (hasattr(analysis_context, 'head_to_head_matches') and 
+            analysis_context.head_to_head_matches):
+            home_goals_total = 0
+            away_goals_total = 0
+            
+            for h2h_match in analysis_context.head_to_head_matches:
+                if h2h_match.home_score is not None and h2h_match.away_score is not None:
+                    # Determine which team scored how much from current match perspective
+                    if h2h_match.home_team_id == match.home_team_id:
+                        home_goals_total += h2h_match.home_score
+                        away_goals_total += h2h_match.away_score
+                    else:
+                        home_goals_total += h2h_match.away_score
+                        away_goals_total += h2h_match.home_score
+        
+        total_matches = (analysis_context.h2h_home_wins + 
+                        analysis_context.h2h_draws + 
+                        analysis_context.h2h_away_wins)
+        
+        h2h_response = HeadToHeadResponse(
+            total_matches=total_matches,
+            home_wins=analysis_context.h2h_home_wins,
+            draws=analysis_context.h2h_draws,
+            away_wins=analysis_context.h2h_away_wins,
+            home_goals=home_goals_total,
+            away_goals=away_goals_total
+        )
+    
     return MatchPredictionResponse(
         match_id=match.id,
         home_win_probability=prediction.home_win_probability,
@@ -499,14 +798,11 @@ async def get_match_prediction(
         predicted_score=analysis_context.predicted_score,
         mensione_pick=analysis_context.mensione_pick,
         prediction_version_id=analysis_context.prediction_version_id,
-        market_analysis=None,  # Market analysis removed in favor of full market derivation in mensione_pick
+        market_analysis=market_analysis_response,  # Now includes Over/Under markets from prediction
         easy_match=easy_match_response,
+        home_form=home_form_response,
+        away_form=away_form_response,
+        head_to_head=h2h_response,
+        shot_markets=analysis_context.shot_markets if hasattr(analysis_context, 'shot_markets') else None,
         is_development_data=provider.is_development_data(),
     )
-
-
-
-@router.get("/health", tags=["health"])
-async def health_check():
-    """Simple health check endpoint for diagnostics."""
-    return {"status": "ok", "message": "matches endpoint is responding"}

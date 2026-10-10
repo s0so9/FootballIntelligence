@@ -183,6 +183,8 @@ class ModelOrchestrator:
         # Convert snapshot to feature dict for models
         features = snapshot.get_feature_dict()
         
+        # DEBUG: Log critical aliases
+        
         # Execute each model
         for model_id, model in self._models.items():
             output = self._run_single_model(

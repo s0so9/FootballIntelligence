@@ -50,7 +50,7 @@ class TestCalibrationStatus:
         """Test status is INSUFFICIENT_DATA after fitting with too few samples."""
         engine = CalibrationEngine()
         
-        # Create insufficient data (< 50 samples)
+        # Create insufficient data (30 samples - at minimum threshold)
         n = 30
         data = CalibrationData(
             predicted_probs=[0.3 + i * 0.02 for i in range(n)],
@@ -60,8 +60,8 @@ class TestCalibrationStatus:
         
         engine.fit(data)
         
-        # Engine doesn't fit with insufficient data
-        assert engine.status == CalibrationStatus.NOT_FITTED
+        # Engine fits with n=30 (>= MIN_SAMPLES=30) but status is INSUFFICIENT_DATA (< RECOMMENDED_SAMPLES=50)
+        assert engine.status == CalibrationStatus.INSUFFICIENT_DATA
         assert engine.calibration_sample_size == 30
     
     def test_get_status_metadata(self):

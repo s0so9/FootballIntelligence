@@ -49,6 +49,20 @@ class TeamStrengthMetrics:
 
 
 @dataclass
+class HeadToHeadMetrics:
+    """Head-to-head record between teams."""
+    
+    total_matches: Optional[int] = None
+    home_wins: Optional[int] = None  # From current home team's perspective
+    draws: Optional[int] = None
+    away_wins: Optional[int] = None  # From current home team's perspective
+    home_goals_per_match: Optional[float] = None
+    away_goals_per_match: Optional[float] = None
+    home_win_rate: Optional[float] = None
+    matches_last_5_years: Optional[int] = None
+
+
+@dataclass
 class FormMetrics:
     """Recent form metrics."""
     
@@ -177,6 +191,9 @@ class MatchFeatureSnapshot:
     home_form: Optional[FormMetrics] = None
     away_form: Optional[FormMetrics] = None
     
+    # Head-to-head record
+    head_to_head: Optional['HeadToHeadMetrics'] = None
+    
     # Opponent-adjusted form (if calculated)
     home_form_adjusted: Optional[FormMetrics] = None
     away_form_adjusted: Optional[FormMetrics] = None
@@ -252,9 +269,12 @@ class MatchFeatureSnapshot:
             features["home_goals_conceded_avg"] = self.home_strength.goals_conceded_per_match  # Alias for Poisson
             features["home_xg_against_per_match"] = self.home_strength.xg_against_per_match
             features["home_points_per_match"] = self.home_strength.points_per_match
+            features["elo_home"] = self.home_strength.elo_rating  # Alias for Elo model
             features["home_elo"] = self.home_strength.elo_rating
             features["home_attack_strength"] = self.home_strength.attack_strength
             features["home_defense_strength"] = self.home_strength.defense_strength
+            # Monte Carlo expected goals
+            features["home_expected_goals"] = self.home_strength.xg_per_match  # Alias for Monte Carlo
         
         # Away strength
         if self.away_strength:
@@ -265,9 +285,12 @@ class MatchFeatureSnapshot:
             features["away_goals_conceded_avg"] = self.away_strength.goals_conceded_per_match  # Alias for Poisson
             features["away_xg_against_per_match"] = self.away_strength.xg_against_per_match
             features["away_points_per_match"] = self.away_strength.points_per_match
+            features["elo_away"] = self.away_strength.elo_rating  # Alias for Elo model
             features["away_elo"] = self.away_strength.elo_rating
             features["away_attack_strength"] = self.away_strength.attack_strength
             features["away_defense_strength"] = self.away_strength.defense_strength
+            # Monte Carlo expected goals
+            features["away_expected_goals"] = self.away_strength.xg_per_match  # Alias for Monte Carlo
         
         # Home form
         if self.home_form:
@@ -275,6 +298,9 @@ class MatchFeatureSnapshot:
             features["home_form_points_per_match"] = self.home_form.points_per_match
             features["home_form_win_rate"] = self.home_form.win_rate
             features["home_match_count"] = float(self.home_form.matches_analyzed) if self.home_form.matches_analyzed is not None else None
+            # Form Adjusted model aliases
+            features["home_form_score"] = self.home_form.points_per_match  # For FormAdjustedModel
+            features["home_form_matches_used"] = float(self.home_form.matches_analyzed) if self.home_form.matches_analyzed is not None else None
         
         # Away form
         if self.away_form:
@@ -282,11 +308,24 @@ class MatchFeatureSnapshot:
             features["away_form_points_per_match"] = self.away_form.points_per_match
             features["away_form_win_rate"] = self.away_form.win_rate
             features["away_match_count"] = float(self.away_form.matches_analyzed) if self.away_form.matches_analyzed is not None else None
+            # Form Adjusted model aliases
+            features["away_form_score"] = self.away_form.points_per_match  # For FormAdjustedModel
+            features["away_form_matches_used"] = float(self.away_form.matches_analyzed) if self.away_form.matches_analyzed is not None else None
         
         # League context
         if self.league_context:
             features["home_advantage"] = self.league_context.home_advantage_factor
             features["league_avg_goals"] = self.league_context.league_average_goals
+        
+        # Head-to-head record
+        if self.head_to_head:
+            features["h2h_total_matches"] = float(self.head_to_head.total_matches) if self.head_to_head.total_matches else None
+            features["h2h_home_wins"] = float(self.head_to_head.home_wins) if self.head_to_head.home_wins else None
+            features["h2h_draws"] = float(self.head_to_head.draws) if self.head_to_head.draws else None
+            features["h2h_away_wins"] = float(self.head_to_head.away_wins) if self.head_to_head.away_wins else None
+            features["h2h_home_win_rate"] = self.head_to_head.home_win_rate
+            features["h2h_home_goals_per_match"] = self.head_to_head.home_goals_per_match
+            features["h2h_away_goals_per_match"] = self.head_to_head.away_goals_per_match
         
         # Data quality
         if self.data_quality_report:
@@ -359,6 +398,7 @@ def extract_feature_snapshot(
     away_team_name: Optional[str] = None,
     scheduled_at: Optional[datetime] = None,
     market_info: Optional[MarketInformation] = None,
+    analysis_context: Optional[Any] = None,  # AnalysisContext for H2H extraction
 ) -> MatchFeatureSnapshot:
     """Extract canonical feature snapshot from various sources.
     
@@ -395,35 +435,49 @@ def extract_feature_snapshot(
         # Extract home form
         if hasattr(feature_set, 'home_form') and feature_set.home_form:
             hf = feature_set.home_form
+            # Calculate points if not provided: points = 3 × wins + draws
+            wins = hf.get('wins')
+            draws = hf.get('draws')
+            points = hf.get('points')
+            if points is None and wins is not None and draws is not None:
+                points = 3 * wins + draws
+            
             snapshot.home_form = FormMetrics(
-                wins=hf.get('wins'),
-                draws=hf.get('draws'),
+                wins=wins,
+                draws=draws,
                 losses=hf.get('losses'),
-                points=hf.get('points'),
-                goals_for=hf.get('goals_for'),
-                goals_against=hf.get('goals_against'),
+                points=points,
+                goals_for=hf.get('goals_for') or hf.get('goals_scored'),  # Try both field names
+                goals_against=hf.get('goals_against') or hf.get('goals_conceded'),  # Try both field names
                 goal_difference=hf.get('goal_difference'),
                 points_per_match=hf.get('points_per_match'),
                 win_rate=hf.get('win_rate'),
                 clean_sheet_rate=hf.get('clean_sheet_rate'),
-                matches_analyzed=hf.get('sample_size'),
+                matches_analyzed=hf.get('sample_size') or hf.get('matches_analyzed'),
             )
         
         # Extract away form
         if hasattr(feature_set, 'away_form') and feature_set.away_form:
             af = feature_set.away_form
+            # Calculate points if not provided: points = 3 × wins + draws
+            wins = af.get('wins')
+            draws = af.get('draws')
+            points = af.get('points')
+            if points is None and wins is not None and draws is not None:
+                points = 3 * wins + draws
+            
             snapshot.away_form = FormMetrics(
-                wins=af.get('wins'),
-                draws=af.get('draws'),
+                wins=wins,
+                draws=draws,
                 losses=af.get('losses'),
-                points=af.get('points'),
-                goals_for=af.get('goals_for'),
-                goals_against=af.get('goals_against'),
+                points=points,
+                goals_for=af.get('goals_for') or af.get('goals_scored'),  # Try both field names
+                goals_against=af.get('goals_against') or af.get('goals_conceded'),  # Try both field names
                 goal_difference=af.get('goal_difference'),
                 points_per_match=af.get('points_per_match'),
                 win_rate=af.get('win_rate'),
                 clean_sheet_rate=af.get('clean_sheet_rate'),
-                matches_analyzed=af.get('sample_size'),
+                matches_analyzed=af.get('sample_size') or af.get('matches_analyzed'),
             )
         
         # Extract attack/defence features for strength metrics
@@ -445,6 +499,42 @@ def extract_feature_snapshot(
                 goals_conceded_per_match=ada.get('goals_conceded_per_match'),
                 xg_against_per_match=ada.get('xg_against_per_match'),
                 points_per_match=snapshot.away_form.points_per_match if snapshot.away_form else None,
+            )
+    
+    # Extract H2H data from analysis_context if available
+    if analysis_context and hasattr(analysis_context, 'h2h_home_wins'):
+        total_matches = (analysis_context.h2h_home_wins or 0) + (analysis_context.h2h_draws or 0) + (analysis_context.h2h_away_wins or 0)
+        
+        if total_matches > 0:
+            home_win_rate = (analysis_context.h2h_home_wins or 0) / total_matches
+            
+            # Calculate goals per match if H2H matches available
+            home_goals_per_match = None
+            away_goals_per_match = None
+            if hasattr(analysis_context, 'head_to_head_matches') and analysis_context.head_to_head_matches:
+                total_home_goals = 0
+                total_away_goals = 0
+                for h2h_match in analysis_context.head_to_head_matches:
+                    if h2h_match.home_score is not None and h2h_match.away_score is not None:
+                        if h2h_match.home_team_id == home_team_id:
+                            total_home_goals += h2h_match.home_score
+                            total_away_goals += h2h_match.away_score
+                        else:
+                            total_home_goals += h2h_match.away_score
+                            total_away_goals += h2h_match.home_score
+                
+                if total_matches > 0:
+                    home_goals_per_match = total_home_goals / total_matches
+                    away_goals_per_match = total_away_goals / total_matches
+            
+            snapshot.head_to_head = HeadToHeadMetrics(
+                total_matches=total_matches,
+                home_wins=analysis_context.h2h_home_wins,
+                draws=analysis_context.h2h_draws,
+                away_wins=analysis_context.h2h_away_wins,
+                home_win_rate=home_win_rate,
+                home_goals_per_match=home_goals_per_match,
+                away_goals_per_match=away_goals_per_match,
             )
     
     return snapshot

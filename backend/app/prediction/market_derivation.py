@@ -38,6 +38,9 @@ class MarketProbabilities:
     btts_yes: float = 0.0
     btts_no: float = 0.0
     
+    # Combined markets
+    over_2_5_and_btts_yes: float = 0.0  # Over 2.5 goals AND both teams score
+    
     # Team totals
     home_team_over: Dict[float, float] = field(default_factory=dict)  # line -> over_prob
     away_team_over: Dict[float, float] = field(default_factory=dict)  # line -> over_prob
@@ -189,6 +192,13 @@ class MarketDerivationEngine:
             btts_yes /= total_btts
             btts_no /= total_btts
         
+        # Derive combined markets
+        # Over 2.5 + BTTS Yes: total goals >= 3 AND both teams score
+        over_2_5_and_btts_yes = sum(
+            prob for (h, a), prob in normalized_dist.items() 
+            if h + a >= 3 and h > 0 and a > 0
+        )
+        
         # Derive team totals
         home_team_over = {}
         away_team_over = {}
@@ -229,6 +239,7 @@ class MarketDerivationEngine:
             over_under=over_under,
             btts_yes=btts_yes,
             btts_no=btts_no,
+            over_2_5_and_btts_yes=over_2_5_and_btts_yes,
             home_team_over=home_team_over,
             away_team_over=away_team_over,
             exact_score_top=exact_score_top,

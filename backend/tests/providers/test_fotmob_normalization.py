@@ -358,3 +358,177 @@ async def test_fotmob_incomplete_header_teams(provider):
         await provider.get_match(match_id)
     
     assert "Missing required team IDs" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fotmob_penalties_short_status(provider):
+    """Test that 'penalties_short' status is correctly mapped to FINISHED.
+    
+    Regression test for FotMob status normalization issue where penalties_short
+    was treated as unknown and defaulted to SCHEDULED, incorrectly classifying
+    historical matches.
+    """
+    match_id = "5181862"
+    
+    mock_response = {
+        "id": "5181862",
+        "general": {
+            "matchId": "5181862",
+            "leagueId": 920743,
+            "leagueName": "UEFA Nations League",
+            "homeTeam": {"name": "Portugal", "id": 8201},
+            "awayTeam": {"name": "France", "id": 8558},
+            "matchTimeUTCDate": "2026-10-01T18:45:00.000Z"
+        },
+        "header": {
+            "teams": [
+                {"name": "Portugal", "id": 8201, "score": 1},
+                {"name": "France", "id": 8558, "score": 1}
+            ],
+            "status": {
+                "utcTime": "2026-10-01T18:45:00.000Z",
+                "started": True,
+                "cancelled": False,
+                "finished": True,
+                "reason": {
+                    "shortKey": "penalties_short"
+                }
+            }
+        },
+        "status": {
+            "reason": {
+                "shortKey": "penalties_short"
+            },
+            "finished": True
+        }
+    }
+    
+    respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
+        return_value=httpx.Response(200, json=mock_response)
+    )
+    
+    match = await provider.get_match(match_id)
+    
+    # Assert penalties_short maps to FINISHED (not SCHEDULED)
+    assert match is not None
+    assert match.status == MatchStatus.FINISHED, \
+        "penalties_short should map to FINISHED, not SCHEDULED"
+    assert match.home_score == 1
+    assert match.away_score == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fotmob_afterextratime_short_status(provider):
+    """Test that 'afterextratime_short' status is correctly mapped to FINISHED.
+    
+    Regression test for FotMob status normalization issue where afterextratime_short
+    was treated as unknown and defaulted to SCHEDULED, incorrectly classifying
+    historical matches.
+    """
+    match_id = "5181863"
+    
+    mock_response = {
+        "id": "5181863",
+        "general": {
+            "matchId": "5181863",
+            "leagueId": 920743,
+            "leagueName": "UEFA Nations League",
+            "homeTeam": {"name": "Germany", "id": 8722},
+            "awayTeam": {"name": "Italy", "id": 8676},
+            "matchTimeUTCDate": "2026-10-02T19:00:00.000Z"
+        },
+        "header": {
+            "teams": [
+                {"name": "Germany", "id": 8722, "score": 3},
+                {"name": "Italy", "id": 8676, "score": 2}
+            ],
+            "status": {
+                "utcTime": "2026-10-02T19:00:00.000Z",
+                "started": True,
+                "cancelled": False,
+                "finished": True,
+                "reason": {
+                    "shortKey": "afterextratime_short"
+                }
+            }
+        },
+        "status": {
+            "reason": {
+                "shortKey": "afterextratime_short"
+            },
+            "finished": True
+        }
+    }
+    
+    respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
+        return_value=httpx.Response(200, json=mock_response)
+    )
+    
+    match = await provider.get_match(match_id)
+    
+    # Assert afterextratime_short maps to FINISHED (not SCHEDULED)
+    assert match is not None
+    assert match.status == MatchStatus.FINISHED, \
+        "afterextratime_short should map to FINISHED, not SCHEDULED"
+    assert match.home_score == 3
+    assert match.away_score == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fotmob_aborted_short_status(provider):
+    """Test that 'aborted_short' status is correctly mapped to CANCELLED.
+    
+    Regression test for FotMob status normalization issue where aborted_short
+    was treated as unknown and defaulted to SCHEDULED, incorrectly classifying
+    abandoned matches.
+    """
+    match_id = "5181864"
+    
+    mock_response = {
+        "id": "5181864",
+        "general": {
+            "matchId": "5181864",
+            "leagueId": 920743,
+            "leagueName": "UEFA Nations League",
+            "homeTeam": {"name": "Spain", "id": 6720},
+            "awayTeam": {"name": "Croatia", "id": 10155},
+            "matchTimeUTCDate": "2026-10-03T20:00:00.000Z"
+        },
+        "header": {
+            "teams": [
+                {"name": "Spain", "id": 6720, "score": 0},
+                {"name": "Croatia", "id": 10155, "score": 0}
+            ],
+            "status": {
+                "utcTime": "2026-10-03T20:00:00.000Z",
+                "started": True,
+                "cancelled": True,
+                "finished": False,
+                "reason": {
+                    "shortKey": "aborted_short"
+                }
+            }
+        },
+        "status": {
+            "reason": {
+                "shortKey": "aborted_short"
+            },
+            "cancelled": True
+        }
+    }
+    
+    respx.get(f"{provider.base_url}/api/data/matchDetails").mock(
+        return_value=httpx.Response(200, json=mock_response)
+    )
+    
+    match = await provider.get_match(match_id)
+    
+    # Assert aborted_short maps to CANCELLED (not SCHEDULED)
+    assert match is not None
+    assert match.status == MatchStatus.CANCELLED, \
+        "aborted_short should map to CANCELLED, not SCHEDULED"
+    assert match.home_score == 0
+    assert match.away_score == 0

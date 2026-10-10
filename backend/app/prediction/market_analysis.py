@@ -33,6 +33,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from app.domain.enums import PredictionMarketType
@@ -50,6 +51,26 @@ MAX_VALID_PROBABILITY = 1.0
 
 DEFAULT_VALUE_THRESHOLD = 0.03
 """Minimum edge (in probability) to flag a bet as having "value"."""
+
+# Value classification thresholds
+STRONG_VALUE_THRESHOLD = 0.10
+"""Minimum edge for STRONG_VALUE classification."""
+
+LOW_VALUE_THRESHOLD = 0.01
+"""Minimum edge for LOW_VALUE classification."""
+
+
+# ---------------------------------------------------------------------------
+# Value Classification
+# ---------------------------------------------------------------------------
+
+class ValueClassification(Enum):
+    """Value classification levels for betting outcomes."""
+    
+    NO_VALUE = "NO_VALUE"
+    LOW_VALUE = "LOW_VALUE" 
+    VALUE = "VALUE"
+    STRONG_VALUE = "STRONG_VALUE"
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +188,33 @@ def edge(fair_probability: float, bookmaker_odds: float) -> float:
     return implied - fair_probability
 
 
+def expected_value(fair_probability: float, bookmaker_odds: float) -> float:
+    """Calculate expected value (EV) of a bet.
+    
+    EV = fair_probability * bookmaker_odds - 1
+    
+    Positive EV means the bet has value (expected profit).
+    Negative EV means the bet is -EV (expected loss).
+    Zero EV means break-even in the long run.
+    
+    Args:
+        fair_probability: Model-derived calibrated probability
+        bookmaker_odds: Decimal odds offered by bookmaker
+        
+    Returns:
+        Expected value as decimal (e.g., 0.05 = 5% expected return)
+        
+    Examples:
+        >>> expected_value(0.60, 2.0)  # 60% prob, 2.0 odds
+        0.20  # 20% expected return
+        >>> expected_value(0.86, 1.16)  # No edge scenario
+        -0.0024  # ~0% return (break-even)
+    """
+    _validate_probability(fair_probability, "fair_probability")
+    _validate_odds(bookmaker_odds, "bookmaker_odds")
+    return fair_probability * bookmaker_odds - 1.0
+
+
 def has_value(
     fair_probability: float,
     bookmaker_odds: float,
@@ -192,6 +240,101 @@ def has_value(
     _validate_odds(bookmaker_odds, "bookmaker_odds")
     implied = implied_probability_from_odds(bookmaker_odds)
     return fair_probability > implied + threshold
+
+
+def classify_value(
+    fair_probability: float,
+    bookmaker_odds: float,
+    strong_threshold: float = STRONG_VALUE_THRESHOLD,
+    value_threshold: float = DEFAULT_VALUE_THRESHOLD, 
+    low_threshold: float = LOW_VALUE_THRESHOLD,
+) -> ValueClassification:
+    """Classify the value level of a bet.
+    
+    Args:
+        fair_probability: Model-derived fair probability
+        bookmaker_odds: Decimal odds offered by bookmaker
+        strong_threshold: Minimum negative edge for STRONG_VALUE
+        value_threshold: Minimum negative edge for VALUE  
+        low_threshold: Minimum negative edge for LOW_VALUE
+        
+    Returns:
+        ValueClassification enum value
+        
+    Note:
+        Negative edge means bookmaker underestimates probability (good for bettor)
+    """
+    _validate_probability(fair_probability, "fair_probability")
+    _validate_odds(bookmaker_odds, "bookmaker_odds")
+    
+    bet_edge = edge(fair_probability, bookmaker_odds)
+    
+    # Negative edge means value (bookmaker underestimates)
+    if bet_edge <= -strong_threshold:
+        return ValueClassification.STRONG_VALUE
+    elif bet_edge <= -value_threshold:
+        return ValueClassification.VALUE
+    elif bet_edge <= -low_threshold:
+        return ValueClassification.LOW_VALUE
+    else:
+        return ValueClassification.NO_VALUE
+
+
+def calculate_value_score(
+    fair_probability: float,
+    bookmaker_odds: float,
+    max_score: float = 1.0,
+) -> float:
+    """Calculate a normalized value score (0 to max_score).
+    
+    The value score is derived from expected value but normalized
+    to provide a consistent 0-1 scale for comparison across different
+    probability ranges.
+    
+    Args:
+        fair_probability: Model-derived fair probability
+        bookmaker_odds: Decimal odds offered by bookmaker
+        max_score: Maximum possible score (default 1.0)
+        
+    Returns:
+        Normalized value score between 0 and max_score
+        
+    Formula:
+        EV = fair_probability * bookmaker_odds - 1
+        Score = max(0, min(max_score, EV * scaling_factor))
+    """
+    _validate_probability(fair_probability, "fair_probability")
+    _validate_odds(bookmaker_odds, "bookmaker_odds")
+    
+    ev = expected_value(fair_probability, bookmaker_odds)
+    
+    # Scale EV to 0-1 range
+    # EV of 0.5 (50% expected return) = score of 1.0
+    scaling_factor = 2.0
+    
+    raw_score = ev * scaling_factor
+    return max(0.0, min(max_score, raw_score))
+
+
+def expected_value_percentage(fair_probability: float, bookmaker_odds: float) -> float:
+    """Calculate expected value as a percentage.
+    
+    Args:
+        fair_probability: Model-derived fair probability
+        bookmaker_odds: Decimal odds offered by bookmaker
+        
+    Returns:
+        Expected value as percentage (e.g., 0.15 = 15%)
+        
+    Examples:
+        >>> expected_value_percentage(0.60, 2.0)
+        20.0  # 20% expected return
+        >>> expected_value_percentage(0.50, 2.0)  
+        0.0   # Break-even
+        >>> expected_value_percentage(0.40, 2.0)
+        -20.0  # 20% expected loss
+    """
+    return expected_value(fair_probability, bookmaker_odds) * 100.0
 
 
 def normalize_market_probabilities(implied_probs: List[float]) -> List[float]:
@@ -256,6 +399,19 @@ class MarketOutcome:
     odds_timestamp: Optional[datetime] = None
     """Timestamp when odds were recorded (None when unavailable)."""
 
+    # Odds & Value Intelligence fields
+    expected_value: Optional[float] = None
+    """Expected value of this outcome (None when unavailable)."""
+
+    expected_value_percent: Optional[float] = None
+    """Expected value as percentage (None when unavailable)."""
+
+    value_classification: Optional[ValueClassification] = None
+    """Value classification level (None when unavailable)."""
+
+    value_score: Optional[float] = None
+    """Normalized value score 0-1 (None when unavailable)."""
+
     @property
     def best_probability(self) -> float:
         """Return calibrated probability if available, else model probability."""
@@ -289,6 +445,19 @@ class BookmakerComparison:
     """True when model probability > implied probability + threshold."""
 
     value_threshold: float = DEFAULT_VALUE_THRESHOLD
+
+    # Odds & Value Intelligence fields
+    expected_value: Optional[float] = None
+    """Expected value of this outcome."""
+
+    expected_value_percent: Optional[float] = None
+    """Expected value as percentage."""
+
+    value_classification: Optional[ValueClassification] = None
+    """Value classification level."""
+
+    value_score: Optional[float] = None
+    """Normalized value score 0-1."""
 
 
 @dataclass
@@ -668,12 +837,24 @@ class MarketAnalyser:
             e = edge(fair_p, b_odds)
             val = has_value(fair_p, b_odds, self.value_threshold)
 
+            # Calculate value intelligence metrics
+            ev = expected_value(fair_p, b_odds)
+            ev_percent = expected_value_percentage(fair_p, b_odds)
+            value_class = classify_value(fair_p, b_odds)
+            v_score = calculate_value_score(fair_p, b_odds)
+
             # Populate Phase 5 fields in MarketOutcome
             outcome.real_odds = b_odds
             outcome.implied_probability = impl_p
             outcome.market_edge = e
             outcome.bookmaker = label  # Label identifies the outcome; bookmaker name would come from data source
             outcome.odds_timestamp = None  # Placeholder for future enhancement
+
+            # Populate Odds & Value Intelligence fields in MarketOutcome
+            outcome.expected_value = ev
+            outcome.expected_value_percent = ev_percent
+            outcome.value_classification = value_class
+            outcome.value_score = v_score
 
             comparisons.append(BookmakerComparison(
                 label=label,
@@ -684,6 +865,11 @@ class MarketAnalyser:
                 edge_value=e,
                 has_value_flag=val,
                 value_threshold=self.value_threshold,
+                # Populate Odds & Value Intelligence fields in BookmakerComparison
+                expected_value=ev,
+                expected_value_percent=ev_percent,
+                value_classification=value_class,
+                value_score=v_score,
             ))
             odds_values.append(b_odds)
 

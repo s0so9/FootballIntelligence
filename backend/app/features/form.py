@@ -70,6 +70,10 @@ class FormCalculator(FeatureCalculator):
         Returns:
             Dictionary of form features
         """
+        # Get all finished matches for match count
+        finished_matches = team_history.get_finished_matches()
+        match_count = len(finished_matches)
+        
         # Get recent finished matches
         recent = team_history.get_recent_matches(self.recent_matches)
         
@@ -85,6 +89,11 @@ class FormCalculator(FeatureCalculator):
                 f"{prefix}recent_avg_goals_scored": None,
                 f"{prefix}recent_avg_goals_conceded": None,
                 f"{prefix}form_points_per_match": None,
+                f"{prefix}match_count": float(match_count),  # Always include match count even when insufficient
+                # NOTE: Do NOT override goals_scored_avg/goals_conceded_avg here
+                # TeamStrengthCalculator may have already set these with fallback values
+                f"{prefix}form_score": None,
+                f"{prefix}form_matches_used": float(len(recent)),  # Number of matches attempted
             }
         
         team_id = team_history.team_id
@@ -112,6 +121,12 @@ class FormCalculator(FeatureCalculator):
             f"{prefix}recent_avg_goals_scored": avg_goals_scored,
             f"{prefix}recent_avg_goals_conceded": avg_goals_conceded,
             f"{prefix}form_points_per_match": points_per_match,
+            f"{prefix}match_count": float(match_count),
+            # Aliases for model compatibility
+            f"{prefix}goals_scored_avg": avg_goals_scored,  # Alias for Poisson/Dixon-Coles/NegBin
+            f"{prefix}goals_conceded_avg": avg_goals_conceded,  # Alias for defensive metrics
+            f"{prefix}form_score": points_per_match,  # Alias for form-adjusted model
+            f"{prefix}form_matches_used": float(len(recent)),  # Number of matches in form calculation
         }
     
     def calculate_form_string(self, team_history: TeamHistoricalData, n: int = 5) -> Optional[str]:

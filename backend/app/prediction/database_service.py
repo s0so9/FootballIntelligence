@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.prediction.service import PredictionService
 from app.features.aggregator import FeatureAggregator
+from app.features.snapshot_cache import FeatureSnapshotCache
 from app.latency.tracker import LatencyTracker
 from app.database.repository import MatchRepository, LatencyLogRepository
 from app.domain.prediction import Prediction
@@ -59,6 +60,8 @@ class DatabasePredictionService(PredictionService):
     ) -> Optional[Prediction]:
         """Generate prediction using database features.
         
+        Uses request-scoped feature cache to deduplicate expensive calculations.
+        
         Args:
             match_db_id: Database match ID
             latency_tracker: Optional latency tracker
@@ -70,43 +73,66 @@ class DatabasePredictionService(PredictionService):
             # Fall back to in-memory prediction
             return None
         
-        # Get match from database
-        match_db = self.match_repo.get_by_id(match_db_id)
-        if not match_db:
-            return None
+        # Create request-scoped feature cache
+        feature_cache = FeatureSnapshotCache()
         
-        # Extract features
-        feature_set = self.feature_aggregator.extract_features_for_match(match_db_id)
+        # Pass cache to feature aggregator's engineer (if it exists)
+        original_engineer = None
+        if hasattr(self.feature_aggregator, 'advanced_engineer') and self.feature_aggregator.advanced_engineer:
+            original_engineer = self.feature_aggregator.advanced_engineer
+            # Create new engineer with cache
+            from app.features.advanced_feature_engineering import AdvancedFeatureEngineer
+            cached_engineer = AdvancedFeatureEngineer(
+                create_interactions=original_engineer.create_interactions,
+                interactions=original_engineer.interactions,
+                feature_cache=feature_cache
+            )
+            self.feature_aggregator.advanced_engineer = cached_engineer
         
-        if not feature_set.features_available:
-            # Insufficient data for prediction
-            return None
+        try:
+            # Get match from database
+            match_db = self.match_repo.get_by_id(match_db_id)
+            if not match_db:
+                return None
+            
+            # Extract features
+            feature_set = self.feature_aggregator.extract_features_for_match(match_db_id)
+            
+            if not feature_set.features_available:
+                # Insufficient data for prediction
+                return None
+            
+            # Convert database match to domain match (for compatibility with existing code)
+            from app.domain.match import Match
+            from app.domain.enums import MatchStatus
+            
+            domain_match = Match(
+                id=match_db.id,
+                home_team_id=match_db.home_team_id,
+                away_team_id=match_db.away_team_id,
+                competition_id=match_db.competition_id or "unknown",
+                season_id=match_db.season or "unknown",
+                scheduled_at=match_db.scheduled_at,
+                status=match_db.status,
+                home_score=match_db.home_score,
+                away_score=match_db.away_score,
+                outcome=match_db.outcome,
+            )
+            
+            # Generate prediction using parent method
+            prediction = self.generate_prediction(domain_match)
+            
+            if prediction and feature_set.data_quality:
+                # Enhance with confidence from data quality
+                prediction.confidence = feature_set.data_quality.get('feature_confidence')
+            
+            return prediction
         
-        # Convert database match to domain match (for compatibility with existing code)
-        from app.domain.match import Match
-        from app.domain.enums import MatchStatus
-        
-        domain_match = Match(
-            id=match_db.id,
-            home_team_id=match_db.home_team_id,
-            away_team_id=match_db.away_team_id,
-            competition_id=match_db.competition_id or "unknown",
-            season_id=match_db.season or "unknown",
-            scheduled_at=match_db.scheduled_at,
-            status=match_db.status,
-            home_score=match_db.home_score,
-            away_score=match_db.away_score,
-            outcome=match_db.outcome,
-        )
-        
-        # Generate prediction using parent method
-        prediction = self.generate_prediction(domain_match)
-        
-        if prediction and feature_set.data_quality:
-            # Enhance with confidence from data quality
-            prediction.confidence = feature_set.data_quality.get('feature_confidence')
-        
-        return prediction
+        finally:
+            # Clear cache and restore original engineer
+            feature_cache.clear()
+            if original_engineer:
+                self.feature_aggregator.advanced_engineer = original_engineer
     
     def build_enhanced_analysis_context(
         self,

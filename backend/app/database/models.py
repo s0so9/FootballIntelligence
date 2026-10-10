@@ -211,6 +211,28 @@ class Match(BaseModel, Base):
         Index("ix_match_scheduled_at_status", "scheduled_at", "status"),
         Index("ix_match_teams", "home_team_id", "away_team_id"),
     )
+    
+    @property
+    def season_id(self) -> str:
+        """Alias for season field to maintain compatibility with domain model.
+        
+        If season is None, derives a season string from the scheduled_at date.
+        """
+        if self.season:
+            return self.season
+        
+        # Derive season from match date
+        # Football seasons typically start in August and end in May of the following year
+        if hasattr(self, 'scheduled_at') and self.scheduled_at:
+            year = self.scheduled_at.year
+            month = self.scheduled_at.month
+            
+            if month >= 8:  # August onwards = start of season
+                return f"{year}/{year + 1 - 2000:02d}"  # e.g., "2026/27"
+            else:  # January-July = end of previous season
+                return f"{year - 1}/{year - 2000:02d}"  # e.g., "2025/26"
+        
+        return "unknown"
 
 
 class MatchEvent(BaseModel, Base):

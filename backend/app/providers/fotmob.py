@@ -52,6 +52,35 @@ from app.domain.enums import MatchStatus, MatchOutcome
 logger = logging.getLogger(__name__)
 
 
+def _parse_round(value) -> int | None:
+    """Safely parse a match round value to int.
+    
+    FotMob sometimes returns round as an integer (e.g. 9) or as a string
+    containing the round number mixed with text (e.g. "Clausura - Round 9").
+    Returns None if the value cannot be parsed to a meaningful integer.
+    """
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    # Try direct int conversion first
+    try:
+        return int(str(value).strip())
+    except (ValueError, TypeError):
+        pass
+    # Try to extract a trailing number from strings like "Clausura - Round 9"
+    import re
+    m = re.search(r'\d+\s*$', str(value).strip())
+    if m:
+        try:
+            return int(m.group())
+        except ValueError:
+            pass
+    return None
+
+
 class FotMobFootballProvider:
     """FotMob Football Provider (LIVE/FAST provider, unofficial).
     
@@ -285,11 +314,11 @@ class FotMobFootballProvider:
             return MatchStatus.LIVE
         elif status_lower in ["ht", "half_time", "halftime", "halftime_short"]:
             return MatchStatus.HALF_TIME
-        elif status_lower in ["ft", "finished", "full_time", "fulltime", "fulltime_short"]:
+        elif status_lower in ["ft", "finished", "full_time", "fulltime", "fulltime_short", "penalties_short", "afterextratime_short"]:
             return MatchStatus.FINISHED
         elif status_lower in ["postponed", "pst", "postponed_short"]:
             return MatchStatus.POSTPONED
-        elif status_lower in ["cancelled", "canceled", "cnc", "cancelled_short"]:
+        elif status_lower in ["cancelled", "canceled", "cnc", "cancelled_short", "aborted_short"]:
             return MatchStatus.CANCELLED
         elif status_lower in ["suspended", "susp", "suspended_short"]:
             return MatchStatus.SUSPENDED
@@ -577,11 +606,11 @@ class FotMobFootballProvider:
             outcome=outcome,
             
             # Match round
-            # Priority 1: general.matchRound
+            # Priority 1: general.matchRound (may be int or string like "Clausura - Round 9")
             # Priority 2: existing fallbacks
             round=(
                 (lambda: (
-                    int(general_data.get("matchRound"))
+                    _parse_round(general_data.get("matchRound"))
                     if isinstance(general_data, dict) and "matchRound" in general_data and general_data.get("matchRound") is not None
                     else None
                 ))() or data.get("round") or data.get("matchday")
@@ -694,6 +723,229 @@ class FotMobFootballProvider:
         away_stats = create_stats(away_values, away_team_id) if away_values else None
         
         return (home_stats, away_stats)
+    
+    def get_matches(
+        self,
+        competition_id: Optional[str] = None,
+        season_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+        status: Optional[str] = None,
+    ) -> List[ProviderMatch]:
+        """Synchronous wrapper for async get_matches_by_range method.
+        
+        This method provides compatibility with the base FootballDataProvider interface
+        which requires a synchronous get_matches method for feature extraction.
+        
+        Args:
+            competition_id: Filter by competition (not supported, ignored)
+            season_id: Filter by season (not supported, ignored)  
+            team_id: Filter by team (not supported, ignored)
+            from_date: Filter matches from this date
+            to_date: Filter matches to this date
+            status: Filter by match status (not supported, ignored)
+            
+        Returns:
+            List of ProviderMatch objects
+            
+        Raises:
+            ProviderError: On request failure
+        """
+        import asyncio
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Only date range filtering is supported by FotMob
+        if not from_date or not to_date:
+            # Default to today if no dates provided
+            from datetime import date
+            to_date = to_date or date.today()
+            from_date = from_date or to_date
+        
+        try:
+            # Use asyncio.run to make async method synchronous
+            loop = None
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is already running, we need to use a different approach
+                    import concurrent.futures
+                    import threading
+                    
+                    def run_in_thread():
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        try:
+                            return new_loop.run_until_complete(
+                                self.get_matches_by_range(from_date, to_date)
+                            )
+                        finally:
+                            new_loop.close()
+                    
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(run_in_thread)
+                        matches = future.result(timeout=30)  # 30 second timeout
+                else:
+                    matches = loop.run_until_complete(
+                        self.get_matches_by_range(from_date, to_date)
+                    )
+            except RuntimeError:
+                # No event loop exists, create one
+                matches = asyncio.run(self.get_matches_by_range(from_date, to_date))
+            
+            logger.debug(
+                f"[{self.PROVIDER_NAME}] Synchronous get_matches returned "
+                f"{len(matches)} matches for {from_date} to {to_date}"
+            )
+            
+            return matches
+            
+        except Exception as e:
+            logger.error(
+                f"[{self.PROVIDER_NAME}] Synchronous get_matches failed: {e}",
+                exc_info=True
+            )
+            # Return empty list rather than crashing - allows graceful fallback
+            return []
+    
+    def get_teams(self, competition_id: str, season_id: str):
+        """Get teams for a competition season.
+        
+        FotMob provider doesn't implement team lists - return empty list.
+        Use Ryzellx for team metadata instead.
+        
+        Args:
+            competition_id: Competition ID (ignored)
+            season_id: Season ID (ignored)
+            
+        Returns:
+            Empty list (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_teams not implemented - "
+            f"use Ryzellx for team metadata"
+        )
+        
+        return []
+    
+    def get_competitions(self):
+        """Get available competitions.
+        
+        FotMob provider doesn't implement competition lists - return empty list.
+        Use Ryzellx for competition metadata instead.
+        
+        Returns:
+            Empty list (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_competitions not implemented - "
+            f"use Ryzellx for competition metadata"
+        )
+        
+        return []
+    
+    def get_competition(self, competition_id: str):
+        """Get a specific competition.
+        
+        Args:
+            competition_id: Competition ID (ignored)
+            
+        Returns:
+            None (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_competition not implemented - "
+            f"use Ryzellx for competition metadata"
+        )
+        
+        return None
+    
+    def get_seasons(self, competition_id: str):
+        """Get seasons for a competition.
+        
+        Args:
+            competition_id: Competition ID (ignored)
+            
+        Returns:
+            Empty list (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_seasons not implemented - "
+            f"use Ryzellx for competition metadata"
+        )
+        
+        return []
+    
+    def get_current_season(self, competition_id: str):
+        """Get current season for a competition.
+        
+        Args:
+            competition_id: Competition ID (ignored)
+            
+        Returns:
+            None (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_current_season not implemented - "
+            f"use Ryzellx for competition metadata"
+        )
+        
+        return None
+    
+    def get_team(self, team_id: str):
+        """Get a specific team.
+        
+        Args:
+            team_id: Team ID (ignored)
+            
+        Returns:
+            None (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_team not implemented - "
+            f"use Ryzellx for team metadata"
+        )
+        
+        return None
+    
+    def get_match(self, match_id: str):
+        """Get a specific match.
+        
+        Args:
+            match_id: Match ID (ignored)
+            
+        Returns:
+            None (not implemented)  
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] get_match not implemented - "
+            f"use Ryzellx for match metadata"
+        )
+        
+        return None
     
     async def get_match_statistics(
         self,
@@ -1162,4 +1414,27 @@ class FotMobFootballProvider:
             f"[{self.PROVIDER_NAME}] get_standings not implemented — "
             f"use Ryzellx or OpenLigaDB for standings"
         )
+        return []
+    
+    def get_standings(self, competition_id: str, season_id: str):
+        """Get league standings (synchronous wrapper).
+        
+        This method provides compatibility with the base FootballDataProvider interface
+        which requires a synchronous get_standings method.
+        
+        Args:
+            competition_id: Competition ID (ignored)
+            season_id: Season ID (ignored)
+            
+        Returns:
+            Empty list (not implemented)
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"[{self.PROVIDER_NAME}] synchronous get_standings not implemented — "
+            f"use Ryzellx or OpenLigaDB for standings"
+        )
+        
         return []

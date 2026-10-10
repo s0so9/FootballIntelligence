@@ -8,6 +8,8 @@ from app.providers.openligadb import OpenLigaDBFootballProvider
 from app.providers.sofascore import SofaScoreFootballProvider
 from app.providers.manager import ProviderManager
 from app.providers.adapter import ProviderManagerAdapter
+from app.providers.database_adapter import DatabaseBackedProvider
+from app.providers.hybrid_provider import HybridProvider
 from app.providers.data_quality import DataQualityEngine
 from app.providers.source_intelligence import SourceIntelligence
 from app.providers.exceptions import (
@@ -43,6 +45,8 @@ __all__ = [
     "SofaScoreFootballProvider",
     "ProviderManager",
     "ProviderManagerAdapter",
+    "DatabaseBackedProvider",
+    "HybridProvider",
     # Data quality
     "DataQualityEngine",
     # Source intelligence

@@ -51,17 +51,21 @@ class DataQualityGate:
 
     def __init__(
         self,
-        min_sample_size: int = 5,
+        min_sample_size: int = None,
         max_days_stale: int = 365,
         min_completeness: float = 0.7,
     ):
         """Initialize data quality gate.
         
         Args:
-            min_sample_size: Minimum number of historical matches required
+            min_sample_size: Minimum number of historical matches required (defaults to config value)
             max_days_stale: Maximum days since last match
             min_completeness: Minimum feature completeness ratio (0-1)
         """
+        if min_sample_size is None:
+            from app.config import settings
+            min_sample_size = settings.min_sample_size
+            
         self.min_sample_size = min_sample_size
         self.max_days_stale = max_days_stale
         self.min_completeness = min_completeness

@@ -27,6 +27,12 @@ class MarketOutcomeResponse(BaseModel):
     bookmaker: Optional[str] = Field(None, description="Bookmaker source")
     odds_timestamp: Optional[datetime] = Field(None, description="When odds were recorded")
     
+    # Odds & Value Intelligence fields (all optional for backward compatibility)
+    expected_value: Optional[float] = Field(None, description="Expected value of this outcome")
+    expected_value_percent: Optional[float] = Field(None, description="Expected value as percentage")
+    value_classification: Optional[str] = Field(None, description="Value classification (NO_VALUE, LOW_VALUE, VALUE, STRONG_VALUE)")
+    value_score: Optional[float] = Field(None, description="Normalized value score 0-1")
+    
     class Config:
         """Pydantic configuration."""
         # Suppress warnings about model_* field names conflicting with Pydantic's namespace
@@ -43,6 +49,12 @@ class BookmakerComparisonResponse(BaseModel):
     implied_probability: float = Field(..., description="Implied probability from bookmaker odds")
     edge_value: float = Field(..., description="Edge (implied - fair probability)")
     has_value_flag: bool = Field(..., description="Whether this outcome has betting value")
+    
+    # Odds & Value Intelligence fields (all optional for backward compatibility)
+    expected_value: Optional[float] = Field(None, description="Expected value of this outcome")
+    expected_value_percent: Optional[float] = Field(None, description="Expected value as percentage")
+    value_classification: Optional[str] = Field(None, description="Value classification (NO_VALUE, LOW_VALUE, VALUE, STRONG_VALUE)")
+    value_score: Optional[float] = Field(None, description="Normalized value score 0-1")
 
 
 class MarketAnalysisResponse(BaseModel):
@@ -84,6 +96,30 @@ class EasyMatchResponse(BaseModel):
     data_sufficient: bool = Field(..., description="Whether sufficient data was available")
 
 
+class TeamFormResponse(BaseModel):
+    """Team form response schema."""
+    
+    wins: Optional[int] = Field(None, description="Wins in recent matches")
+    draws: Optional[int] = Field(None, description="Draws in recent matches")
+    losses: Optional[int] = Field(None, description="Losses in recent matches")
+    points: Optional[int] = Field(None, description="Points (3×wins + draws)")
+    matches_analyzed: Optional[int] = Field(None, description="Number of matches analyzed")
+    goals_for: Optional[int] = Field(None, description="Goals scored")
+    goals_against: Optional[int] = Field(None, description="Goals conceded")
+    form_string: Optional[str] = Field(None, description="Form string (e.g., WWDLW)")
+
+
+class HeadToHeadResponse(BaseModel):
+    """Head-to-head response schema."""
+    
+    total_matches: Optional[int] = Field(None, description="Total H2H matches analyzed")
+    home_wins: Optional[int] = Field(None, description="Home team wins in H2H")
+    draws: Optional[int] = Field(None, description="Draws in H2H")
+    away_wins: Optional[int] = Field(None, description="Away team wins in H2H")
+    home_goals: Optional[int] = Field(None, description="Total goals scored by home team in H2H")
+    away_goals: Optional[int] = Field(None, description="Total goals scored by away team in H2H")
+
+
 class MatchPredictionResponse(BaseModel):
     """Match prediction response schema."""
     
@@ -113,6 +149,22 @@ class MatchPredictionResponse(BaseModel):
     easy_match: Optional[EasyMatchResponse] = Field(
         None,
         description="Easy Match detection result"
+    )
+    home_form: Optional[TeamFormResponse] = Field(
+        None,
+        description="Home team recent form"
+    )
+    away_form: Optional[TeamFormResponse] = Field(
+        None,
+        description="Away team recent form"
+    )
+    head_to_head: Optional[HeadToHeadResponse] = Field(
+        None,
+        description="Head-to-head historical record"
+    )
+    shot_markets: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Shot market predictions (team shots, SOT, total shots)"
     )
     is_development_data: bool = Field(..., description="Whether this is development/mock data")
 
