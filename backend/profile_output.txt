@@ -1,0 +1,20 @@
+﻿python : C:\Users\s0so9\AppData\Local\Programs\Python\Python312\Lib\site-packages\pydantic\_internal\
+_fields.py:149: UserWarning: Field "model_id" has conflict with protected namespace "model_".
+At line:1 char:1
++ python profile_prediction.py fotmob_5881179 2>&1 | Tee-Object -Variab ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\s0so9\...space "model_".:String) [], RemoteExc 
+   eption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+You may be able to resolve this warning by setting `model_config['protected_namespaces'] = ()`.
+  warnings.warn(
+C:\FootballIntelligence\backend\app\prediction\calibration_engine.py:31: UserWarning: sklearn not ava
+ilable. CalibrationEngine will return uncalibrated probabilities.
+  warnings.warn(
+Traceback (most recent call last):
+  File "C:\FootballIntelligence\backend\profile_prediction.py", line 24, in <module>
+    from app.database.session import get_db_session
+ImportError: cannot import name 'get_db_session' from 'app.database.session' (C:\FootballIntelligence
+\backend\app\database\session.py)

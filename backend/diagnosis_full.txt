@@ -1,0 +1,234 @@
+﻿python : C:\Users\s0so9\AppData\Local\Pr
+ograms\Python\Python312\Lib\site-package
+s\pydantic\_internal\_fields.py:149: Use
+rWarning: Field "model_id" has conflict 
+with protected namespace "model_".
+At line:1 char:99
++ ... NG='utf-8'; python scripts/diagnos
+e_model_requirements.py 2>&1 | Out- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (C:\Users\s0so9\...space "mode  
+  l_".:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+
+You may be able to resolve this warning 
+by setting `model_config['protected_name
+spaces'] = ()`.
+  warnings.warn(
+C:\FootballIntelligence\backend\scripts\
+..\app\prediction\calibration_engine.py:
+31: UserWarning: sklearn not available. 
+CalibrationEngine will return uncalibrat
+ed probabilities.
+  warnings.warn(
+
+================================================================================
+DIAGNOSING MODEL REQUIREMENT FAILURES
+================================================================================
+
+STEP 1: Getting match from DevelopmentProvider...
+  Match ID: dev_match_001
+  Home Team ID: dev_team_alpha
+  Away Team ID: dev_team_beta
+  Scheduled: 2026-09-30 15:00:00
+  Status: MatchStatus.FINISHED
+
+STEP 2: Extracting features...
+2026-10-07 23:32:40,724 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO - BEGIN (implicit)
+2026-10-07 23:32:40,750 INFO sqlalchemy.engine.Engine SELECT provider_sources.name, provider_sources.base_url, provider_sources.is_active, provider_sources.last_seen_at, provider_sources.id, provider_sources.created_at, provider_sources.updated_at 
+FROM provider_sources 
+WHERE provider_sources.name = ?
+INFO - SELECT provider_sources.name, pro
+vider_sources.base_url, provider_sources
+.is_active, provider_sources.last_seen_a
+t, provider_sources.id, provider_sources
+.created_at, provider_sources.updated_at
+ 
+FROM provider_sources 
+WHERE provider_sources.name = ?
+2026-10-07 23:32:40,750 INFO sqlalchemy.engine.Engine [generated in 0.00021s] ('fotmob',)
+INFO - [generated in 0.00021s] ('fotmob'
+,)
+2026-10-07 23:32:40,752 INFO sqlalchemy.engine.Engine SELECT teams.provider_source_id, teams.provider_id, teams.name, teams.short_name, teams.code, teams.country, teams.founded, teams.venue_name, teams.logo_url, teams.id, teams.created_at, teams.updated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND teams.provider_id = ?
+INFO - SELECT teams.provider_source_id, 
+teams.provider_id, teams.name, teams.sho
+rt_name, teams.code, teams.country, team
+s.founded, teams.venue_name, teams.logo_
+url, teams.id, teams.created_at, teams.u
+pdated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND t
+eams.provider_id = ?
+2026-10-07 23:32:40,752 INFO sqlalchemy.engine.Engine [generated in 0.00012s] ('d45b4cfd-76e8-4b84-b045-60a0ef0c205e', 'dev_team_alpha')
+INFO - [generated in 0.00012s] ('d45b4cf
+d-76e8-4b84-b045-60a0ef0c205e', 'dev_tea
+m_alpha')
+2026-10-07 23:32:40,752 INFO sqlalchemy.engine.Engine SELECT teams.provider_source_id, teams.provider_id, teams.name, teams.short_name, teams.code, teams.country, teams.founded, teams.venue_name, teams.logo_url, teams.id, teams.created_at, teams.updated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND teams.provider_id = ?
+INFO - SELECT teams.provider_source_id, 
+teams.provider_id, teams.name, teams.sho
+rt_name, teams.code, teams.country, team
+s.founded, teams.venue_name, teams.logo_
+url, teams.id, teams.created_at, teams.u
+pdated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND t
+eams.provider_id = ?
+2026-10-07 23:32:40,752 INFO sqlalchemy.engine.Engine [cached since 0.0006488s ago] ('d45b4cfd-76e8-4b84-b045-60a0ef0c205e', 'dev_team_beta')
+INFO - [cached since 0.0006488s ago] ('d
+45b4cfd-76e8-4b84-b045-60a0ef0c205e', 'd
+ev_team_beta')
+INFO - Registered model: poisson_v1 (ver
+sion 1.0.0)
+INFO - Registered model: dixon_coles_v1 
+(version 1.0.0)
+INFO - Registered model: elo_v1 (version
+ 1.0.0)
+INFO - Registered model: monte_carlo_v1 
+(version 1.0.0)
+INFO - Registered model: negative_binomi
+al_v1 (version 1.0.0)
+INFO - Registered model: form_adjusted_v
+1 (version 1.0.0)
+INFO - Registered model: logistic_regres
+sion_v1 (version 1.0.0)
+INFO - Created default orchestrator with
+ 7 models
+INFO - Orchestration complete: 0 success
+ful, 7 unavailable, 0 failed
+  Total features extracted: 38
+
+  Key strength features:
+    [OK] home_attack_strength: 2.125
+    [OK] home_defense_strength: 0.5
+    [OK] away_attack_strength: 1.6666666666666667
+    [OK] away_defense_strength: 1.0
+
+  Key form features:
+    [OK] home_recent_avg_goals_scored: 1.8
+    [OK] home_recent_avg_goals_conceded: 0.6
+    [OK] away_recent_avg_goals_scored: 1.4
+    [OK] away_recent_avg_goals_conceded: 1.0
+    [OK] home_match_count: 8.0
+    [OK] away_match_count: 9.0
+
+STEP 3: Data Quality Assessment...
+  Overall Score: 0.933
+  Checks Passed: 4/5
+  Checks Failed: 1
+
+  Detailed checks:
+    [PASS] sample_size_check: Teams have 8 and 9 historical matches
+    [FAIL] recency_check: Data recency unknown
+         Severity: MEDIUM, Score: 0.500
+    [PASS] completeness_check: 38/38 features available (100.0%)
+    [PASS] consistency_check: No consistency issues
+    [PASS] temporal_leakage_check: Temporal integrity verified
+
+STEP 4: Building feature snapshot...
+  Snapshot created: version 1.0.0
+  Home strength metrics: False
+  Away strength metrics: False
+
+STEP 5: Checking model requirements...
+  Total models registered: 7
+
+  Model eligibility check:
+
+  [REJECTED] poisson_v1 (v1.0.0)
+    Missing features: home_goals_scored_avg, away_goals_scored_avg
+    Required features check:
+      [MISS] home_goals_scored_avg: None
+      [MISS] away_goals_scored_avg: None
+  [REJECTED] dixon_coles_v1 (v1.0.0)
+    Missing features: home_goals_scored_avg, away_goals_scored_avg
+    Required features check:
+      [MISS] home_goals_scored_avg: None
+      [MISS] away_goals_scored_avg: None
+  [REJECTED] elo_v1 (v1.0.0)
+    Missing features: elo_home, elo_away
+    Required features check:
+      [MISS] elo_home: None
+      [MISS] elo_away: None
+  [REJECTED] monte_carlo_v1 (v1.0.0)
+    Missing features: home_expected_goals, away_expected_goals
+    Required features check:
+      [MISS] home_expected_goals: None
+      [MISS] away_expected_goals: None
+  [REJECTED] negative_binomial_v1 (v1.0.0)
+    Missing features: home_goals_scored_avg, away_goals_scored_avg
+    Required features check:
+      [MISS] home_goals_scored_avg: None
+      [MISS] away_goals_scored_avg: None
+  [REJECTED] form_adjusted_v1 (v1.0.0)
+    Missing features: home_goals_scored_avg, away_goals_scored_avg, home_form_score, away_form_score, home_form_matches < 3, away_form_matches < 3
+    Required features check:
+      [MISS] home_goals_scored_avg: None
+      [MISS] away_goals_scored_avg: None
+      [MISS] home_form_score: None
+      [MISS] away_form_score: None
+  [REJECTED] logistic_regression_v1 (v1.0.0)
+    Missing features: model_not_fitted
+    Required features check:
+      [MISS] home_attack_strength: None
+      [MISS] home_defense_strength: None
+      [MISS] home_home_strength: None
+      [MISS] home_away_strength: None
+      [MISS] home_recent_wins: None
+      [MISS] home_recent_draws: None
+      [MISS] home_recent_losses: None
+      [MISS] home_form_points_per_match: None
+      [MISS] away_attack_strength: None
+      [MISS] away_defense_strength: None
+      [MISS] away_home_strength: None
+      [MISS] away_away_strength: None
+      [MISS] away_recent_wins: None
+      [MISS] away_recent_draws: None
+      [MISS] away_recent_losses: None
+      [MISS] away_form_points_per_match: None
+
+STEP 6: Running model orchestrator...
+  Successful predictions: 0
+  Unavailable models: 7
+  Failed models: 0
+
+  Unavailable models details:
+    - poisson_v1
+      Reason: Missing required features: home_goals_scored_avg, away_goals_scored_avg
+      Missing: home_goals_scored_avg, away_goals_scored_avg
+    - dixon_coles_v1
+      Reason: Missing required features: home_goals_scored_avg, away_goals_scored_avg
+      Missing: home_goals_scored_avg, away_goals_scored_avg
+    - elo_v1
+      Reason: Missing required features: elo_home, elo_away
+      Missing: elo_home, elo_away
+    - monte_carlo_v1
+      Reason: Missing required features: home_expected_goals, away_expected_goals
+      Missing: home_expected_goals, away_expected_goals
+    - negative_binomial_v1
+      Reason: Missing required features: home_goals_scored_avg, away_goals_scored_avg
+      Missing: home_goals_scored_avg, away_goals_scored_avg
+    - form_adjusted_v1
+      Reason: Missing required features: home_goals_scored_avg, away_goals_scored_avg, home_form_score, away_form_score, home_form_matches < 3, away_form_matches < 3
+      Missing: home_goals_scored_avg, away_goals_scored_avg, home_form_score, away_form_score, home_form_matches < 3, away_form_matches < 3
+    - logistic_regression_v1
+      Reason: Missing required features: model_not_fitted
+      Missing: model_not_fitted
+
+  FAILURE: No models produced predictions
+  This causes 'Insufficient data' error at endpoint
+
+================================================================================
+DIAGNOSIS COMPLETE
+================================================================================
+
+2026-10-07 23:32:40,753 INFO sqlalchemy.engine.Engine ROLLBACK
+INFO - ROLLBACK

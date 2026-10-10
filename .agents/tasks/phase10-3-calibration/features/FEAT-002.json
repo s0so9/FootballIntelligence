@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-002", 
+  "type": "feat",
+  "description": "Walk-forward temporal validation and calibration evaluation - implement chronological model evaluation with strict temporal safety and calibration performance analysis",
+  "status": "pending", 
+  "steps": [
+    "Enhance backend/app/prediction/walk_forward.py to integrate with PredictionService for database-backed feature extraction with temporal cutoffs",
+    "Add leakage detection tests to ensure no future data usage in model training or calibration fitting",
+    "Create backend/scripts/run_walk_forward_evaluation.py using WalkForwardEvaluator with expanding window validation",
+    "Enhance backend/app/prediction/calibration_engine.py to connect with database historical predictions for walk-forward-safe fitting",
+    "Create backend/scripts/evaluate_calibration.py to compare uncalibrated vs calibrated performance on out-of-sample data"
+  ],
+  "acceptance_criteria": [
+    "Walk-forward evaluator correctly implements temporal boundary enforcement (training data before T, validation after T)",
+    "Feature extraction uses database queries with WHERE match_date < T to prevent future data leakage", 
+    "Leakage detection tests validate no test information flows into training for any component",
+    "Calibration engine fits on chronological training data and evaluates on genuinely unseen validation data",
+    "Calibration evaluation shows OOS improvement metrics or reports INSUFFICIENT_HISTORICAL_SAMPLE when appropriate"
+  ],
+  "verification": [
+    "python backend/scripts/run_walk_forward_evaluation.py completes with temporal safety validation and no leakage warnings",
+    "python backend/scripts/evaluate_calibration.py produces calibration comparison report with OOS validation results",
+    "pytest backend/tests/prediction/test_walk_forward.py shows all temporal safety tests pass"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

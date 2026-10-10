@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-003",
+  "type": "feat", 
+  "description": "Model agreement analysis and ensemble optimization - analyze model consensus patterns and optimize ensemble weighting with historical validation",
+  "status": "pending",
+  "steps": [
+    "Create backend/app/prediction/agreement_analyzer.py using EnsembleEngine model_agreement to create historically-validated agreement buckets",
+    "Create backend/scripts/analyze_model_agreement.py to evaluate correlation between agreement scores and actual prediction reliability", 
+    "Add OptimizedWeights strategy to backend/app/prediction/ensemble_engine.py for historical performance-based weighting",
+    "Create backend/scripts/optimize_ensemble_weights.py to compare current ReliabilityWeights vs optimized weights using walk-forward validation",
+    "Create backend/app/prediction/model_contribution.py to analyze individual model contribution to ensemble performance"
+  ],
+  "acceptance_criteria": [
+    "Agreement analyzer creates high/medium/high-disagreement buckets with historical performance validation",
+    "Agreement analysis shows correlation between model consensus and prediction reliability using real historical data",
+    "Ensemble weight optimization uses walk-forward validation ensuring training data before T, validation data after T",
+    "Weight optimization shows genuine OOS improvement or recommends keeping existing ReliabilityWeights strategy", 
+    "Model contribution analysis evaluates single-model vs ensemble performance on adequate sample sizes using multiple metrics"
+  ],
+  "verification": [
+    "python backend/scripts/analyze_model_agreement.py outputs agreement-reliability correlation analysis with historical validation",
+    "python backend/scripts/optimize_ensemble_weights.py either promotes optimized weights or recommends keeping current ensemble based on OOS results",
+    "python backend/scripts/evaluate_model_contributions.py completes contribution analysis for all 4 operational models"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

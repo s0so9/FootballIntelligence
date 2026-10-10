@@ -1,0 +1,79 @@
+[
+  {
+    "match_id": "e27d655d-62ea-4a46-a0be-e572b90baa27",
+    "scheduled_at": "2026-10-10T00:00:00",
+    "used_db": true,
+    "total_time_ms": 28.19085121154785,
+    "total_features": 46,
+    "non_null_features": 46,
+    "feature_coverage": 1.0,
+    "success": true,
+    "sample_features": {
+      "home_attack_strength": 0.8571428571428571,
+      "home_defense_strength": 1.6428571428571428,
+      "home_home_strength": 1.5714285714285714,
+      "home_away_strength": 0.7142857142857143,
+      "home_goal_scoring_rate": 0.8571428571428571,
+      "home_goal_conceding_rate": 1.6428571428571428,
+      "home_goals_scored_avg": 1.4,
+      "home_goals_conceded_avg": 1.4,
+      "away_attack_strength": 1.0714285714285714,
+      "away_defense_strength": 1.3571428571428572
+    }
+  },
+  {
+    "match_id": "0db416a4-40ce-4dfc-80f3-31c56cfc8090",
+    "scheduled_at": "2026-10-10T00:45:00",
+    "used_db": true,
+    "total_time_ms": 25.042057037353516,
+    "total_features": 46,
+    "non_null_features": 46,
+    "feature_coverage": 1.0,
+    "success": true,
+    "sample_features": {
+      "home_attack_strength": 1.5454545454545454,
+      "home_defense_strength": 1.7272727272727273,
+      "home_home_strength": 1.8,
+      "home_away_strength": 0.6666666666666666,
+      "home_goal_scoring_rate": 1.5454545454545454,
+      "home_goal_conceding_rate": 1.7272727272727273,
+      "home_goals_scored_avg": 1.8,
+      "home_goals_conceded_avg": 2.0,
+      "away_attack_strength": 1.4166666666666667,
+      "away_defense_strength": 1.25
+    }
+  },
+  {
+    "match_id": "98863659-c6b5-4c30-9054-3931d471528e",
+    "scheduled_at": "2026-10-10T01:00:00",
+    "used_db": true,
+    "total_time_ms": 24.621963500976562,
+    "total_features": 46,
+    "non_null_features": 46,
+    "feature_coverage": 1.0,
+    "success": true,
+    "sample_features": {
+      "home_attack_strength": 0.8,
+      "home_defense_strength": 2.9,
+      "home_home_strength": 1.0,
+      "home_away_strength": 0.0,
+      "home_goal_scoring_rate": 0.8,
+      "home_goal_conceding_rate": 2.9,
+      "home_goals_scored_avg": 0.8,
+      "home_goals_conceded_avg": 3.4,
+      "away_attack_strength": 1.9090909090909092,
+      "away_defense_strength": 1.0909090909090908
+    }
+  },
+  {
+    "match_id": "e27d655d-62ea-4a46-a0be-e572b90baa27",
+    "scheduled_at": "2026-10-10T00:00:00",
+    "used_db": false,
+    "total_time_ms": 1.737356185913086,
+    "total_features": 46,
+    "non_null_features": 10,
+    "feature_coverage": 0.21739130434782608,
+    "success": true,
+    "sample_features": {}
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "project_type": "Python FastAPI + React TypeScript football prediction platform",
+  "language": "Python",
+  "build_system": "No build system - Python modules with direct imports",
+  "test_framework": "pytest with fixtures, 10 walk-forward tests currently pass",
+  "build_command": "No build required - Python imports",
+  "test_command": "python -m pytest tests/prediction/test_walk_forward.py -v",
+  "verification_instructions": "Run pytest on specific test files to verify functionality, check prediction endpoints for HTTP 200 responses",
+  "snapshot_or_generated_files": "None - all files are source code, no generated artifacts",
+  "environment_constraints": "sklearn not available (graceful degradation implemented), database contains ~4,543 total matches with ~2,673 finished matches",
+  "contribution_requirements": "Must preserve Phase 10.1/10.2 work, never overwrite working code without clear reason, work in verifiable steps, update docs/PROGRESS.md after completion",
+  "key_patterns": "WalkForwardEvaluator uses temporal safety, CalibrationEngine has sklearn graceful degradation, EnsembleEngine has 3 weighting strategies, all prediction code uses structured dataclasses",
+  "relevant_files": [
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\walk_forward.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\calibration_engine.py", 
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\ensemble_engine.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\confidence_engine.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\service.py",
+    "c:\\FootballIntelligence\\backend\\app\\prediction\\model_orchestrator.py",
+    "c:\\FootballIntelligence\\backend\\app\\database\\models.py",
+    "c:\\FootballIntelligence\\backend\\tests\\prediction\\test_walk_forward.py",
+    "c:\\FootballIntelligence\\docs\\PROGRESS.md"
+  ],
+  "directory_structure": "backend/app/prediction/ contains core prediction engines, backend/scripts/ for evaluation scripts, backend/tests/prediction/ for tests, docs/ for progress tracking"
+}

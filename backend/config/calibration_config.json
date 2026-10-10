@@ -1,0 +1,8 @@
+{
+  "trained_at": "2026-10-08T16:01:47.546064",
+  "home_fitted": true,
+  "draw_fitted": true,
+  "away_fitted": true,
+  "method": "isotonic",
+  "calibrator_path": "C:\\FootballIntelligence\\backend\\scripts\\..\\config\\calibration_config.pkl"
+}

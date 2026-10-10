@@ -1,0 +1,16 @@
+[
+  {
+    "iteration": 1,
+    "status": "success",
+    "elapsed_ms": 25492.074489593506,
+    "has_prediction": false,
+    "has_pick": true
+  },
+  {
+    "iteration": 2,
+    "status": "success",
+    "elapsed_ms": 26332.677602767944,
+    "has_prediction": false,
+    "has_pick": true
+  }
+]

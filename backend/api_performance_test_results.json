@@ -1,0 +1,23 @@
+[
+  {
+    "iteration": 1,
+    "status": "success",
+    "elapsed_ms": 3275.1705646514893,
+    "has_prediction": false,
+    "has_analysis": false
+  },
+  {
+    "iteration": 2,
+    "status": "success",
+    "elapsed_ms": 3018.5534954071045,
+    "has_prediction": false,
+    "has_analysis": false
+  },
+  {
+    "iteration": 3,
+    "status": "success",
+    "elapsed_ms": 3111.294746398926,
+    "has_prediction": false,
+    "has_analysis": false
+  }
+]

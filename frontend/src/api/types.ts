@@ -191,6 +191,34 @@ export interface HeadToHeadResponse {
   away_goals: number | null;
 }
 
+/**
+ * Shot Market Types
+ */
+export interface ShotMarketThreshold {
+  threshold: number;
+  over_probability: number;
+}
+
+export interface ShotMarketPrediction {
+  team_id: string;
+  market_type: string;
+  available: boolean;
+  unavailability_reason?: string;
+  distribution_model: string;
+  expected_value: number | null;
+  variance: number | null;
+  sample_size: number;
+  data_quality_score: number;
+  thresholds: ShotMarketThreshold[];
+}
+
+export interface ShotMarketsResponse {
+  team_shots: ShotMarketPrediction[];
+  team_shots_on_target: ShotMarketPrediction[];
+  total_shots: ShotMarketPrediction[];
+  total_sot?: ShotMarketPrediction[];
+}
+
 export interface MatchPredictionResponse {
   match_id: string;
   home_win_probability: number;
@@ -207,6 +235,7 @@ export interface MatchPredictionResponse {
   home_form: TeamFormResponse | null;
   away_form: TeamFormResponse | null;
   head_to_head: HeadToHeadResponse | null;
+  shot_markets: ShotMarketsResponse | null;
   is_development_data: boolean;
 }
 

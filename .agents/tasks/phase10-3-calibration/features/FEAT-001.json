@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Historical dataset analysis and baseline model evaluation - establish data foundation and measure current 4-model system performance without optimization",
+  "status": "pending",
+  "steps": [
+    "Create backend/scripts/historical_dataset_census.py to query database for total/finished matches, document exclusions, calculate sample sizes per team/competition",
+    "Create backend/app/prediction/dataset_validator.py with match eligibility filtering and sample size validation utilities",
+    "Create backend/app/prediction/baseline_evaluator.py for production pipeline evaluation using current 4-model ensemble with ReliabilityWeights",
+    "Create backend/scripts/evaluate_baseline_models.py to run baseline evaluation and output individual model + ensemble metrics in JSON format",
+    "Run baseline evaluation script and verify it produces structured metrics for all 4 operational models"
+  ],
+  "acceptance_criteria": [
+    "Historical dataset census script documents exact usability: total matches, finished matches, exclusion reasons with counts",
+    "Dataset validator correctly identifies eligible matches for walk-forward evaluation with proper sample size checks", 
+    "Baseline evaluator measures individual model performance (Poisson, Dixon-Coles, Negative Binomial, Form Adjusted) with accuracy/Brier/log loss metrics",
+    "Baseline evaluation script produces JSON report with per-model and ensemble metrics using current production configuration",
+    "All baseline evaluation handles insufficient samples with explicit INSUFFICIENT_HISTORICAL_SAMPLE reporting"
+  ],
+  "verification": [
+    "python backend/scripts/historical_dataset_census.py outputs detailed census with ~4,543 total, ~2,673 finished matches",
+    "python backend/scripts/evaluate_baseline_models.py completes successfully and generates baseline_metrics.json",
+    "Baseline metrics show 4/7 models operational status matching current production state"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -85,7 +85,7 @@ npm run lint
 
 ## API Integration
 
-The frontend connects to the backend API at `http://localhost:8000/api/v1/`.
+The frontend connects to the backend API at `http://127.0.0.1:8002/api/v1/`.
 
 Vite proxy configuration handles development CORS.
 

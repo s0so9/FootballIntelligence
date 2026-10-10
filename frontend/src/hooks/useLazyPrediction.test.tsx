@@ -39,6 +39,7 @@ describe('useLazyPrediction', () => {
     home_form: null,
     away_form: null,
     head_to_head: null,
+    shot_markets: null,
     is_development_data: false,
   };
 

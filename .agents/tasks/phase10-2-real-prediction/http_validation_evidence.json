@@ -1,0 +1,54 @@
+﻿{
+  "timestamp": "2026-10-08 07:46:07",
+  "endpoint": "GET /api/v1/matches/fotmob_5071211/prediction",
+  "http_status": 200,
+  "response_time_seconds": 1.1494,
+  "response_time_ms": 1149.4,
+  "validation_status": "SUCCESS",
+  "match_details": {
+    "match_id": "fotmob_5071211",
+    "predicted_score": "1-2",
+    "is_development_data": false
+  },
+  "prediction_probabilities": {
+    "home_win": 0.1974,
+    "draw": 0.1881,
+    "away_win": 0.6145,
+    "probability_sum": 1.0000,
+    "btts": 0.6816
+  },
+  "expected_goals": {
+    "home_xg": 1.3775,
+    "away_xg": 2.5138,
+    "total_xg": 3.8913
+  },
+  "tutar_x_decision": {
+    "decision": "PICK",
+    "market": "AWAY_OVER_0_5",
+    "selection": "Away Over 0.5 Goals", 
+    "probability": 0.9116,
+    "confidence": 0.7090,
+    "model_agreement": 0.9293,
+    "data_quality": 0.8490,
+    "risk_level": "LOW",
+    "value_classification": "NO_ODDS",
+    "selection_score": 1.1671,
+    "fair_odds": 1.0969
+  },
+  "easy_match_analysis": {
+    "is_easy_match": false,
+    "confidence_score": 46.76,
+    "threshold": 65.0,
+    "dominant_outcome": "away",
+    "dominant_probability": 0.5976
+  },
+  "validation_checks": {
+    "http_200_status": true,
+    "response_under_2_seconds": true,
+    "valid_probabilities": true,
+    "probability_sum_valid": true,
+    "tutar_x_present": true,
+    "no_development_data": true,
+    "prediction_id_present": true
+  }
+}

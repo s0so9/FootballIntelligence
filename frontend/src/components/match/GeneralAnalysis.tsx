@@ -7,7 +7,12 @@
 
 import MensionePickCard from '../predictions/MensionePickCard'
 import ProbabilityDisplay from '../common/ProbabilityDisplay'
-import type { MatchPredictionResponse, MatchResponse } from '../../api/types'
+import type { 
+  MatchPredictionResponse, 
+  MatchResponse,
+  ShotMarketPrediction,
+  ShotMarketThreshold
+} from '../../api/types'
 import './GeneralAnalysis.css'
 
 interface GeneralAnalysisProps {
@@ -210,7 +215,7 @@ export default function GeneralAnalysis({
                      marketType === 'total_sot' ? 'Toplam İsabetli Şutlar' : marketType}
                   </div>
                   <div className="shot-market-predictions">
-                    {predictions.map((pred: any, index: number) => (
+                    {predictions.map((pred: ShotMarketPrediction, index: number) => (
                       <div key={index} className="shot-prediction">
                         <div className="shot-prediction__team">
                           {pred.team_id === 'total' ? 'Toplam' : 
@@ -218,7 +223,7 @@ export default function GeneralAnalysis({
                         </div>
                         {pred.available ? (
                           <div className="shot-prediction__thresholds">
-                            {pred.thresholds?.map((threshold: any, tIndex: number) => (
+                            {pred.thresholds?.map((threshold: ShotMarketThreshold, tIndex: number) => (
                               <div key={tIndex} className="shot-threshold">
                                 <span className="shot-threshold__label">{threshold.threshold}+</span>
                                 <ProbabilityDisplay 

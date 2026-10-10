@@ -1,0 +1,143 @@
+﻿python : C:\Users\s0so9\AppData\Local\Pr
+ograms\Python\Python312\Lib\site-package
+s\pydantic\_internal\_fields.py:149: Use
+rWarning: Field "model_id" has conflict 
+with protected namespace "model_".
+At line:1 char:99
++ ... NG='utf-8'; python scripts/diagnos
+e_model_requirements.py 2>&1 | Out- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecif 
+   ied: (C:\Users\s0so9\...space "mode  
+  l_".:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCom 
+   mandError
+ 
+
+You may be able to resolve this warning 
+by setting `model_config['protected_name
+spaces'] = ()`.
+  warnings.warn(
+C:\FootballIntelligence\backend\scripts\
+..\app\prediction\calibration_engine.py:
+31: UserWarning: sklearn not available. 
+CalibrationEngine will return uncalibrat
+ed probabilities.
+  warnings.warn(
+
+================================================================================
+DIAGNOSING MODEL REQUIREMENT FAILURES
+================================================================================
+
+STEP 1: Getting match from DevelopmentProvider...
+  Match ID: dev_match_001
+  Home Team ID: dev_team_alpha
+  Away Team ID: dev_team_beta
+  Scheduled: 2026-09-30 15:00:00
+  Status: MatchStatus.FINISHED
+
+STEP 2: Extracting features...
+2026-10-07 23:28:55,797 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+INFO - BEGIN (implicit)
+2026-10-07 23:28:55,825 INFO sqlalchemy.engine.Engine SELECT provider_sources.name, provider_sources.base_url, provider_sources.is_active, provider_sources.last_seen_at, provider_sources.id, provider_sources.created_at, provider_sources.updated_at 
+FROM provider_sources 
+WHERE provider_sources.name = ?
+INFO - SELECT provider_sources.name, pro
+vider_sources.base_url, provider_sources
+.is_active, provider_sources.last_seen_a
+t, provider_sources.id, provider_sources
+.created_at, provider_sources.updated_at
+ 
+FROM provider_sources 
+WHERE provider_sources.name = ?
+2026-10-07 23:28:55,825 INFO sqlalchemy.engine.Engine [generated in 0.00024s] ('fotmob',)
+INFO - [generated in 0.00024s] ('fotmob'
+,)
+2026-10-07 23:28:55,828 INFO sqlalchemy.engine.Engine SELECT teams.provider_source_id, teams.provider_id, teams.name, teams.short_name, teams.code, teams.country, teams.founded, teams.venue_name, teams.logo_url, teams.id, teams.created_at, teams.updated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND teams.provider_id = ?
+INFO - SELECT teams.provider_source_id, 
+teams.provider_id, teams.name, teams.sho
+rt_name, teams.code, teams.country, team
+s.founded, teams.venue_name, teams.logo_
+url, teams.id, teams.created_at, teams.u
+pdated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND t
+eams.provider_id = ?
+2026-10-07 23:28:55,828 INFO sqlalchemy.engine.Engine [generated in 0.00015s] ('d45b4cfd-76e8-4b84-b045-60a0ef0c205e', 'dev_team_alpha')
+INFO - [generated in 0.00015s] ('d45b4cf
+d-76e8-4b84-b045-60a0ef0c205e', 'dev_tea
+m_alpha')
+2026-10-07 23:28:55,828 INFO sqlalchemy.engine.Engine SELECT teams.provider_source_id, teams.provider_id, teams.name, teams.short_name, teams.code, teams.country, teams.founded, teams.venue_name, teams.logo_url, teams.id, teams.created_at, teams.updated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND teams.provider_id = ?
+INFO - SELECT teams.provider_source_id, 
+teams.provider_id, teams.name, teams.sho
+rt_name, teams.code, teams.country, team
+s.founded, teams.venue_name, teams.logo_
+url, teams.id, teams.created_at, teams.u
+pdated_at 
+FROM teams 
+WHERE teams.provider_source_id = ? AND t
+eams.provider_id = ?
+2026-10-07 23:28:55,828 INFO sqlalchemy.engine.Engine [cached since 0.0007212s ago] ('d45b4cfd-76e8-4b84-b045-60a0ef0c205e', 'dev_team_beta')
+INFO - [cached since 0.0007212s ago] ('d
+45b4cfd-76e8-4b84-b045-60a0ef0c205e', 'd
+ev_team_beta')
+INFO - ROLLBACK
+  Total features extracted: 36
+
+  Key strength features:
+    [OK] home_attack_strength: 2.125
+    [OK] home_defense_strength: 0.5
+    [OK] away_attack_strength: 1.6666666666666667
+    [OK] away_defense_strength: 1.0
+
+  Key form features:
+    [OK] home_recent_avg_goals_scored: 1.8
+    [OK] home_recent_avg_goals_conceded: 0.6
+    [OK] away_recent_avg_goals_scored: 1.4
+    [OK] away_recent_avg_goals_conceded: 1.0
+    [MISS] home_match_count: None
+    [MISS] away_match_count: None
+
+STEP 3: Data Quality Assessment...
+  Overall Score: 0.688
+  Checks Passed: 3/5
+  Checks Failed: 2
+
+  Warnings:
+    - sample_size_check: Teams have 0 and 0 historical matches
+
+  Detailed checks:
+    [FAIL] sample_size_check: Teams have 0 and 0 historical matches
+         Severity: CRITICAL, Score: 0.000
+         Details: {'home_matches': 0, 'away_matches': 0, 'min_required': 5}
+    [FAIL] recency_check: Data recency unknown
+         Severity: MEDIUM, Score: 0.500
+    [PASS] completeness_check: 36/36 features available (100.0%)
+    [PASS] consistency_check: No consistency issues
+    [PASS] temporal_leakage_check: Temporal integrity verified
+
+STEP 4: Building feature snapshot...
+  Snapshot created: version 1.0.0
+  Home strength metrics: False
+  Away strength metrics: False
+
+STEP 5: Checking model requirements...
+2026-10-07 23:28:55,828 INFO sqlalchemy.engine.Engine ROLLBACK
+Traceback (most recent call last):
+  File "C:\FootballIntelligence\backend\
+scripts\diagnose_model_requirements.py",
+ line 199, in <module>
+    diagnose()
+  File "C:\FootballIntelligence\backend\
+scripts\diagnose_model_requirements.py",
+ line 132, in diagnose
+    orchestrator.register_all_models()
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ModelOrchestrator' obje
+ct has no attribute 'register_all_models
+'. Did you mean: 'register_model'?
