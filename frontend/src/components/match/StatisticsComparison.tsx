@@ -41,6 +41,56 @@ export default function StatisticsComparison({
     })
   }
   
+  // Form data - show when available from API
+  if (prediction?.home_form && prediction?.away_form) {
+    stats.push(
+      {
+        label: 'Form (G-B-M)',
+        homeValue: `${prediction.home_form.wins}-${prediction.home_form.draws}-${prediction.home_form.losses}`,
+        awayValue: `${prediction.away_form.wins}-${prediction.away_form.draws}-${prediction.away_form.losses}`
+      },
+      {
+        label: 'Puan',
+        homeValue: prediction.home_form.points,
+        awayValue: prediction.away_form.points
+      },
+      {
+        label: 'Attığı Gol',
+        homeValue: prediction.home_form.goals_for,
+        awayValue: prediction.away_form.goals_for
+      },
+      {
+        label: 'Yediği Gol',
+        homeValue: prediction.home_form.goals_against,
+        awayValue: prediction.away_form.goals_against
+      }
+    )
+  }
+  
+  // Head-to-Head data - show when available from API
+  if (prediction?.head_to_head && prediction.head_to_head.total_matches > 0) {
+    stats.push(
+      {
+        label: 'Karşılıklı Geçmiş',
+        homeValue: `${prediction.head_to_head.home_wins} Galibiyet`,
+        awayValue: `${prediction.head_to_head.away_wins} Galibiyet`
+      },
+      {
+        label: 'Toplam Karşılaşma',
+        homeValue: prediction.head_to_head.total_matches,
+        awayValue: `${prediction.head_to_head.draws} Beraberlik`
+      }
+    )
+    
+    if (prediction.head_to_head.home_goals !== null && prediction.head_to_head.away_goals !== null) {
+      stats.push({
+        label: 'Geçmiş Goller',
+        homeValue: prediction.head_to_head.home_goals,
+        awayValue: prediction.head_to_head.away_goals
+      })
+    }
+  }
+  
   // Placeholder rows for future data integration
   // Show '--' to indicate data is not yet available
   stats.push(

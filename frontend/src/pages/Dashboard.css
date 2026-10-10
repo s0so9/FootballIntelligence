@@ -73,7 +73,7 @@
 /* Desktop layout: main + right panel */
 .dashboard-layout {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr;
   gap: var(--spacing-6);
   align-items: start;
 }
@@ -87,6 +87,10 @@
 
 .dashboard-main {
   min-height: 400px;
+}
+
+.dashboard-main--full-width {
+  grid-column: 1 / -1;
 }
 
 /* MENSIONE picks grid */

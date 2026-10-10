@@ -6,6 +6,7 @@
  */
 
 import type { CompetitionResponse } from '../api/types';
+import { normalizeCompetitionName } from '../utils/popularCompetitions';
 import './LeagueSelector.css';
 
 interface LeagueSelectorProps {
@@ -39,18 +40,23 @@ export function LeagueSelector({ competitions, selectedId, onChange, loading }: 
     <div className="league-selector">
       <label className="league-selector__label">Lig Seç</label>
       <div className="league-selector__grid">
-        {competitions.map((comp) => (
-          <button
-            key={comp.id}
-            onClick={() => onChange(comp.id)}
-            className={`league-btn ${selectedId === comp.id ? 'league-btn--active' : ''}`}
-          >
-            <span className="league-btn__name">{comp.name}</span>
-            {comp.country && (
-              <span className="league-btn__country">{comp.country}</span>
-            )}
-          </button>
-        ))}
+        {competitions.map((comp) => {
+          // Normalize competition name for display
+          const displayName = normalizeCompetitionName(comp.name) || comp.name;
+          
+          return (
+            <button
+              key={comp.id}
+              onClick={() => onChange(comp.id)}
+              className={`league-btn ${selectedId === comp.id ? 'league-btn--active' : ''}`}
+            >
+              <span className="league-btn__name">{displayName}</span>
+              {comp.country && (
+                <span className="league-btn__country">{comp.country}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

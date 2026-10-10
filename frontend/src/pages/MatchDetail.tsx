@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getMatch, getMatchPrediction } from '../api';
-import type { MatchResponse, MatchPredictionResponse } from '../api/types';
+import { getMatch } from '../api';
+import type { MatchResponse } from '../api/types';
 import { 
   formatTeamName, 
   formatCompetitionName, 
@@ -11,6 +11,7 @@ import {
 import { useFavorites } from '../hooks/useFavorites';
 import { useCombine } from '../hooks/useCombine';
 import { useLiveMatch } from '../hooks/useLiveMatch';
+import { useLazyPrediction } from '../hooks/useLazyPrediction';
 import GeneralAnalysis from '../components/match/GeneralAnalysis';
 import FirstHalfAnalysis from '../components/match/FirstHalfAnalysis';
 import FullMatchAnalysis from '../components/match/FullMatchAnalysis';
@@ -34,7 +35,6 @@ type TabType = 'general' | 'first-half' | 'full-match';
 export function MatchDetail() {
   const { id } = useParams<{ id: string }>();
   const [match, setMatch] = useState<MatchResponse | null>(null);
-  const [prediction, setPrediction] = useState<MatchPredictionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDevelopmentData, setIsDevelopmentData] = useState(false);
@@ -44,8 +44,16 @@ export function MatchDetail() {
   const { isFavorite, toggleFavorite } = useFavorites();
   const { combineItems, isInCombine, toggleCombine, removeFromCombine, clearCombine } = useCombine();
   
+  // Lazy load prediction (for matches that can have predictions)
+  // Include scheduled and postponed matches - exclude only finished and live matches
+  const shouldLoadPrediction = match?.status?.toLowerCase() === 'scheduled' || match?.status?.toLowerCase() === 'postponed';
+  
+  const { prediction, loading: predictionLoading, error: predictionError } = useLazyPrediction(
+    shouldLoadPrediction ? id : null
+  );
+  
   // Live match polling (only when match is live)
-  const isMatchLive = match?.status === 'live';
+  const isMatchLive = match?.status?.toLowerCase() === 'live';
   const { 
     liveMatch, 
     loading: liveLoading, 
@@ -68,22 +76,10 @@ export function MatchDetail() {
         setLoading(true);
         setError(null);
 
-        // Fetch match details
+        // Fetch match details only - prediction is loaded lazily via useLazyPrediction
         const matchResponse = await getMatch(id);
         setMatch(matchResponse.match);
         setIsDevelopmentData(matchResponse.is_development_data);
-
-        // Fetch prediction if match is scheduled
-        if (matchResponse.match.status === 'scheduled') {
-          try {
-            const predictionResponse = await getMatchPrediction(id);
-            setPrediction(predictionResponse);
-          } catch (predErr) {
-            // Prediction might not be available - this is okay
-            console.warn('Prediction not available:', predErr);
-            setPrediction(null);
-          }
-        }
       } catch (err) {
         if (err instanceof Error && err.message.includes('404')) {
           setError('Maç bulunamadı');
@@ -114,6 +110,23 @@ export function MatchDetail() {
       <div className="page-container">
         <div className="error-state">
           <p className="error-message">{error || 'Maç bulunamadı'}</p>
+          {error && (
+            <button
+              className="retry-button"
+              onClick={() => {
+                setError(null);
+                setLoading(true);
+                getMatch(id!).then((r) => {
+                  setMatch(r.match);
+                  setIsDevelopmentData(r.is_development_data);
+                }).catch((err) => {
+                  setError(err instanceof Error ? err.message : 'Maç verileri yüklenirken bir hata oluştu');
+                }).finally(() => setLoading(false));
+              }}
+            >
+              Tekrar Dene
+            </button>
+          )}
           <Link to="/matches" className="back-link">← Maçlara Dön</Link>
         </div>
       </div>
@@ -121,8 +134,11 @@ export function MatchDetail() {
   }
 
   const dateTime = formatMatchDateTime(match.scheduled_at);
-  const homeTeam = formatTeamName(match.home_team_id);
-  const awayTeam = formatTeamName(match.away_team_id);
+  
+  // Use team names from API response, or fallback to formatTeamName for IDs
+  const homeTeam = match.home_team ? match.home_team.name : formatTeamName(match.home_team_id);
+  const awayTeam = match.away_team ? match.away_team.name : formatTeamName(match.away_team_id);
+  
   const competition = formatCompetitionName(match.competition_id);
 
   // Handle favorite toggle
@@ -200,8 +216,8 @@ export function MatchDetail() {
         </div>
       </div>
 
-      {/* Tabs Navigation - Only for scheduled matches */}
-      {match.status === 'scheduled' && prediction && (
+      {/* Tabs Navigation - For matches that can have predictions */}
+      {shouldLoadPrediction && (
         <>
           <nav className="tabs-navigation" role="tablist">
             <button
@@ -243,35 +259,61 @@ export function MatchDetail() {
                 aria-labelledby="general-tab"
                 className="tab-panel"
               >
-                <GeneralAnalysis
-                  prediction={prediction}
-                  match={match}
-                  homeTeam={homeTeam}
-                  awayTeam={awayTeam}
-                  isFavorite={isFavorite(match.id)}
-                  onToggleFavorite={handleToggleFavorite}
-                  inCombine={isInCombine(match.id)}
-                  onToggleCombine={handleToggleFavorite}
-                />
+                {predictionLoading && (
+                  <div className="info-state">
+                    <div className="loading-spinner"></div>
+                    <p className="info-title">Tahmin hazırlanıyor...</p>
+                    <p className="info-description">
+                      Maç analizi yapılıyor, lütfen bekleyin.
+                    </p>
+                  </div>
+                )}
                 
-                {/* Statistics Comparison */}
-                <StatisticsComparison
-                  homeTeam={homeTeam}
-                  awayTeam={awayTeam}
-                  prediction={prediction}
-                />
+                {predictionError && (
+                  <div className="info-state">
+                    <div className="info-icon">⚠️</div>
+                    <p className="info-title">Tahmin oluşturulamadı</p>
+                    <p className="info-description">
+                      {predictionError.message.includes('Insufficient data')
+                        ? 'Bu maç için yeterli geçmiş veri bulunmamaktadır.'
+                        : `Hata: ${predictionError.message}`}
+                    </p>
+                  </div>
+                )}
                 
-                {/* Form Display - No data yet, shows empty state */}
-                <div className="form-displays">
-                  <FormDisplay teamName={homeTeam} />
-                  <FormDisplay teamName={awayTeam} />
-                </div>
-                
-                {/* Head to Head - No data yet, shows empty state */}
-                <HeadToHead
-                  homeTeam={homeTeam}
-                  awayTeam={awayTeam}
-                />
+                {prediction && (
+                  <>
+                    <GeneralAnalysis
+                      prediction={prediction}
+                      match={match}
+                      homeTeam={homeTeam}
+                      awayTeam={awayTeam}
+                      isFavorite={isFavorite(match.id)}
+                      onToggleFavorite={handleToggleFavorite}
+                      inCombine={isInCombine(match.id)}
+                      onToggleCombine={handleToggleFavorite}
+                    />
+                    
+                    {/* Statistics Comparison */}
+                    <StatisticsComparison
+                      homeTeam={homeTeam}
+                      awayTeam={awayTeam}
+                      prediction={prediction}
+                    />
+                    
+                    {/* Form Display - No data yet, shows empty state */}
+                    <div className="form-displays">
+                      <FormDisplay teamName={homeTeam} />
+                      <FormDisplay teamName={awayTeam} />
+                    </div>
+                    
+                    {/* Head to Head - No data yet, shows empty state */}
+                    <HeadToHead
+                      homeTeam={homeTeam}
+                      awayTeam={awayTeam}
+                    />
+                  </>
+                )}
               </div>
             )}
 
@@ -283,12 +325,29 @@ export function MatchDetail() {
                 aria-labelledby="first-half-tab"
                 className="tab-panel"
               >
-                <FirstHalfAnalysis
-                  prediction={prediction}
-                  match={match}
-                  isInCombine={isInCombine}
-                  onToggleCombine={handleToggleCombine}
-                />
+                {predictionLoading && (
+                  <div className="info-state">
+                    <div className="loading-spinner"></div>
+                    <p className="info-title">Tahmin hazırlanıyor...</p>
+                  </div>
+                )}
+                
+                {predictionError && (
+                  <div className="info-state">
+                    <div className="info-icon">⚠️</div>
+                    <p className="info-title">Tahmin oluşturulamadı</p>
+                    <p className="info-description">{predictionError.message}</p>
+                  </div>
+                )}
+                
+                {prediction && (
+                  <FirstHalfAnalysis
+                    prediction={prediction}
+                    match={match}
+                    isInCombine={isInCombine}
+                    onToggleCombine={handleToggleCombine}
+                  />
+                )}
               </div>
             )}
 
@@ -300,26 +359,75 @@ export function MatchDetail() {
                 aria-labelledby="full-match-tab"
                 className="tab-panel"
               >
-                <FullMatchAnalysis
-                  prediction={prediction}
-                  match={match}
-                  isInCombine={isInCombine}
-                  onToggleCombine={handleToggleCombine}
-                />
+                {predictionLoading && (
+                  <div className="info-state">
+                    <div className="loading-spinner"></div>
+                    <p className="info-title">Tahmin hazırlanıyor...</p>
+                  </div>
+                )}
+                
+                {predictionError && (
+                  <div className="info-state">
+                    <div className="info-icon">⚠️</div>
+                    <p className="info-title">Tahmin oluşturulamadı</p>
+                    <p className="info-description">{predictionError.message}</p>
+                  </div>
+                )}
+                
+                {prediction && (
+                  <FullMatchAnalysis
+                    prediction={prediction}
+                    match={match}
+                    isInCombine={isInCombine}
+                    onToggleCombine={handleToggleCombine}
+                  />
+                )}
               </div>
             )}
           </div>
         </>
       )}
 
-      {/* No prediction available */}
-      {match.status === 'scheduled' && !prediction && (
+      {/* Prediction Loading State */}
+      {shouldLoadPrediction && predictionLoading && (
         <div className="info-state">
-          <div className="info-icon">ℹ️</div>
-          <p className="info-title">Tahmin mevcut değil</p>
+          <div className="loading-spinner"></div>
+          <p className="info-title">Tahmin hazırlanıyor...</p>
           <p className="info-description">
-            Bu maç için tahmin verisi henüz oluşturulmadı veya yeterli veri bulunmamaktadır.
+            Maç analizi yapılıyor, lütfen bekleyin. Bu işlem zaman alabilir.
           </p>
+        </div>
+      )}
+
+      {/* No prediction available or error */}
+      {shouldLoadPrediction && !predictionLoading && !prediction && (
+        <div className="info-state">
+          <div className="info-icon">⚠️</div>
+          <p className="info-title">
+            {predictionError 
+              ? 'Tahmin oluşturulamadı'
+              : 'Tahmin mevcut değil'}
+          </p>
+          <p className="info-description">
+            {predictionError 
+              ? (predictionError.message.includes('timeout') || predictionError.message.includes('timed out')
+                ? 'Veri kaynakları şu anda erişilebilir değil. Lütfen daha sonra tekrar deneyin.'
+                : predictionError.message.includes('Insufficient data')
+                ? 'Bu maç için yeterli geçmiş veri bulunmamaktadır. Tahmin oluşturabilmek için takımların daha fazla maç verisi gereklidir.'
+                : `Beklenmeyen hata: ${predictionError.message}`)
+              : 'Bu maç için tahmin verisi henüz oluşturulmadı.'}
+          </p>
+          {predictionError && (
+            <button
+              className="retry-button"
+              onClick={() => {
+                // Force refetch by clearing cache and reloading page
+                window.location.reload();
+              }}
+            >
+              Tekrar Dene
+            </button>
+          )}
         </div>
       )}
 

@@ -171,6 +171,26 @@ export interface MensionePickResponse {
   best_market_details?: Record<string, unknown> | null;
 }
 
+export interface TeamFormResponse {
+  wins: number;
+  draws: number;
+  losses: number;
+  points: number;
+  matches_analyzed: number;
+  goals_for: number;
+  goals_against: number;
+  form_string: string | null;
+}
+
+export interface HeadToHeadResponse {
+  total_matches: number;
+  home_wins: number;
+  draws: number;
+  away_wins: number;
+  home_goals: number | null;
+  away_goals: number | null;
+}
+
 export interface MatchPredictionResponse {
   match_id: string;
   home_win_probability: number;
@@ -184,6 +204,9 @@ export interface MatchPredictionResponse {
   prediction_version_id: string | null;
   market_analysis: MarketAnalysisResponse[] | null;
   easy_match: EasyMatchResponse | null;
+  home_form: TeamFormResponse | null;
+  away_form: TeamFormResponse | null;
+  head_to_head: HeadToHeadResponse | null;
   is_development_data: boolean;
 }
 

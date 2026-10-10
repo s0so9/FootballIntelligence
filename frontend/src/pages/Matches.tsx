@@ -233,7 +233,9 @@ export function Matches() {
                     </div>
 
                     <div className="match-vs">
-                      {match.homeScore !== null && match.awayScore !== null ? (
+                      {/* CRITICAL: Scheduled matches must NEVER show scores */}
+                      {(match.status === 'finished' || match.status === 'live') && 
+                       match.homeScore !== null && match.awayScore !== null ? (
                         <div className="match-score">
                           {match.homeScore} - {match.awayScore}
                         </div>

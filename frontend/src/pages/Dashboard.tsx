@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { getUpcomingMatches, getMatchPrediction, getLiveMatches } from '../api/client';
+import { getUpcomingMatches, getMatchPrediction } from '../api/client';
 import type { MatchResponse, MatchPredictionResponse } from '../api/types';
+import { normalizeMatch } from '../utils/matchNormalizer';
 import MensionePickCard from '../components/predictions/MensionePickCard';
-import LiveMatchesPanel from '../components/dashboard/LiveMatchesPanel';
 import CombinePanel from '../components/combine/CombinePanel';
-import type { LiveMatch } from '../components/dashboard/LiveMatchesPanel';
 import { useFavorites } from '../hooks/useFavorites';
 import { useCombine } from '../hooks/useCombine';
+import { usePredictionCache } from '../contexts/PredictionCacheContext';
+import { isPopularCompetitionById } from '../utils/popularCompetitions';
 import './Dashboard.css';
 
 interface MensionePickData {
@@ -101,13 +102,13 @@ async function executeWithConcurrency<T>(
 
 export function Dashboard() {
   const [mensionePicksData, setMensionePicksData] = useState<MensionePickData[]>([]);
-  const [liveMatches, setLiveMatches] = useState<LiveMatch[]>([]);
-  const [liveMatchesLoading, setLiveMatchesLoading] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [predictionsLoading, setPredictionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const { isFavorite, toggleFavorite } = useFavorites();
   const { isInCombine, toggleCombine, combineItems, removeFromCombine, clearCombine } = useCombine();
+  const predictionCache = usePredictionCache();
 
   useEffect(() => {
     let isMounted = true;
@@ -118,72 +119,150 @@ export function Dashboard() {
         setLoading(true);
         setError(null);
 
-        console.log('[Dashboard] Fetching upcoming matches...');
-
         // Fetch upcoming matches (7 days)
         const matchesResponse = await getUpcomingMatches(7);
         
         if (!isMounted) return;
         
-        const matches = matchesResponse.matches;
-        console.log(`[Dashboard] Found ${matches.length} matches, fetching predictions with bounded concurrency (max 6 concurrent)...`);
-
-        // Create prediction fetch tasks (lazy - not executed yet)
-        const predictionTasks = matches.map(match => 
-          () => getMatchPrediction(match.id, abortController.signal)
-            .then(prediction => ({ match, prediction, success: true as const }))
-            .catch(err => {
-              // Only log if not aborted
-              if (!abortController.signal.aborted) {
-                console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
-              }
-              return { match, error: err, success: false as const };
-            })
-        );
-
-        // Execute with bounded concurrency (max 6 simultaneous requests)
-        const results = await executeWithConcurrency(predictionTasks, 6);
+        const allMatches = matchesResponse.matches;
         
-        if (!isMounted) return;
-
-        // Filter for successful predictions with mensione_pick (not PASS)
-        const picksData: MensionePickData[] = [];
-        let failedCount = 0;
-        let insufficientDataCount = 0;
-
-        for (const result of results) {
-          if (result.status === 'fulfilled' && result.value.success) {
-            const { match, prediction } = result.value;
-            
-            if (prediction.mensione_pick && !prediction.mensione_pick.pass_decision) {
-              picksData.push({ match, prediction });
-            }
-          } else {
-            failedCount++;
-            // Check for insufficient data errors
-            if (result.status === 'fulfilled' && !result.value.success) {
-              const error = result.value.error;
-              if (error instanceof Error && error.message.includes('Insufficient data')) {
-                insufficientDataCount++;
-              }
-            }
-          }
-        }
-
-        console.log(`[Dashboard] Successfully fetched ${picksData.length} picks (${failedCount} failed, ${insufficientDataCount} insufficient data)`);
+        // IMMEDIATELY render page - don't wait for predictions
+        setLoading(false);
         
-        if (isMounted) {
-          setMensionePicksData(picksData);
-        }
+        // Start background prediction loading
+        loadPredictions(allMatches, null, abortController, isMounted);
+        
       } catch (err) {
         if (isMounted) {
           console.error('[Dashboard] Error fetching dashboard data:', err);
           setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu');
-        }
-      } finally {
-        if (isMounted) {
           setLoading(false);
+          setPredictionsLoading(false);
         }
+      }
+    }
+
+    /**
+     * SINGLE prediction loading pipeline.
+     * Selects candidates based on:
+     * - Popular competitions
+     * - Active live competition (if provided)
+     * - Time window (next 48 hours)
+     * - Bounded limit (max 20)
+     */
+    async function loadPredictions(
+      allMatches: MatchResponse[],
+      activeCompetitionId: string | null,
+      abortCtrl: AbortController,
+      mounted: boolean
+    ) {
+      if (!mounted || allMatches.length === 0) return;
+      
+      const now = new Date();
+      const next48Hours = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+      
+      // Build priority competition set: popular + active
+      const priorityCompetitions = new Set<string>();
+      
+      // Add popular competitions
+      allMatches.forEach(match => {
+        if (match.competition_id && isPopularCompetitionById(match.competition_id)) {
+          priorityCompetitions.add(match.competition_id);
+        }
+      });
+      
+      // Add active live competition (temporary priority)
+      if (activeCompetitionId) {
+        priorityCompetitions.add(activeCompetitionId);
+        console.log(`[PredictionPriority] Adding live competition: ${activeCompetitionId}`);
+      }
+      
+      // Select candidate matches
+      const candidateMatches = allMatches
+        .filter(match => {
+          // Must be scheduled
+          if (match.status !== 'scheduled') return false;
+          
+          // Must be in priority competitions
+          if (!match.competition_id || !priorityCompetitions.has(match.competition_id)) return false;
+          
+          // Must be in next 48 hours
+          const matchDate = new Date(match.scheduled_at);
+          return matchDate >= now && matchDate <= next48Hours;
+        })
+        .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+        .slice(0, 20); // BOUNDED: max 20 candidates
+      
+      if (candidateMatches.length === 0) {
+        setPredictionsLoading(false);
+        return;
+      }
+      
+      // Filter out already-cached matches
+      const matchesToPredict = candidateMatches.filter(match => !predictionCache.has(match.id));
+      
+      if (matchesToPredict.length === 0) {
+        setPredictionsLoading(false);
+        return;
+      }
+      
+      console.log(`[PredictionPriority] Loading ${matchesToPredict.length} new predictions (${candidateMatches.length - matchesToPredict.length} cached)`);
+      
+      setPredictionsLoading(true);
+      
+      // Mark as loading in cache to prevent duplicate requests
+      matchesToPredict.forEach(match => predictionCache.setLoading(match.id));
+      
+      // Create prediction fetch tasks
+      const predictionTasks = matchesToPredict.map(match => 
+        () => getMatchPrediction(match.id, abortCtrl.signal)
+          .then(prediction => ({ match, prediction, success: true as const }))
+          .catch(err => {
+            const isAborted = err instanceof DOMException && err.name === 'AbortError';
+            if (!isAborted) {
+              console.warn(`Failed to fetch prediction for match ${match.id}:`, err);
+            }
+            return { match, error: err, success: false as const, aborted: isAborted };
+          })
+      );
+
+      // Execute with bounded concurrency (max 6 simultaneous requests)
+      const results = await executeWithConcurrency(predictionTasks, 6);
+      
+      if (!mounted) return;
+
+      // Process results
+      const newPicksData: MensionePickData[] = [];
+      let failedCount = 0;
+      let abortedCount = 0;
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value.success) {
+          const { match, prediction } = result.value;
+          
+          // Cache the prediction
+          predictionCache.setPrediction(match.id, prediction);
+          
+          if (prediction.mensione_pick && !prediction.mensione_pick.pass_decision) {
+            newPicksData.push({ match, prediction });
+          }
+        } else if (result.status === 'fulfilled' && !result.value.success) {
+          if (result.value.aborted) {
+            abortedCount++;
+          } else {
+            failedCount++;
+            const error = result.value.error;
+            predictionCache.setError(result.value.match.id, error instanceof Error ? error : new Error('Unknown error'));
+          }
+        }
+      }
+
+      console.log(`[PredictionPriority] Loaded ${newPicksData.length} new picks (${failedCount} failed, ${abortedCount} aborted)`);
+      
+      if (mounted) {
+        // Append new picks to existing ones
+        setMensionePicksData(prev => [...prev, ...newPicksData]);
+        setPredictionsLoading(false);
       }
     }
 
@@ -193,47 +272,7 @@ export function Dashboard() {
       isMounted = false;
       abortController.abort();
     };
-  }, []);
-
-  // Fetch live matches and poll every 20 seconds
-  useEffect(() => {
-    async function fetchLiveMatches() {
-      try {
-        const response = await getLiveMatches();
-        
-        // Map backend LiveMatchResponse to frontend LiveMatch format
-        const mappedMatches: LiveMatch[] = response.matches.map(match => ({
-          matchId: match.match_id,
-          homeTeam: match.home_team,
-          awayTeam: match.away_team,
-          score: {
-            home: match.home_score,
-            away: match.away_score,
-          },
-          minute: match.minute ?? 0,
-          status: match.status as 'live' | 'ht' | 'ft', // Map MatchStatus to component status
-        }));
-        
-        setLiveMatches(mappedMatches);
-        setLiveMatchesLoading(false);
-      } catch (err) {
-        console.error('Failed to fetch live matches:', err);
-        setLiveMatchesLoading(false);
-        // Don't set main error state - live matches are not critical
-      }
-    }
-
-    // Initial fetch
-    fetchLiveMatches();
-
-    // Poll every 20 seconds
-    const intervalId = setInterval(fetchLiveMatches, 20000);
-
-    // Cleanup on unmount
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, []);
+  }, [predictionCache]);
 
   if (loading) {
     return (
@@ -249,10 +288,7 @@ export function Dashboard() {
               <p>Veriler yükleniyor...</p>
             </div>
           </main>
-          <aside className="dashboard-live-panel">
-            <LiveMatchesPanel liveMatches={[]} isLoading={true} />
-          </aside>
-        </div>
+      </div>
       </div>
     );
   }
@@ -277,17 +313,22 @@ export function Dashboard() {
         <h1 className="dashboard-title">TUTAR X PICKS</h1>
         <p className="dashboard-subtitle">Bugünün yapay zeka destekli maç seçimleri</p>
         
-        <div className="dashboard-filters">
-          <button className="filter-btn filter-btn--active">Tümü</button>
-          <button className="filter-btn">Yaklaşan</button>
-          <button className="filter-btn">Tamamlanan</button>
-        </div>
+
       </div>
 
       <div className="dashboard-layout">
         {/* Main area - TUTAR X picks */}
-        <main className="dashboard-main">
-          {mensionePicksData.length === 0 ? (
+        <main className="dashboard-main dashboard-main--full-width">
+          
+
+          
+          {predictionsLoading && mensionePicksData.length === 0 ? (
+            <div className="loading-state">
+              <div className="loading-spinner"></div>
+              <p>TUTAR X seçimleri hazırlanıyor...</p>
+              <p className="loading-subtext">Popüler liglerdeki maçlar için tahminler oluşturuluyor</p>
+            </div>
+          ) : mensionePicksData.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">⚽</div>
               <p className="empty-title">Şu anda TUTAR X seçimi yok</p>
@@ -299,14 +340,15 @@ export function Dashboard() {
           ) : (
             <div className="mensione-picks-grid">
               {mensionePicksData.map(({ match, prediction }) => {
+                const normalizedMatch = normalizeMatch(match);
                 const pick = prediction.mensione_pick!; // Already filtered for non-null
                 const { marketName, outcome } = parsePickMarket(pick.market, pick.selection);
                 
                 return (
                   <MensionePickCard
                     key={match.id}
-                    homeTeam={match.home_team_id}
-                    awayTeam={match.away_team_id}
+                    homeTeam={normalizedMatch.homeTeam.name}
+                    awayTeam={normalizedMatch.awayTeam.name}
                     marketName={marketName}
                     outcome={outcome}
                     confidence={pick.confidence ?? 0}
@@ -323,8 +365,8 @@ export function Dashboard() {
                         outcome,
                         marketOdds: pick.bookmaker_odds !== undefined ? pick.bookmaker_odds : null,  // null if unavailable
                         confidence: pick.confidence ?? 0,
-                        homeTeam: match.home_team_id,
-                        awayTeam: match.away_team_id,
+                        homeTeam: normalizedMatch.homeTeam.name,
+                        awayTeam: normalizedMatch.awayTeam.name,
                       });
                     }}
                     // === Backend fields for testing/preview ===
@@ -347,11 +389,6 @@ export function Dashboard() {
             </div>
           )}
         </main>
-        
-        {/* Right panel - Live matches (desktop only) */}
-        <aside className="dashboard-live-panel">
-          <LiveMatchesPanel liveMatches={liveMatches} isLoading={liveMatchesLoading} />
-        </aside>
       </div>
       
       {/* Combine Panel - Bottom Right Fixed */}

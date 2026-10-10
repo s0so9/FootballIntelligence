@@ -30,16 +30,25 @@ const LiveIcon = () => (
   </svg>
 );
 
-const MatchesIcon = () => (
+const PopularLeaguesIcon = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2"/>
-    <path d="M3 10H17M10 3C7.5 5 7.5 15 10 17M10 3C12.5 5 12.5 15 10 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M10 2L12.5 7L18 8L14 12L15 18L10 15L5 18L6 12L2 8L7.5 7L10 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
-const PredictionsIcon = () => (
+const UpcomingIcon = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 2L12.5 7L18 8L14 12L15 18L10 15L5 18L6 12L2 8L7.5 7L10 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2"/>
+    <path d="M10 6V10L13 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+
+
+const CompletedIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16 6L8 14L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2"/>
   </svg>
 );
 
@@ -64,9 +73,10 @@ const SettingsIcon = () => (
 
 const navigationItems: NavItem[] = [
   { path: '/', label: 'Ana Sayfa', icon: <HomeIcon />, isPrimary: true },
-  { path: '/matches', label: 'Canlı', icon: <LiveIcon />, isPrimary: true },
-  { path: '/matches', label: 'Maçlar', icon: <MatchesIcon />, isPrimary: true },
-  { path: '/predictions', label: 'Tahminler', icon: <PredictionsIcon />, isPrimary: true },
+  { path: '/popular-leagues', label: 'Popüler Ligler', icon: <PopularLeaguesIcon />, isPrimary: true },
+  { path: '/upcoming', label: 'Yaklaşan Maçlar', icon: <UpcomingIcon />, isPrimary: true },
+  { path: '/live', label: 'Canlı Maçlar', icon: <LiveIcon />, isPrimary: true },
+  { path: '/completed', label: 'Tamamlanan Maçlar', icon: <CompletedIcon />, isPrimary: true },
   { path: '/easy-matches', label: 'Easy Match', icon: <EasyMatchIcon />, isPrimary: true },
   { path: '/analytics', label: 'Analiz', icon: <AnalyticsIcon />, isPrimary: true },
   { path: '/settings', label: 'Ayarlar', icon: <SettingsIcon />, isPrimary: false },

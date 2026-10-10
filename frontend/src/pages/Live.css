@@ -1,0 +1,166 @@
+.live-page {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.live-page__header {
+  margin-bottom: 2rem;
+}
+
+.live-page__title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.5rem 0;
+}
+
+.live-page__subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.live-page__loading,
+.live-page__error {
+  text-align: center;
+  padding: 3rem;
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.live-page__error {
+  color: var(--error);
+}
+
+.live-page__matches {
+  display: grid;
+  gap: 1rem;
+}
+
+.live-match-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.live-match-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.live-match-card__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.live-match-card__status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  background: var(--error);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.live-match-card__minute {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.live-match-card__score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.live-match-card__team {
+  flex: 1;
+  min-width: 0;
+}
+
+.live-match-card__team-name {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.live-match-card__scoreboard {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.live-match-card__score-separator {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.live-match-card__quality {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.live-match-card__quality-badge {
+  display: inline-flex;
+  padding: 0.25rem 0.5rem;
+  background: var(--success-bg);
+  color: var(--success);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.live-page__footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.live-page__provider-status {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .live-page {
+    padding: 1rem;
+  }
+
+  .live-page__title {
+    font-size: 1.5rem;
+  }
+
+  .live-match-card {
+    padding: 1rem;
+  }
+
+  .live-match-card__score {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .live-match-card__scoreboard {
+    order: -1;
+    margin-bottom: 0.5rem;
+  }
+}

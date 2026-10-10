@@ -130,7 +130,7 @@ export default function AIConfidence({
       {/* Percentage */}
       {showPercentage && (
         <div className="ai-confidence__percentage">
-          {normalizedConfidence.toFixed(1)}%
+          %{Math.round(normalizedConfidence)}
         </div>
       )}
     </div>

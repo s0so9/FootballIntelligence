@@ -12,6 +12,38 @@
   color: #0ea5e9;
 }
 
+/* Competition Grouping Styles */
+.competition-group {
+  margin-bottom: var(--spacing-8);
+}
+
+.competition-group__title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-4);
+  padding: var(--spacing-3) 0;
+  border-bottom: 2px solid rgba(59, 130, 246, 0.2);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.competition-group__count {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.competition-group__matches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
 .matches-list {
   display: flex;
   flex-direction: column;
@@ -244,4 +276,177 @@
   .team-name {
     font-size: 0.9375rem;
   }
+}
+/* On-Demand Prediction Styles */
+
+.match-card {
+  position: relative;
+  overflow: visible;
+}
+
+.match-card__link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.match-card__prediction {
+  margin-top: var(--spacing-4);
+  border-top: 1px solid rgba(59, 130, 246, 0.15);
+  padding-top: var(--spacing-4);
+}
+
+.prediction-toggle-btn {
+  background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+}
+
+.prediction-toggle-btn:hover {
+  background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.prediction-content {
+  position: relative;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  padding: var(--spacing-4);
+  backdrop-filter: blur(8px);
+}
+
+.prediction-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color var(--transition-base);
+}
+
+.prediction-close-btn:hover {
+  color: #f1f5f9;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.prediction-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--spacing-4);
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.prediction-loading .loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(14, 165, 233, 0.3);
+  border-top: 2px solid #0ea5e9;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.prediction-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-3);
+  color: #fca5a5;
+  font-size: 0.875rem;
+}
+
+.retry-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: #fca5a5;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.retry-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.prediction-summary {
+  padding-right: 24px; /* Space for close button */
+}
+
+.prediction-probabilities {
+  display: flex;
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-3);
+}
+
+.prob-item {
+  flex: 1;
+  text-align: center;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px;
+  padding: 8px 4px;
+}
+
+.prob-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.prob-value {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0ea5e9;
+}
+
+.prediction-score {
+  text-align: center;
+  margin-bottom: var(--spacing-3);
+  font-size: 0.875rem;
+  color: #e2e8f0;
+}
+
+.prediction-detail-link {
+  text-align: center;
+}
+
+.prediction-detail-link a {
+  color: #0ea5e9;
+  text-decoration: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: color var(--transition-base);
+}
+
+.prediction-detail-link a:hover {
+  color: #38bdf8;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }

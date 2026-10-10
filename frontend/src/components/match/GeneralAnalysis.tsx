@@ -193,6 +193,57 @@ export default function GeneralAnalysis({
         </div>
       </section>
 
+      {/* Shot Markets */}
+      {prediction.shot_markets && Object.keys(prediction.shot_markets).length > 0 && (
+        <section className="general-analysis__shot-markets">
+          <h4 className="general-analysis__section-title">Şut Marketleri</h4>
+          <div className="shot-markets-grid">
+            {Object.entries(prediction.shot_markets).map(([marketType, predictions]) => {
+              if (!Array.isArray(predictions) || predictions.length === 0) return null;
+              
+              return (
+                <div key={marketType} className="shot-market-group">
+                  <div className="shot-market-group__title">
+                    {marketType === 'team_shots' ? 'Takım Şutları' :
+                     marketType === 'team_shots_on_target' ? 'Takım İsabetli Şutları' :
+                     marketType === 'total_shots' ? 'Toplam Şutlar' :
+                     marketType === 'total_sot' ? 'Toplam İsabetli Şutlar' : marketType}
+                  </div>
+                  <div className="shot-market-predictions">
+                    {predictions.map((pred: any, index: number) => (
+                      <div key={index} className="shot-prediction">
+                        <div className="shot-prediction__team">
+                          {pred.team_id === 'total' ? 'Toplam' : 
+                           pred.team_id === prediction.match_id?.split('-')[0] ? homeTeam : awayTeam}
+                        </div>
+                        {pred.available ? (
+                          <div className="shot-prediction__thresholds">
+                            {pred.thresholds?.map((threshold: any, tIndex: number) => (
+                              <div key={tIndex} className="shot-threshold">
+                                <span className="shot-threshold__label">{threshold.threshold}+</span>
+                                <ProbabilityDisplay 
+                                  probability={threshold.over_probability} 
+                                  large={false}
+                                  showIcon={false}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="shot-prediction__unavailable">
+                            Veri yetersiz
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Key Indicators from selector reason */}
       {mensione_pick?.selector_reason && (
         <section className="general-analysis__key-indicators">

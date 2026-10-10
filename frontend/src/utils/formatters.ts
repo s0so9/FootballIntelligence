@@ -6,8 +6,7 @@ import type { MatchStatus } from '../api/types';
 
 /**
  * Format team ID to display name.
- * Converts "dev_team_alpha" to "Alpha".
- * Returns original if pattern doesn't match.
+ * For UUID team IDs, extract provider ID and map to known team names.
  */
 export function formatTeamName(teamId: string): string {
   // Handle [DEV] prefixed names
@@ -21,6 +20,18 @@ export function formatTeamName(teamId: string): string {
     const name = match[1];
     // Capitalize first letter
     return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  // Handle UUID format - fallback display for team IDs when backend doesn't provide team names
+  if (teamId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    // Use first 8 characters as team identifier (backend should provide team names)
+    const shortId = teamId.substring(0, 8).toUpperCase();
+    return `Takım ${shortId}`;
+  }
+
+  // Handle numeric provider IDs (legacy format)
+  if (/^\d+$/.test(teamId)) {
+    return `Takım #${teamId}`;
   }
 
   // Return as-is if no pattern matches
@@ -64,7 +75,7 @@ export function formatMatchStatus(status: MatchStatus): string {
 }
 
 /**
- * Format date and time for match display.
+ * Format date and time for match display with Istanbul timezone.
  */
 export function formatMatchDateTime(dateString: string): {
   date: string;
@@ -73,18 +84,22 @@ export function formatMatchDateTime(dateString: string): {
 } {
   const date = new Date(dateString);
 
+  // Convert to Istanbul timezone for display
   const dateFormatted = date.toLocaleDateString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
 
   const timeFormatted = date.toLocaleTimeString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
     hour: '2-digit',
     minute: '2-digit',
   });
 
   const fullFormatted = date.toLocaleString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
     day: 'numeric',
     month: 'short',
     year: 'numeric',

@@ -6,7 +6,7 @@
  * Prepared for future real live data integration.
  */
 
-import LiveMatchCard, { EmptyLiveMatchCard } from './LiveMatchCard';
+import LiveMatchCard from './LiveMatchCard';
 import './LiveMatchesPanel.css';
 
 export interface LiveMatch {
@@ -73,7 +73,7 @@ export default function LiveMatchesPanel({
             />
           </>
         ) : liveMatches.length === 0 ? (
-          <EmptyLiveMatchCard />
+          null
         ) : (
           liveMatches.map((match) => (
             <LiveMatchCard

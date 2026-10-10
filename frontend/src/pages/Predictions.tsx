@@ -150,8 +150,10 @@ export function Predictions() {
           // Find markets
           const matchResultMarket = prediction.market_analysis?.find(m => m.market_type === 'match_result');
           const bttsMarket = prediction.market_analysis?.find(m => m.market_type === 'btts');
-          const over25Market = prediction.market_analysis?.find(m => m.market_type === 'over_under' && m.line === 2.5);
-          const over35Market = prediction.market_analysis?.find(m => m.market_type === 'over_under' && m.line === 3.5);
+          const over15Market = prediction.market_analysis?.find(m => m.market_type === 'OVER_UNDER_1_5');
+          const over25Market = prediction.market_analysis?.find(m => m.market_type === 'OVER_UNDER_2_5');
+          const over35Market = prediction.market_analysis?.find(m => m.market_type === 'OVER_UNDER_3_5');
+          const over25AndBttsMarket = prediction.market_analysis?.find(m => m.market_type === 'OVER_2_5_AND_BTTS');
 
           return (
             <Link
@@ -254,19 +256,39 @@ export function Predictions() {
                   </div>
                 )}
 
+                {/* Over/Under 1.5 */}
+                {over15Market && (
+                  <div className="market-item">
+                    <div className="market-item__label">Ü/A 1.5</div>
+                    <div className="market-item__value">
+                      {over15Market.outcomes.find(o => o.label.includes('Over')) && (
+                        <>
+                          <ProbabilityDisplay 
+                            probability={over15Market.outcomes.find(o => o.label.includes('Over'))!.model_probability} 
+                            showIcon={false}
+                          />
+                          <span className="market-odds">
+                            {over15Market.outcomes.find(o => o.label.includes('Over'))!.fair_odds?.toFixed(2)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Over/Under 2.5 */}
                 {over25Market && (
                   <div className="market-item">
                     <div className="market-item__label">Ü/A 2.5</div>
                     <div className="market-item__value">
-                      {over25Market.outcomes.find(o => o.label === 'Over') && (
+                      {over25Market.outcomes.find(o => o.label.includes('Over')) && (
                         <>
                           <ProbabilityDisplay 
-                            probability={over25Market.outcomes.find(o => o.label === 'Over')!.model_probability} 
+                            probability={over25Market.outcomes.find(o => o.label.includes('Over'))!.model_probability} 
                             showIcon={false}
                           />
                           <span className="market-odds">
-                            {over25Market.outcomes.find(o => o.label === 'Over')!.fair_odds.toFixed(2)}
+                            {over25Market.outcomes.find(o => o.label.includes('Over'))!.fair_odds?.toFixed(2)}
                           </span>
                         </>
                       )}
@@ -279,14 +301,34 @@ export function Predictions() {
                   <div className="market-item">
                     <div className="market-item__label">Ü/A 3.5</div>
                     <div className="market-item__value">
-                      {over35Market.outcomes.find(o => o.label === 'Over') && (
+                      {over35Market.outcomes.find(o => o.label.includes('Over')) && (
                         <>
                           <ProbabilityDisplay 
-                            probability={over35Market.outcomes.find(o => o.label === 'Over')!.model_probability} 
+                            probability={over35Market.outcomes.find(o => o.label.includes('Over'))!.model_probability} 
                             showIcon={false}
                           />
                           <span className="market-odds">
-                            {over35Market.outcomes.find(o => o.label === 'Over')!.fair_odds.toFixed(2)}
+                            {over35Market.outcomes.find(o => o.label.includes('Over'))!.fair_odds?.toFixed(2)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Combined Market: Over 2.5 + BTTS */}
+                {over25AndBttsMarket && (
+                  <div className="market-item">
+                    <div className="market-item__label">2.5 Ü + KG Var</div>
+                    <div className="market-item__value">
+                      {over25AndBttsMarket.outcomes.find(o => o.label.includes('Over 2.5 & Both Teams Score')) && (
+                        <>
+                          <ProbabilityDisplay 
+                            probability={over25AndBttsMarket.outcomes.find(o => o.label.includes('Over 2.5 & Both Teams Score'))!.model_probability} 
+                            showIcon={false}
+                          />
+                          <span className="market-odds">
+                            {over25AndBttsMarket.outcomes.find(o => o.label.includes('Over 2.5 & Both Teams Score'))!.fair_odds?.toFixed(2)}
                           </span>
                         </>
                       )}

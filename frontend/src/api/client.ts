@@ -12,7 +12,7 @@ import type {
   CompetitionListResponse,
 } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
 
 // Debug: log the actual API base URL being used
 console.log('[DEBUG client.ts] API_BASE_URL:', API_BASE_URL);
@@ -40,7 +40,10 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 
   // Create abort controller for timeout
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  
+  // Use shorter timeout for prediction endpoints (30 seconds), longer for others (60 seconds)
+  const timeoutMs = endpoint.includes('/prediction') ? 30000 : 60000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   // If caller provided an AbortSignal, listen to it
   const callerSignal = options?.signal;
@@ -49,9 +52,11 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
       clearTimeout(timeoutId);
       throw new DOMException('Request was aborted', 'AbortError');
     }
-    callerSignal.addEventListener('abort', () => controller.abort());
+    callerSignal.addEventListener('abort', () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    });
   }
-
   try {
     const response = await fetch(url, {
       ...options,
@@ -92,7 +97,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     // Handle abort/timeout
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ApiError(
-        'Request timed out after 30 seconds',
+        'Request timed out - server response too slow',
         undefined,
         'The server took too long to respond'
       );
@@ -153,6 +158,8 @@ export async function getMatches(params?: {
       scheduled_at: m.scheduled_at,
       home_team_id: m.home_team_id,
       away_team_id: m.away_team_id,
+      home_team: m.home_team,  // ← Added
+      away_team: m.away_team,  // ← Added
     }))
   });
 
@@ -184,7 +191,7 @@ export async function getUpcomingMatches(days: number = 7): Promise<MatchListRes
 /**
  * Format a Date object to YYYY-MM-DD string using local timezone.
  */
-function formatDateForAPI(date: Date): string {
+export function formatDateForAPI(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -208,7 +215,29 @@ export async function getMatchPrediction(
   matchId: string,
   signal?: AbortSignal
 ): Promise<MatchPredictionResponse> {
-  return request<MatchPredictionResponse>(`/matches/${matchId}/prediction`, { signal });
+  console.log('[getMatchPrediction] Called for match:', matchId, {
+    hasSignal: !!signal,
+    isAborted: signal?.aborted,
+  });
+  
+  const startTime = Date.now();
+  try {
+    const result = await request<MatchPredictionResponse>(`/matches/${matchId}/prediction`, { signal });
+    const duration = Date.now() - startTime;
+    console.log('[getMatchPrediction] Success for match:', matchId, {
+      duration: `${duration}ms`,
+      hasResult: !!result,
+    });
+    return result;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.log('[getMatchPrediction] Error for match:', matchId, {
+      duration: `${duration}ms`,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 /**
