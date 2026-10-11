@@ -264,7 +264,7 @@ class HybridProvider(FootballDataProvider):
                 logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
         
         else:
-            # ALL STATUS queries: Database-first optimization is safe
+            # ALL STATUS queries: Database-first with controlled fallback
             # Database is authoritative for status filtering (SCHEDULED, LIVE, FINISHED, CANCELLED)
             db_matches = []
             try:
@@ -284,17 +284,16 @@ class HybridProvider(FootballDataProvider):
                     # DATABASE-FIRST OPTIMIZATION:
                     # For status queries (SCHEDULED/LIVE/FINISHED/CANCELLED), database is authoritative.
                     # Database has canonical UUIDs and team relationships.
-                    # Skip external provider refresh to avoid fotmob_* ID conflicts.
                     logger.debug(f"HybridProvider.get_matches_async: Using database matches (canonical data)")
                     all_matches.extend(db_matches)
             except Exception as e:
                 logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
             
-            # Only try external providers if database returned nothing AND no status filter
-            # For specific status requests (LIVE, CANCELLED, etc), trust database result
-            if not all_matches and not status:
+            # CONTROLLED FALLBACK: Only try external providers if database returned nothing
+            # This handles cases where database is not yet populated (e.g., fresh deployment)
+            if not all_matches:
                 try:
-                    logger.debug(f"HybridProvider.get_matches_async: Database empty, trying external providers")
+                    logger.debug(f"HybridProvider.get_matches_async: Database empty for status={status}, trying external providers as fallback")
                     external_matches = await self.external_provider.get_matches_async(
                         competition_id=competition_id,
                         season_id=season_id,
@@ -305,11 +304,24 @@ class HybridProvider(FootballDataProvider):
                     )
                     if external_matches:
                         logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
+                        
+                        # Apply status filter to external matches since provider_status_filter is None
+                        if status:
+                            from app.domain.enums import MatchStatus
+                            try:
+                                filter_status = MatchStatus(status.upper())
+                                external_matches = [m for m in external_matches if m.status == filter_status]
+                                logger.debug(f"HybridProvider.get_matches_async: After status filter: {len(external_matches)} matches")
+                            except ValueError:
+                                logger.warning(f"HybridProvider.get_matches_async: Invalid status value: {status}")
+                                external_matches = []
+                        
                         all_matches.extend(external_matches)
                 except Exception as e:
-                    logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
-            elif not all_matches and status:
-                logger.debug(f"HybridProvider.get_matches_async: No matches for status={status} in database, returning empty result")
+                    logger.debug(f"HybridProvider.get_matches_async: External providers fallback failed: {e}")
+            
+            if not all_matches:
+                logger.debug(f"HybridProvider.get_matches_async: No matches found from any source for status={status}")
         
         if not all_matches:
             logger.debug(f"HybridProvider.get_matches_async: No matches found from any source")

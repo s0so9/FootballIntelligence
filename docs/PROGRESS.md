@@ -3342,3 +3342,30 @@ the_odds_api_sports: str = "soccer_epl,soccer_germany_bundesliga,..."
 
 **Status**: ✅ **COMPLETE** - Ready for production deployment
 **Next Phase**: User obtains API key → Configure scheduler → Monitor system health
+## 2026-10-11: HybridProvider Fallback Düzeltmesi
+
+**Problem**: Production'da `status=SCHEDULED` filtreleriyle API çağrıları boş sonuç döndürüyordu. Lokal database'de SCHEDULED maçlar var ama production database'i boş.
+
+**Root Cause**: HybridProvider status filtresi varsa database-first yaklaşım kullanıyor, external provider'a fallback yapmıyordu. Production database'inde SCHEDULED maçlar olmadığı için boş sonuç dönüyordu.
+
+**Çözüm**: 
+- Database-first yaklaşımı korundu
+- Database boş sonuç döndürürse kontrollü fallback eklendi
+- External provider sonuçlarına status filtresi uygulandı
+- Mevcut deduplikasyon mantığı korundu
+
+**Değişen Dosyalar**:
+- `backend/app/providers/hybrid_provider.py`: Kontrollü fallback mantığı
+- `backend/tests/providers/test_hybrid_provider_fallback.py`: Regresyon testleri
+
+**Test Sonuçları**:
+- ✅ Database'de sonuç varsa external provider çağrılmıyor (performans)
+- ✅ Database boşsa external provider'a fallback yapılıyor
+- ✅ Status filtresi external sonuçlara doğru uygulanıyor
+- ✅ External provider hataları gracefully handle ediliyor
+
+**Verification**: 
+- Lokal test: Tüm senaryolar çalışıyor (filtresiz: 3, status: 3, tarih+status: 3)
+- Production deploy sonrası test edilecek
+
+**Impact**: Production'da boş dönen match endpoint'leri artık fallback ile sonuç dönecek.
