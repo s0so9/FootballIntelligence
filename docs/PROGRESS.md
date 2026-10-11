@@ -1,6 +1,44 @@
 # FOOTBALL INTELLIGENCE PROGRESS LOG
 
-## BUG FIX — PREDICTION "FAILED TO FETCH" (HTTP 500 ON MATCH DETAIL) — October 11, 2026
+## BUG FIX — FOTMOB TEAM ID → CANONICAL UUID MAPPING (PREDICTION 400) — October 11, 2026
+
+**Root cause:** `GET /api/v1/matches/{id}/prediction` returned HTTP 400 "Insufficient data"
+for all FotMob-sourced matches because the prediction feature extractor queried historical
+matches using FotMob's numeric team IDs (e.g. `9826` for Crystal Palace), but the DB stores
+matches with canonical UUIDs as foreign keys (`b3bd533f-69df-49e9-89fd-133e022ad65f`).
+
+The ID spaces were never bridged:
+- `teams.id` = canonical UUID
+- `teams.provider_id` = FotMob numeric ID
+- `matches.home_team_id` = canonical UUID (FK to teams.id)
+- FotMob API returns `match.home_team_id = '9826'` (numeric, NOT UUID)
+
+The feature extractor called `get_team_matches_before_date(team_id='9826')` →
+0 historical matches found → no model can run → 400 "Insufficient data".
+
+**Fix:** Added two methods to `HybridProvider`:
+- `_resolve_team_canonical_uuid(provider_team_id)`: Looks up `teams.provider_id = '9826'`
+  in the DB to return the canonical UUID. Returns the original ID gracefully if not found.
+- `_resolve_match_team_uuids(match)`: Applies the resolution to both home and away team IDs.
+
+Called `_resolve_match_team_uuids()` in three places:
+1. `get_match()` — after external provider returns a match (main prediction path)
+2. `get_matches_async()` no-status path — for list endpoint freshness
+3. `get_matches_async()` status-filtered fallback path — for DB-empty fresh deployments
+
+**Verified locally (end-to-end):**
+- `9826` → `b3bd533f-69df-49e9-89fd-133e022ad65f` (Crystal Palace) ✅
+- `10203` → `31f80bec-36b6-4a60-9ebd-fb97fd9aaf44` (Nottingham Forest) ✅
+- Feature extractor finds 25 Crystal Palace + 20 Nottingham Forest historical matches ✅
+- Prediction produced: home_win=0.690, draw=0.189, away_win=0.121 ✅
+- 36/36 backend tests pass. Frontend production build succeeds.
+
+**Files changed:**
+- `backend/app/providers/hybrid_provider.py`
+
+---
+
+
 
 **Root cause:** `GET /api/v1/matches/{id}` returned HTTP 500 for all FotMob match IDs.
 In `HybridProvider.get_team()`, the database fallback (`DatabaseBackedProvider.get_team()`)

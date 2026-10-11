@@ -117,11 +117,91 @@ class HybridProvider(FootballDataProvider):
         
         # All matches are fresh enough
         return False
-    
+
+    # -------------------------------------------------------------------------
+    # Team ID resolution — FotMob numeric ID → canonical UUID
+    # -------------------------------------------------------------------------
+
+    def _resolve_team_canonical_uuid(self, provider_team_id: str) -> str:
+        """Resolve a FotMob numeric team ID to the canonical UUID in the teams table.
+
+        The DB stores teams with:
+          - teams.id          → canonical UUID (e.g. 'b3bd533f-...')
+          - teams.provider_id → FotMob numeric ID (e.g. '9826')
+
+        When external providers (FotMob) return match.home_team_id = '9826', the
+        feature extractor queries the matches table by teams.id (UUID format) and
+        finds nothing, causing 'Insufficient data'.  This method performs the
+        one-time lookup that bridges the two ID spaces.
+
+        Args:
+            provider_team_id: FotMob numeric ID string (e.g. '9826') OR an
+                already-canonical UUID – the latter is returned unchanged.
+
+        Returns:
+            Canonical UUID string, or the original ID if mapping is unavailable.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Already a canonical UUID – nothing to do
+        if self._is_canonical_uuid(provider_team_id):
+            return provider_team_id
+
+        # Try to resolve via DB team lookup
+        try:
+            session = self.db_provider.session
+            from app.database.models import Team as TeamDB
+            row = (
+                session.query(TeamDB.id)
+                .filter(TeamDB.provider_id == provider_team_id)
+                .first()
+            )
+            if row:
+                logger.debug(
+                    f"_resolve_team_canonical_uuid: {provider_team_id} → {row[0]}"
+                )
+                return row[0]
+        except Exception as exc:
+            logger.debug(
+                f"_resolve_team_canonical_uuid: DB lookup failed for "
+                f"provider_team_id={provider_team_id}: {exc}"
+            )
+
+        # No mapping found – return original so callers still work (degraded mode)
+        logger.info(
+            f"_resolve_team_canonical_uuid: no UUID found for provider_team_id={provider_team_id}, "
+            f"returning original value"
+        )
+        return provider_team_id
+
+    def _resolve_match_team_uuids(self, match: Match) -> Match:
+        """Replace FotMob numeric team IDs on a Match with canonical UUIDs.
+
+        Called after any external provider returns a Match so that downstream
+        feature extraction (which queries the DB by canonical UUID) can find
+        historical data for both teams.
+
+        Args:
+            match: Domain Match whose home_team_id / away_team_id may be
+                   FotMob numeric strings.
+
+        Returns:
+            The same Match object with team IDs updated in-place.
+        """
+        match.home_team_id = self._resolve_team_canonical_uuid(match.home_team_id)
+        match.away_team_id = self._resolve_team_canonical_uuid(match.away_team_id)
+        return match
+
     def get_match(self, match_id: str) -> Optional[Match]:
         """Get match, trying external providers first, then database.
 
         Returns None (never raises) if no source can resolve the match ID.
+
+        After an external provider (FotMob) returns a match its team IDs are
+        numeric FotMob IDs (e.g. '9826').  _resolve_match_team_uuids() maps
+        these to canonical UUIDs so that the prediction feature extractor can
+        query historical matches by the correct key.
 
         Args:
             match_id: Match ID (could be external provider ID or canonical UUID)
@@ -136,6 +216,9 @@ class HybridProvider(FootballDataProvider):
         try:
             match = self.external_provider.get_match(match_id)
             if match is not None:
+                # Resolve FotMob numeric team IDs → canonical UUIDs so feature
+                # extraction can look up historical matches in the DB correctly.
+                self._resolve_match_team_uuids(match)
                 # Update status before returning - this fixes cached SCHEDULED matches
                 updated_match = self._update_single_match_status(match)
                 return updated_match
@@ -152,6 +235,7 @@ class HybridProvider(FootballDataProvider):
         except Exception as exc:
             logger.warning(f"HybridProvider.get_match: DB fallback failed for {match_id}: {exc} – returning None")
             return None
+
     
     def get_team(self, team_id: str) -> Optional[Team]:
         """Get team, trying external providers first, then database.
@@ -260,6 +344,9 @@ class HybridProvider(FootballDataProvider):
                 )
                 if external_matches:
                     logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
+                    # Resolve FotMob numeric team IDs → canonical UUIDs
+                    for m in external_matches:
+                        self._resolve_match_team_uuids(m)
                     all_matches.extend(external_matches)
             except Exception as e:
                 logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
@@ -328,7 +415,7 @@ class HybridProvider(FootballDataProvider):
                     )
                     if external_matches:
                         logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
-                        
+
                         # Apply status filter to external matches since provider_status_filter is None
                         if status:
                             from app.domain.enums import MatchStatus
@@ -339,7 +426,11 @@ class HybridProvider(FootballDataProvider):
                             except ValueError:
                                 logger.warning(f"HybridProvider.get_matches_async: Invalid status value: {status}")
                                 external_matches = []
-                        
+
+                        # Resolve FotMob numeric team IDs → canonical UUIDs
+                        for m in external_matches:
+                            self._resolve_match_team_uuids(m)
+
                         all_matches.extend(external_matches)
                 except Exception as e:
                     logger.debug(f"HybridProvider.get_matches_async: External providers fallback failed: {e}")
