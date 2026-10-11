@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { GlobalSearch } from '../search/GlobalSearch';
 import './Header.css';
 
 interface HeaderProps {
@@ -20,8 +22,18 @@ const UserIcon = () => (
 );
 
 export function Header({ onToggleMobileMenu }: HeaderProps) {
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Keyboard shortcut for opening search
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      setSearchOpen(true);
+    }
+  };
+
   return (
-    <header className="app-header">
+    <header className="app-header" onKeyDown={handleKeyDown}>
       <div className="header-left">
         <button
           className="mobile-menu-button"
@@ -32,6 +44,13 @@ export function Header({ onToggleMobileMenu }: HeaderProps) {
             <path d="M3 12H21M3 6H21M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           </svg>
         </button>
+      </div>
+
+      <div className="header-center">
+        <GlobalSearch
+          isOpen={searchOpen}
+          onOpenChange={setSearchOpen}
+        />
       </div>
 
       <div className="header-right">

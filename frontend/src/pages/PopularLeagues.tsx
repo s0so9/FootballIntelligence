@@ -28,9 +28,9 @@ export function PopularLeagues() {
         setCompetitionsError(null);
 
         const response = await getCompetitions();
-        
+
         if (!isMounted) return;
-        
+
         setCompetitions(response.competitions);
       } catch (err) {
         if (!isMounted) return;
@@ -73,28 +73,62 @@ export function PopularLeagues() {
         futureDate.setDate(futureDate.getDate() + 7);
         const toDate = formatDateForAPI(futureDate);
 
-        // Backend adapter does NOT filter by competition_id correctly
-        // We MUST fetch all matches and filter client-side
+        // Test if backend filtering works correctly now
+        // Backend API should filter by competition_id parameter
         const response = await getMatches({
           from_date: fromDate,
           to_date: toDate,
           status: 'SCHEDULED',
+          competition_id: selectedCompetitionId ?? undefined, // ← Convert null to undefined
         });
-        
+
+        console.log(`[PopularLeagues] API Response:`, {
+          count: response.count,
+          matchesLength: response.matches.length,
+          isDevelopmentData: response.is_development_data,
+          selectedCompetitionId: selectedCompetitionId
+        });
+
         // Abort check: if component unmounted or competition changed, ignore this response
         if (!isMounted || abortController.signal.aborted) {
           return;
         }
 
         const normalizedMatches = normalizeMatches(response.matches);
-        
-        // CRITICAL: Client-side filtering by exact competition_id match
-        // The backend returns ALL matches regardless of competition_id parameter
-        const filteredMatches = normalizedMatches.filter(
+
+        // DEBUG: Log competition IDs for debugging
+        console.log(`[PopularLeagues] Selected competition ID: ${selectedCompetitionId}`);
+        console.log(`[PopularLeagues] All matches count: ${normalizedMatches.length}`);
+
+        if (normalizedMatches.length > 0) {
+          console.log(`[PopularLeagues] First 3 matches competition IDs:`, normalizedMatches.slice(0, 3).map(m => ({
+            id: m.id,
+            competitionId: m.competitionId,
+            homeTeam: m.homeTeam.name,
+            awayTeam: m.awayTeam.name
+          })));
+        }
+
+        // Backend filtering works correctly now - no client-side filter needed
+        // All matches should already be filtered by competition_id by the backend
+        const allMatchesHaveSameCompetition = normalizedMatches.every(
           match => match.competitionId === selectedCompetitionId
         );
-        
-        setMatches(filteredMatches);
+
+        if (!allMatchesHaveSameCompetition && normalizedMatches.length > 0) {
+          // This should not happen if backend filtering works
+          console.warn(`[PopularLeagues] Backend filtering failed - applying client-side filter`);
+          const filteredMatches = normalizedMatches.filter(
+            match => match.competitionId === selectedCompetitionId
+          );
+          console.log(`[PopularLeagues] Client-side filtered matches count: ${filteredMatches.length}`);
+          setMatches(filteredMatches);
+        } else {
+          // Backend filtering worked correctly
+          console.log(`[PopularLeagues] Using backend-filtered matches: ${normalizedMatches.length}`);
+          setMatches(normalizedMatches);
+        }
+
         setIsDevelopmentData(response.is_development_data);
       } catch (err) {
         if (!isMounted || abortController.signal.aborted) return;
@@ -251,8 +285,8 @@ export function PopularLeagues() {
                     <div className="team team--home">
                       <span className="team-name">{match.homeTeam.name}</span>
                       {match.homeTeam.logoUrl ? (
-                        <img 
-                          src={match.homeTeam.logoUrl} 
+                        <img
+                          src={match.homeTeam.logoUrl}
                           alt={match.homeTeam.name}
                           className="team-logo"
                           onError={(e) => {
@@ -283,8 +317,8 @@ export function PopularLeagues() {
 
                     <div className="team team--away">
                       {match.awayTeam.logoUrl ? (
-                        <img 
-                          src={match.awayTeam.logoUrl} 
+                        <img
+                          src={match.awayTeam.logoUrl}
                           alt={match.awayTeam.name}
                           className="team-logo"
                           onError={(e) => {

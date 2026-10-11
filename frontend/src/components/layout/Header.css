@@ -22,6 +22,14 @@
   gap: var(--spacing-4);
 }
 
+.header-center {
+  flex: 1;
+  max-width: 500px;
+  margin: 0 var(--spacing-6);
+  display: flex;
+  justify-content: center;
+}
+
 .mobile-menu-button {
   display: none;
   background: none;
@@ -134,20 +142,25 @@
   .mobile-menu-button {
     display: flex;
   }
-  
+
   .app-header {
     padding: 0 var(--spacing-4);
   }
-  
+
+  .header-center {
+    margin: 0 var(--spacing-4);
+    max-width: none;
+  }
+
   .header-status {
     display: none;
   }
-  
+
   .header-icon-button {
     width: 36px;
     height: 36px;
   }
-  
+
   .header-icon-button svg {
     width: 18px;
     height: 18px;
