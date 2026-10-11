@@ -224,7 +224,7 @@ class PredictionService:
         Returns:
             Prediction object or None if insufficient data
         """
-        # Extract features
+        # OPTIMIZATION: Extract features once and reuse
         features = self.feature_extractor.extract_features(match)
         
         # Filter features to only numeric values (exclude IDs and timestamps)
@@ -313,21 +313,23 @@ class PredictionService:
         self,
         match: Match,
         prediction: Prediction,
+        features: Optional[Dict[str, Optional[float]]] = None,
     ) -> List[PredictionMarket]:
         """Generate market-specific predictions.
         
         Args:
             match: Match being predicted
             prediction: Base prediction with probabilities
+            features: Pre-extracted features (optional, will extract if not provided)
             
         Returns:
             List of PredictionMarket objects
         """
         markets = []
         
-        # Re-run Poisson to get detailed market probabilities
-        # (We could cache this, but keeping it simple for now)
-        features = self.feature_extractor.extract_features(match)
+        # OPTIMIZATION: Reuse features if provided, else extract
+        if features is None:
+            features = self.feature_extractor.extract_features(match)
         home_attack = features.get("home_attack_strength")
         away_attack = features.get("away_attack_strength")
         home_defense = features.get("home_defense_strength")
@@ -531,6 +533,7 @@ class PredictionService:
         match_db_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
         pass_reason: Optional[str] = None,
+        features: Optional[Dict[str, Optional[float]]] = None,
     ) -> AnalysisContext:
         """Build AnalysisContext for AI Analyst.
         
@@ -543,6 +546,7 @@ class PredictionService:
             prediction_markets: Generated markets (if available)
             match_db_id: Optional database match ID for database-backed features
             correlation_id: Optional correlation ID for logging
+            features: Pre-extracted features (optional, will extract if not provided)
             
         Returns:
             AnalysisContext with all available information
@@ -660,9 +664,13 @@ class PredictionService:
         logger.info(f"[{correlation_id}] build_analysis_context: Database features complete ({step_time:.1f}ms)")
         
         # Extract provider-based features (always as fallback)
+        # OPTIMIZATION: Reuse features if provided, else extract
         step_start = time.time()
         logger.info(f"[{correlation_id}] build_analysis_context: Extracting provider features")
-        features = self.feature_extractor.extract_features(match)
+        if features is None:
+            features = self.feature_extractor.extract_features(match)
+        else:
+            logger.info(f"[{correlation_id}] build_analysis_context: Reusing pre-extracted features (OPTIMIZATION)")
         
         step_time = (time.time() - step_start) * 1000
         logger.info(f"[{correlation_id}] build_analysis_context: Provider features complete ({step_time:.1f}ms)")
@@ -939,19 +947,24 @@ class PredictionService:
         Returns:
             AnalysisContext with prediction and all available data
         """
-        # Generate prediction
+        # OPTIMIZATION: Extract features once at the start
+        features = self.feature_extractor.extract_features(match)
+        
+        # Generate prediction (will reuse features internally)
         prediction = self.generate_prediction(match)
         
         # Generate markets if prediction exists
         markets = None
         if prediction is not None:
-            markets = self.generate_prediction_markets(match, prediction)
+            # OPTIMIZATION: Reuse features from previous extraction
+            markets = self.generate_prediction_markets(match, prediction, features=features)
         
-        # Build analysis context
+        # Build analysis context (will reuse features internally)
         context = self.build_analysis_context(
             match=match,
             prediction=prediction,
             prediction_markets=markets,
+            features=features,
         )
         
         return context

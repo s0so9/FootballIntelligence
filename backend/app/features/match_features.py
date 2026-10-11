@@ -80,11 +80,13 @@ class MatchFeatureExtractor:
             ValueError: If match data is invalid
         """
         # Build match context with historical data only
+        import time
         logger = logging.getLogger(__name__)
-        logger.info(f"[EXTRACT_FEATURES] About to build context for match {match.id}")
         
+        step_start = time.time()
         context = self._build_match_context(match)
-        
+        context_time = (time.time() - step_start) * 1000
+        logger.debug(f"[PERF] _build_match_context took {context_time:.2f}ms")
         logger.info(f"[EXTRACT_FEATURES] Context built, home_history has {len(context.home_team_history.matches)} matches")
         logger.info(f"[EXTRACT_FEATURES] Context built, away_history has {len(context.away_team_history.matches)} matches")
         
@@ -92,11 +94,17 @@ class MatchFeatureExtractor:
         features = {}
         
         # Team strength features
+        step_start = time.time()
         strength_features = self.strength_calculator.calculate(context)
+        strength_time = (time.time() - step_start) * 1000
+        logger.debug(f"[PERF] strength_calculator took {strength_time:.2f}ms")
         features.update(strength_features)
         
         # Form features
+        step_start = time.time()
         form_features = self.form_calculator.calculate(context)
+        form_time = (time.time() - step_start) * 1000
+        logger.debug(f"[PERF] form_calculator took {form_time:.2f}ms")
         features.update(form_features)
         
         # Expected goals calculation (for Monte Carlo model)
@@ -157,6 +165,7 @@ class MatchFeatureExtractor:
         # ELO features (if calculator available)
         if self.elo_calculator:
             try:
+                step_start = time.time()
                 logger.info(f"[DEBUG] Attempting ELO feature calculation")
                 print(f"[ELO_DEBUG] Attempting ELO calculation for match {match.id}")
                 elo_features = self.elo_calculator.calculate_for_match(
@@ -164,6 +173,8 @@ class MatchFeatureExtractor:
                     away_team_id=match.away_team_id,
                     match_date=match.scheduled_at
                 )
+                elo_time = (time.time() - step_start) * 1000
+                logger.debug(f"[PERF] elo_calculator took {elo_time:.2f}ms")
                 print(f"[ELO_DEBUG] ELO result: home={elo_features.home_elo}, away={elo_features.away_elo}")
                 if elo_features.home_elo is not None:
                     features["elo_home"] = elo_features.home_elo

@@ -1,35 +1,35 @@
 {
-  "total_duration_ms": 1713.2481999869924,
+  "total_duration_ms": 236.03550000552787,
   "stages": [
     {
       "stage": "TOTAL_PIPELINE",
-      "duration_ms": 0.0029000002541579306,
-      "percentage": 0.00016926912599003158,
+      "duration_ms": 0.004699999408330768,
+      "percentage": 0.0019912256453883826,
       "metadata": {}
     },
     {
       "stage": "FEATURE_EXTRACTION",
-      "duration_ms": 1378.2517999934498,
-      "percentage": 80.44670935617583,
+      "duration_ms": 128.7817999982508,
+      "percentage": 54.5603521483992,
       "metadata": {
         "success": true,
-        "duration_ms": 1378.648042678833
+        "duration_ms": 126.87373161315918
       }
     },
     {
       "stage": "MODEL_ORCHESTRATOR",
-      "duration_ms": 18.783800005621742,
-      "percentage": 1.096385217609705,
+      "duration_ms": 20.390199999383185,
+      "percentage": 8.638615800973012,
       "metadata": {
         "success": true,
-        "models_count": 7,
-        "duration_ms": 18.25737953186035
+        "models_count": 6,
+        "duration_ms": 22.096872329711914
       }
     },
     {
       "stage": "ENSEMBLE",
-      "duration_ms": 0.20939999376423657,
-      "percentage": 0.012222396834610794,
+      "duration_ms": 0.2162000018870458,
+      "percentage": 0.09159639201814239,
       "metadata": {
         "success": true,
         "duration_ms": 0.0
@@ -37,8 +37,8 @@
     },
     {
       "stage": "CALIBRATION",
-      "duration_ms": 0.035400000342633575,
-      "percentage": 0.0020662505492725657,
+      "duration_ms": 0.03789999755099416,
+      "percentage": 0.01605690565618585,
       "metadata": {
         "success": true,
         "duration_ms": 0.0
@@ -46,8 +46,8 @@
     },
     {
       "stage": "CONFIDENCE",
-      "duration_ms": 0.030499999411404133,
-      "percentage": 0.0017802440657247267,
+      "duration_ms": 0.03220000508008525,
+      "percentage": 0.013642017865673229,
       "metadata": {
         "success": true,
         "duration_ms": 0.0
@@ -55,8 +55,8 @@
     },
     {
       "stage": "MARKET_CONVERSION",
-      "duration_ms": 0.012099997547920793,
-      "percentage": 0.0007062606310056336,
+      "duration_ms": 0.013199998647905886,
+      "percentage": 0.005592378539497976,
       "metadata": {
         "success": true,
         "score_count": 121,
@@ -65,28 +65,28 @@
     },
     {
       "stage": "MARKET_DERIVATION",
-      "duration_ms": 0.3144000002066605,
-      "percentage": 0.01835110640764412,
+      "duration_ms": 0.31740000122226775,
+      "percentage": 0.1344712982643858,
       "metadata": {
         "success": true,
         "markets_count": 8,
-        "duration_ms": 1.0063648223876953
+        "duration_ms": 0.0
       }
     },
     {
       "stage": "SHOT_MARKETS",
-      "duration_ms": 43.344099998648744,
-      "percentage": 2.5299369933076727,
+      "duration_ms": 46.45239999808837,
+      "percentage": 19.680259959624916,
       "metadata": {
         "success": true,
         "shot_markets_count": 3,
-        "duration_ms": 42.923688888549805
+        "duration_ms": 47.30534553527832
       }
     },
     {
       "stage": "MARKET_SELECTOR",
-      "duration_ms": 0.18709999858401716,
-      "percentage": 0.010920776019810655,
+      "duration_ms": 0.19690000044647604,
+      "percentage": 0.08341965528145755,
       "metadata": {
         "success": true,
         "pick_made": true,
@@ -96,7 +96,7 @@
     {
       "stage": "PREDICTED_SCORE",
       "duration_ms": 0.0017999991541728377,
-      "percentage": 0.00010506353686444872,
+      "percentage": 0.0007625967933343427,
       "metadata": {
         "success": true,
         "score": "1-0",
@@ -105,28 +105,28 @@
     },
     {
       "stage": "VERSION_METADATA",
-      "duration_ms": 0.005599998985417187,
-      "percentage": 0.00032686443128670465,
+      "duration_ms": 0.005800000508315861,
+      "percentage": 0.00245725770410808,
       "metadata": {
         "success": true,
-        "models_count": 7,
+        "models_count": 6,
         "duration_ms": 0.0
       }
     },
     {
       "stage": "PREDICTION_VERSIONING",
-      "duration_ms": 0.3918000002158806,
-      "percentage": 0.022868840616254858,
+      "duration_ms": 0.40219999937107787,
+      "percentage": 0.17039809662599842,
       "metadata": {
         "success": true,
-        "version_id": "6c4bec98-d454-447e-803c-1cedd966a5fc",
-        "duration_ms": 1.0006427764892578
+        "version_id": "ff15d44e-1708-4b63-adfa-4e30ab972917",
+        "duration_ms": 0.0
       }
     },
     {
       "stage": "LEGACY_PREDICTION",
-      "duration_ms": 0.11559999984456226,
-      "percentage": 0.006747416973526657,
+      "duration_ms": 0.12120000610593706,
+      "percentage": 0.05134821080011211,
       "metadata": {
         "success": true,
         "duration_ms": 0.0
@@ -134,8 +134,8 @@
     },
     {
       "stage": "ANALYSIS_MARKETS",
-      "duration_ms": 0.07970000297063962,
-      "percentage": 0.004651982297208585,
+      "duration_ms": 0.08200000593205914,
+      "percentage": 0.03474053942315403,
       "metadata": {
         "success": true,
         "markets_count": 8,
@@ -144,34 +144,34 @@
     },
     {
       "stage": "ANALYSIS_CONTEXT",
-      "duration_ms": 271.4821999979904,
-      "percentage": 15.846051961417592,
+      "duration_ms": 38.979599994490854,
+      "percentage": 16.514295516385445,
       "metadata": {
         "success": true,
-        "duration_ms": 271.10862731933594
+        "duration_ms": 38.29789161682129
       }
     }
   ],
   "summary": {
     "feature_engineering": {
-      "total_ms": 1378.2517999934498,
+      "total_ms": 128.7817999982508,
       "count": 1,
-      "average_ms": 1378.2517999934498
+      "average_ms": 128.7817999982508
     },
     "ensemble": {
-      "total_ms": 0.24479999410687014,
+      "total_ms": 0.25409999943803996,
       "count": 2,
-      "average_ms": 0.12239999705343507
+      "average_ms": 0.12704999971901998
     },
     "markets": {
-      "total_ms": 43.93739999795798,
+      "total_ms": 47.061900004337076,
       "count": 5,
-      "average_ms": 8.787479999591596
+      "average_ms": 9.412380000867415
     },
     "other": {
-      "total_ms": 290.81420000147773,
+      "total_ms": 59.93770000350196,
       "count": 8,
-      "average_ms": 36.351775000184716
+      "average_ms": 7.492212500437745
     }
   }
 }
