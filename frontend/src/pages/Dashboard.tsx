@@ -119,8 +119,9 @@ export function Dashboard() {
         setLoading(true);
         setError(null);
 
-        // Fetch upcoming matches (7 days)
-        const matchesResponse = await getUpcomingMatches(7);
+        // Fetch upcoming matches (TODAY ONLY for faster initial load)
+        // Dashboard shows curated picks - no need for 7 days of matches
+        const matchesResponse = await getUpcomingMatches(1);
         
         if (!isMounted) return;
         
@@ -159,7 +160,7 @@ export function Dashboard() {
       if (!mounted || allMatches.length === 0) return;
       
       const now = new Date();
-      const next48Hours = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+      const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
       
       // Build priority competition set: popular + active
       const priorityCompetitions = new Set<string>();
@@ -186,12 +187,12 @@ export function Dashboard() {
           // Must be in priority competitions
           if (!match.competition_id || !priorityCompetitions.has(match.competition_id)) return false;
           
-          // Must be in next 48 hours
+          // Must be in next 24 hours
           const matchDate = new Date(match.scheduled_at);
-          return matchDate >= now && matchDate <= next48Hours;
+          return matchDate >= now && matchDate <= next24Hours;
         })
         .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
-        .slice(0, 20); // BOUNDED: max 20 candidates
+        .slice(0, 5); // BOUNDED: max 5 candidates (reduced for faster initial load)
       
       if (candidateMatches.length === 0) {
         setPredictionsLoading(false);
@@ -226,8 +227,8 @@ export function Dashboard() {
           })
       );
 
-      // Execute with bounded concurrency (max 6 simultaneous requests)
-      const results = await executeWithConcurrency(predictionTasks, 6);
+      // Execute with bounded concurrency (max 3 simultaneous requests for faster first paint)
+      const results = await executeWithConcurrency(predictionTasks, 3);
       
       if (!mounted) return;
 

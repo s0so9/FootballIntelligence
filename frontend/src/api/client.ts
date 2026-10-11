@@ -4,6 +4,7 @@
  * Centralized HTTP client for backend API calls.
  */
 
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import type {
   MatchListResponse,
   MatchDetailResponse,
@@ -12,11 +13,16 @@ import type {
   CompetitionListResponse,
 } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+// Production-safe API base URL configuration
+const PRODUCTION_API_BASE_URL = 'https://tutar-x-api.vercel.app/api/v1';
+const DEV_API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
 
-// Debug: log the actual API base URL being used
-console.log('[DEBUG client.ts] API_BASE_URL:', API_BASE_URL);
-console.log('[DEBUG client.ts] import.meta.env.VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
+function getApiBaseUrl(): string {
+  if (Capacitor.isNativePlatform()) {
+    return PRODUCTION_API_BASE_URL;
+  }
+  return import.meta.env.VITE_API_BASE_URL || DEV_API_BASE_URL;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -35,14 +41,75 @@ export class ApiError extends Error {
  * @param endpoint - API endpoint path
  * @param options - Fetch options including optional signal for cancellation
  */
+async function nativeRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const url = `${getApiBaseUrl()}${endpoint}`;
+  const timeoutMs = endpoint.includes('/prediction') ? 20000 : 30000;
+
+  if (options?.signal?.aborted) {
+    throw new DOMException('Request was aborted', 'AbortError');
+  }
+
+  const headerEntries = options?.headers
+    ? Object.entries(options.headers as Record<string, string>)
+    : [];
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...Object.fromEntries(headerEntries),
+  };
+
+  const response = await CapacitorHttp.request({
+    url,
+    method: (options?.method as string) || 'GET',
+    headers,
+    connectTimeout: timeoutMs,
+    readTimeout: timeoutMs,
+  });
+
+  if (options?.signal?.aborted) {
+    throw new DOMException('Request was aborted', 'AbortError');
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    let detail = `HTTP ${response.status}`;
+    const data = response.data as { detail?: string } | string | undefined;
+    if (data && typeof data === 'object' && data.detail) {
+      detail = data.detail;
+    }
+    throw new ApiError(`API request failed: ${detail}`, response.status, detail);
+  }
+
+  return response.data as T;
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  if (Capacitor.isNativePlatform()) {
+    try {
+      return await nativeRequest<T>(endpoint, options);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+      throw new ApiError(
+        'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.',
+        undefined,
+        'Unable to connect to the backend server'
+      );
+    }
+  }
+
+  const url = `${getApiBaseUrl()}${endpoint}`;
 
   // Create abort controller for timeout
   const controller = new AbortController();
   
-  // Use shorter timeout for prediction endpoints (30 seconds), longer for others (60 seconds)
-  const timeoutMs = endpoint.includes('/prediction') ? 30000 : 60000;
+  // Use shorter timeout for prediction endpoints (20 seconds), standard for others (30 seconds)
+  const timeoutMs = endpoint.includes('/prediction') ? 20000 : 30000;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   // Track if this was aborted by caller vs timeout
@@ -186,27 +253,7 @@ export async function getMatches(params?: {
   const query = searchParams.toString();
   const endpoint = query ? `/matches?${query}` : '/matches';
 
-  console.log('[DEBUG] getMatches URL:', `${API_BASE_URL}${endpoint}`);
-  console.log('[DEBUG] getMatches params:', params);
-
-  const response = await request<MatchListResponse>(endpoint);
-  
-  console.log('[DEBUG] getMatches response:', {
-    count: response.count,
-    matchesLength: response.matches.length,
-    isDevelopmentData: response.is_development_data,
-    firstThreeMatches: response.matches.slice(0, 3).map(m => ({
-      id: m.id,
-      status: m.status,
-      scheduled_at: m.scheduled_at,
-      home_team_id: m.home_team_id,
-      away_team_id: m.away_team_id,
-      home_team: m.home_team,  // ← Added
-      away_team: m.away_team,  // ← Added
-    }))
-  });
-
-  return response;
+  return request<MatchListResponse>(endpoint);
 }
 
 /**
@@ -220,9 +267,6 @@ export async function getUpcomingMatches(days: number = 7): Promise<MatchListRes
   const futureDate = new Date(today);
   futureDate.setDate(futureDate.getDate() + days);
   const toDate = formatDateForAPI(futureDate);
-
-  console.log('[DEBUG] getUpcomingMatches called with days:', days);
-  console.log('[DEBUG] Date range:', { fromDate, toDate });
 
   return getMatches({
     from_date: fromDate,
@@ -258,29 +302,7 @@ export async function getMatchPrediction(
   matchId: string,
   signal?: AbortSignal
 ): Promise<MatchPredictionResponse> {
-  console.log('[getMatchPrediction] Called for match:', matchId, {
-    hasSignal: !!signal,
-    isAborted: signal?.aborted,
-  });
-  
-  const startTime = Date.now();
-  try {
-    const result = await request<MatchPredictionResponse>(`/matches/${matchId}/prediction`, { signal });
-    const duration = Date.now() - startTime;
-    console.log('[getMatchPrediction] Success for match:', matchId, {
-      duration: `${duration}ms`,
-      hasResult: !!result,
-    });
-    return result;
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    console.log('[getMatchPrediction] Error for match:', matchId, {
-      duration: `${duration}ms`,
-      errorType: error instanceof Error ? error.constructor.name : typeof error,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
+  return request<MatchPredictionResponse>(`/matches/${matchId}/prediction`, { signal });
 }
 
 /**
