@@ -15,6 +15,29 @@ from app.providers import FootballDataProvider
 
 router = APIRouter(prefix="/competitions", tags=["competitions"])
 
+# Popular competition name keywords used to filter the DB competition list.
+# Matched case-insensitively against competition.name.
+_POPULAR_KEYWORDS = [
+    "premier league",
+    "bundesliga",
+    "laliga",
+    "la liga",
+    "serie a",
+    "ligue 1",
+    "champions league",
+    "europa league",
+    "super lig",
+    "eredivisie",
+    "primeira liga",
+    "scottish premiership",
+]
+
+
+def _is_popular(name: str) -> bool:
+    """Return True if the competition name matches a popular league keyword."""
+    name_lower = name.lower().strip()
+    return any(kw in name_lower for kw in _POPULAR_KEYWORDS)
+
 
 @router.get(
     "",
@@ -27,17 +50,13 @@ async def list_competitions(
 ) -> CompetitionListResponse:
     """
     List available competitions.
-    
+
     Returns a curated list of major competitions available from the data provider.
-    For FotMob, this returns the major European leagues that are commonly tracked.
-    
+    Competitions are filtered to popular major leagues by name keyword matching.
+
     Returns:
         CompetitionListResponse containing list of competitions
     """
-    # Return competitions that match the data provider
-    # For DevelopmentProvider, use dev competition IDs
-    # For real providers, these would be FotMob league IDs
-    
     if provider.is_development_data():
         # Development data: match DevelopmentProvider competition IDs
         major_competitions = [
@@ -53,54 +72,40 @@ async def list_competitions(
             ),
         ]
     else:
-        # Real data: Dynamic competition detection based on actual match data
-        # Instead of hardcoded mapping, check what competitions actually exist
+        # Real data: query provider (HybridProvider -> DB fallback) and filter by
+        # popular league name keywords.  Never use hardcoded competition UUIDs
+        # because those IDs are provider/DB-specific and change between datasets.
         major_competitions = []
-        
+
         try:
-            # Get actual competitions from provider if available
-            competitions_from_provider = provider.get_competitions()
-            if competitions_from_provider and len(competitions_from_provider) > 0:
-                major_competitions = [
+            all_competitions = provider.get_competitions()
+
+            # Deduplicate by name: keep first occurrence of each canonical name.
+            # The provider returns competitions in DB insertion order; for names
+            # that appear multiple times (e.g. "Premier League" for different
+            # countries) the first entry is kept.
+            seen_names: set = set()
+            for comp in all_competitions:
+                if not comp.name:
+                    continue
+                if not _is_popular(comp.name):
+                    continue
+                canonical = comp.name.strip()
+                if canonical in seen_names:
+                    continue
+                seen_names.add(canonical)
+                major_competitions.append(
                     CompetitionResponse(
                         id=comp.id,
                         name=comp.name,
                         country=comp.country,
-                    ) for comp in competitions_from_provider[:10]  # Limit to first 10
-                ]
-            else:
-                raise Exception("Provider returned no competitions")
-        except Exception as e:
-            # Fallback: Generic labels for unknown competitions
-            # This prevents wrong "Premier League" labeling for non-PL matches
-            major_competitions = [
-                CompetitionResponse(
-                    id="d13431f9-0ce0-46dd-a95b-76d6a9f71be8",
-                    name="Premier League",
-                    country=None,  # Don't show country code
-                ),
-                CompetitionResponse(
-                    id="148d29c5-1974-4484-8824-441d504d7b65",
-                    name="Bundesliga",
-                    country=None,
-                ),
-                CompetitionResponse(
-                    id="83ef0537-3cb1-46a6-922f-9cd814c754ea",
-                    name="La Liga",
-                    country=None,
-                ),
-                CompetitionResponse(
-                    id="d25a8066-f8b1-439f-9a08-049cee6a1965",
-                    name="Serie A",
-                    country=None,
-                ),
-                CompetitionResponse(
-                    id="265074a5-65ce-40fa-a4b8-f18ccc321010",
-                    name="Ligue 1",
-                    country=None,
-                ),
-                ]
-    
+                    )
+                )
+        except Exception:
+            # If provider fails entirely, return an empty list rather than
+            # returning wrong hardcoded UUIDs that produce empty match results.
+            major_competitions = []
+
     return CompetitionListResponse(
         competitions=major_competitions,
         count=len(major_competitions),
