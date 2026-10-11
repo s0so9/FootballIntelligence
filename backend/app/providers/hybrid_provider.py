@@ -550,24 +550,137 @@ class HybridProvider(FootballDataProvider):
     
     def get_competitions(self, country: Optional[str] = None) -> List[Competition]:
         """Get competitions, trying external providers first, then database.
-        
+
+        If both external providers and the database return nothing (e.g. the DB
+        competitions table does not exist in the Vercel SQLite ephemeral
+        environment), returns an empty list and logs the root cause so that
+        callers can use ``get_competitions_from_matches_async`` instead.
+
         Args:
             country: Filter by country
-            
+
         Returns:
-            List of Competition objects
+            List of Competition objects (may be empty if no source has data)
         """
-        # First try external providers
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # 1. Try external providers (ProviderManagerAdapter raises NotImplementedError)
         try:
-            competitions = self.external_provider.get_competitions(country=country)
+            competitions = self.external_provider.get_competitions()
             if competitions:
+                logger.debug(
+                    f"HybridProvider.get_competitions: external provider returned "
+                    f"{len(competitions)} competitions"
+                )
                 return competitions
-        except Exception:
-            # External provider failed, continue to database fallback
-            pass
-        
-        # If external providers fail, try database
-        return self.db_provider.get_competitions(country=country)
+        except NotImplementedError:
+            logger.info(
+                "HybridProvider.get_competitions: external provider not implemented "
+                "(ProviderManagerAdapter.get_competitions raises NotImplementedError) "
+                "- falling back to database"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"HybridProvider.get_competitions: external provider failed: {exc} "
+                "- falling back to database"
+            )
+
+        # 2. Try database (may fail if competitions table does not exist)
+        try:
+            db_competitions = self.db_provider.get_competitions(country=country)
+            if db_competitions:
+                logger.debug(
+                    f"HybridProvider.get_competitions: database returned "
+                    f"{len(db_competitions)} competitions"
+                )
+                return db_competitions
+            logger.info(
+                "HybridProvider.get_competitions: database returned 0 competitions "
+                "(table exists but is empty) - caller should use "
+                "get_competitions_from_matches_async"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"HybridProvider.get_competitions: database fallback failed: {exc} "
+                "(competitions table likely missing) - caller should use "
+                "get_competitions_from_matches_async"
+            )
+
+        return []
+
+    async def get_competitions_from_matches_async(
+        self,
+        country: Optional[str] = None,
+    ) -> List[Competition]:
+        """Derive available competitions from the current match schedule.
+
+        This is the primary source of competition data when neither the external
+        provider nor the database can supply a competition list.  It fetches
+        upcoming matches for a 30-day window from today via the external provider
+        (FotMob) and extracts the unique (competition_id, competition_name) pairs
+        that are already present in the live match feed.
+
+        The IDs returned here are the same provider-numeric IDs that appear in
+        ``/api/v1/matches``, so the frontend can use them to filter matches by
+        competition without any UUID translation.
+
+        Args:
+            country: Unused – retained for signature compatibility.
+
+        Returns:
+            Deduplicated list of Competition objects derived from live matches.
+            Returns an empty list (never raises) if the external provider fails.
+        """
+        import logging
+        from datetime import date, timedelta
+        logger = logging.getLogger(__name__)
+
+        today = date.today()
+        to_date = today + timedelta(days=30)
+
+        provider_matches = []
+        try:
+            provider_matches = await self.external_provider.get_matches_async(
+                from_date=today,
+                to_date=to_date,
+            )
+            logger.debug(
+                f"HybridProvider.get_competitions_from_matches_async: "
+                f"fetched {len(provider_matches)} matches from external provider"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"HybridProvider.get_competitions_from_matches_async: "
+                f"external provider failed: {exc}"
+            )
+
+        # Extract unique competitions from match objects.
+        # Matches produced by ProviderManagerAdapter carry competition_id
+        # (fotmob numeric string) and _provider_competition_name (display name).
+        seen: set = set()
+        competitions: List[Competition] = []
+        for match in provider_matches:
+            comp_id = getattr(match, "competition_id", None)
+            comp_name = getattr(match, "_provider_competition_name", None)
+            if not comp_id or not comp_name:
+                continue
+            if comp_id in seen:
+                continue
+            seen.add(comp_id)
+            competitions.append(
+                Competition(
+                    id=comp_id,
+                    name=comp_name,
+                    country=None,
+                )
+            )
+
+        logger.info(
+            f"HybridProvider.get_competitions_from_matches_async: "
+            f"derived {len(competitions)} unique competitions from match schedule"
+        )
+        return competitions
     
     def get_provider_name(self) -> str:
         """Return the hybrid provider name."""
