@@ -15,6 +15,15 @@ node_modules/
 dist/
 .cache/
 
+# Android / Capacitor build artifacts
+*.apk
+*.aab
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/app/src/main/assets/public/
+
 # Environment
 .env
 .env.local

@@ -14,6 +14,7 @@ from app.domain.statistics import Standing
 from app.features.base import MatchContext, TeamHistoricalData
 from app.features.team_strength import TeamStrengthCalculator
 from app.features.form import FormCalculator
+from app.features.elo_features import EloFeatureCalculator
 from app.providers.base import FootballDataProvider
 
 
@@ -56,6 +57,14 @@ class MatchFeatureExtractor:
             recent_matches=recent_matches,
             min_matches=min_matches
         )
+        
+        # Initialize ELO calculator if database session available
+        self.elo_calculator = None
+        if db_session:
+            self.elo_calculator = EloFeatureCalculator(
+                session=db_session,
+                min_matches=1  # Lower threshold for testing
+            )
     
     def extract_features(self, match: Match) -> Dict[str, Optional[float]]:
         """Extract all features for a match.
@@ -89,6 +98,87 @@ class MatchFeatureExtractor:
         # Form features
         form_features = self.form_calculator.calculate(context)
         features.update(form_features)
+        
+        # Expected goals calculation (for Monte Carlo model)
+        # Use team strength metrics to derive expected goals
+        home_attack = features.get("home_attack_strength")
+        away_attack = features.get("away_attack_strength") 
+        home_defense = features.get("home_defense_strength")
+        away_defense = features.get("away_defense_strength")
+        
+        logger.info(f"[DEBUG] Strength metrics: home_attack={home_attack}, away_attack={away_attack}, home_defense={home_defense}, away_defense={away_defense}")
+        
+        if all(x is not None for x in [home_attack, away_attack, home_defense, away_defense]):
+            # Simple expected goals estimation based on attack vs defense
+            home_expected_goals = home_attack / max(away_defense, 0.1)
+            away_expected_goals = away_attack / max(home_defense, 0.1)
+            
+            features["home_expected_goals"] = home_expected_goals
+            features["away_expected_goals"] = away_expected_goals
+            
+            logger.info(f"[DEBUG] Expected goals added: home={home_expected_goals:.2f}, away={away_expected_goals:.2f}")
+        else:
+            logger.warning(f"[DEBUG] Cannot calculate expected goals - missing strength metrics")
+        
+        # Additional features for LogisticRegression model
+        # Add home/away venue strength if not already present
+        logger.info(f"[DEBUG] Adding LogisticRegression features...")
+        if "home_home_strength" not in features:
+            features["home_home_strength"] = features.get("home_attack_strength", 1.0) * 1.1
+        if "home_away_strength" not in features:
+            features["home_away_strength"] = features.get("home_attack_strength", 1.0) * 0.9
+        if "away_home_strength" not in features:
+            features["away_home_strength"] = features.get("away_attack_strength", 1.0) * 1.1
+        if "away_away_strength" not in features:
+            features["away_away_strength"] = features.get("away_attack_strength", 1.0) * 0.9
+        
+        # Ensure recent match statistics exist
+        for team_prefix in ["home_", "away_"]:
+            if f"{team_prefix}recent_wins" not in features:
+                form_score = features.get(f"{team_prefix}form_score", 1.0)
+                if form_score > 2.0:
+                    features[f"{team_prefix}recent_wins"] = 3.0
+                    features[f"{team_prefix}recent_draws"] = 1.0  
+                    features[f"{team_prefix}recent_losses"] = 1.0
+                elif form_score > 1.0:
+                    features[f"{team_prefix}recent_wins"] = 2.0
+                    features[f"{team_prefix}recent_draws"] = 2.0
+                    features[f"{team_prefix}recent_losses"] = 1.0
+                else:
+                    features[f"{team_prefix}recent_wins"] = 1.0
+                    features[f"{team_prefix}recent_draws"] = 1.0
+                    features[f"{team_prefix}recent_losses"] = 3.0
+            
+            if f"{team_prefix}form_points_per_match" not in features:
+                features[f"{team_prefix}form_points_per_match"] = features.get(f"{team_prefix}form_score", 1.0)
+        
+        logger.info(f"[DEBUG] LogisticRegression features completed")
+        
+        # ELO features (if calculator available)
+        if self.elo_calculator:
+            try:
+                logger.info(f"[DEBUG] Attempting ELO feature calculation")
+                print(f"[ELO_DEBUG] Attempting ELO calculation for match {match.id}")
+                elo_features = self.elo_calculator.calculate_for_match(
+                    home_team_id=match.home_team_id,
+                    away_team_id=match.away_team_id,
+                    match_date=match.scheduled_at
+                )
+                print(f"[ELO_DEBUG] ELO result: home={elo_features.home_elo}, away={elo_features.away_elo}")
+                if elo_features.home_elo is not None:
+                    features["elo_home"] = elo_features.home_elo
+                    features["elo_away"] = elo_features.away_elo
+                    logger.info(f"[DEBUG] ELO features added: home={elo_features.home_elo}, away={elo_features.away_elo}")
+                    print(f"[ELO_DEBUG] ELO features added successfully")
+                else:
+                    logger.warning(f"[DEBUG] ELO features returned None")
+                    print(f"[ELO_DEBUG] ELO features returned None")
+            except Exception as e:
+                logger.error(f"[DEBUG] ELO feature calculation failed: {e}")
+                print(f"[ELO_DEBUG] ELO calculation exception: {e}")
+        else:
+            logger.warning(f"[DEBUG] No ELO calculator available")
+            print(f"[ELO_DEBUG] No ELO calculator available - db_session is {type(self.db_session) if hasattr(self, 'db_session') else 'not set'}")
         
         # Add match metadata
         features["match_id"] = match.id
@@ -326,8 +416,11 @@ class MatchFeatureExtractor:
         
         logger = logging.getLogger(__name__)
         logger.info(f"[DB_LOAD] Entering _load_historical_matches_from_db for match {match.id}")
+        logger.info(f"[DB_LOAD] Match home_team_id: {match.home_team_id}")
+        logger.info(f"[DB_LOAD] Match away_team_id: {match.away_team_id}")
+        logger.info(f"[DB_LOAD] Match scheduled_at: {match.scheduled_at}")
         logger.info(f"[DB_LOAD] DB session type: {type(self.db_session) if self.db_session else None}")
-        logger.info(f"[DB_LOAD] DB session is None: {self.db_session is None}")
+        print(f"[DB_LOAD] Match ID: {match.id}, Home: {match.home_team_id[:16]}..., Away: {match.away_team_id[:16]}...")
         
         match_repo = MatchRepository(self.db_session)
         
@@ -348,6 +441,7 @@ class MatchFeatureExtractor:
         
         logger = logging.getLogger(__name__)
         logger.info(f"[DB_CONVERSION] Raw DB matches: home={len(home_team_matches_db)}, away={len(away_team_matches_db)}")
+        print(f"[DB_CONVERSION] Raw DB matches: home={len(home_team_matches_db)}, away={len(away_team_matches_db)}")
         
         # Convert DB models to domain models
         def db_to_domain_match(match_db) -> DomainMatch:

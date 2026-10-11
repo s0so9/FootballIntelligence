@@ -311,12 +311,23 @@ class EloRatingSystem:
             2. Return rating_after from that match
             3. If no matches found, return initial_rating
         """
+        from datetime import timezone
+        
+        # Ensure at_timestamp is timezone-aware
+        if at_timestamp.tzinfo is None:
+            at_timestamp = at_timestamp.replace(tzinfo=timezone.utc)
+        
         # Find the last match involving this team before at_timestamp
         last_match_result = None
         
         for match_result in self._history:
+            # Ensure match played_at is timezone-aware
+            played_at = match_result.played_at
+            if played_at.tzinfo is None:
+                played_at = played_at.replace(tzinfo=timezone.utc)
+            
             # Skip matches at or after the cutoff timestamp
-            if match_result.played_at >= at_timestamp:
+            if played_at >= at_timestamp:
                 continue
             
             # Check if this match involves the team

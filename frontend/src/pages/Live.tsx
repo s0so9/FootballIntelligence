@@ -46,12 +46,24 @@ export function Live() {
 
     fetchLiveMatches();
     
-    // Poll every 30 seconds
-    const interval = setInterval(fetchLiveMatches, 30000);
+    // Poll every 30 seconds while the app is visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchLiveMatches();
+      }
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && mounted) {
+        fetchLiveMatches();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       mounted = false;
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -91,8 +103,12 @@ export function Live() {
 
     fetchMatchDetail();
     
-    // Poll match details every 10 seconds when viewing specific match
-    const detailInterval = setInterval(fetchMatchDetail, 10000);
+    // Poll match details every 10 seconds while visible
+    const detailInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchMatchDetail();
+      }
+    }, 10000);
 
     return () => {
       mounted = false;
@@ -142,7 +158,16 @@ export function Live() {
         <div className="live-page__header">
           <h1 className="live-page__title">Canlı Maçlar</h1>
         </div>
-        <div className="live-page__error">{error}</div>
+        <div className="live-page__error">
+          <p>{error}</p>
+          <button
+            type="button"
+            className="live-page__back-btn"
+            onClick={() => window.location.reload()}
+          >
+            Tekrar dene
+          </button>
+        </div>
       </div>
     );
   }

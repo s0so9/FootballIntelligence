@@ -2,7 +2,7 @@
 """Simple regression test for team mapping functionality."""
 
 from app.features.match_features import MatchFeatureExtractor
-from app.providers.development_provider import DevelopmentProvider
+from app.providers import DevelopmentProvider
 from app.database.database import get_db
 
 def test_feature_extraction_still_works():

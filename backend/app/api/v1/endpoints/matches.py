@@ -501,6 +501,7 @@ async def get_match_prediction(
     request_start = time.time()
     
     logger.info(f"[{correlation_id}] START prediction request for match {match_id}")
+    logger.info(f"[{correlation_id}] Provider type: {type(provider).__name__}")
     print(f"DEBUG: [{correlation_id}] START prediction request for match {match_id}")  # TEST LOG
     
     """
@@ -556,12 +557,78 @@ async def get_match_prediction(
     Raises:
         HTTPException: 404 if match is not found
     """
-    # Stage 1: Get match from provider
+    # Stage 1: Get match from provider or database
     stage_start = time.time()
-    logger.info(f"[{correlation_id}] Stage 1: Getting match from provider")
+    logger.info(f"[{correlation_id}] Stage 1: Getting match")
+    print(f"[{correlation_id}] Stage 1: Getting match")
     match = provider.get_match(match_id)
+    logger.info(f"[{correlation_id}] Provider returned: {type(match).__name__ if match else 'None'}")
+    print(f"[{correlation_id}] Provider returned: {type(match).__name__ if match else 'None'}")
+    
+    # If provider returns None, try database lookup
+    if match is None and db is not None:
+        logger.info(f"[{correlation_id}] Provider returned None, trying database lookup")
+        print(f"[{correlation_id}] Provider returned None, trying database lookup")
+        
+        try:
+            from app.database.models import Match as DBMatch
+            from app.domain.match import Match as DomainMatch
+            
+            db_match = None
+            
+            # Try 1: Direct UUID lookup
+            try:
+                uuid.UUID(match_id)
+                db_match = db.query(DBMatch).filter(DBMatch.id == match_id).first()
+                if db_match:
+                    logger.info(f"[{correlation_id}] Found match by canonical UUID")
+                    print(f"[{correlation_id}] Found match by canonical UUID")
+            except ValueError:
+                # Not a UUID, try provider_id lookup
+                logger.info(f"[{correlation_id}] Not a UUID: {match_id}")
+                print(f"[{correlation_id}] Not a UUID: {match_id}")
+            
+            # Try 2: Provider ID lookup (e.g., fotmob_5795469)
+            if db_match is None:
+                db_match = db.query(DBMatch).filter(DBMatch.provider_id == match_id).first()
+                if db_match:
+                    logger.info(f"[{correlation_id}] Found match by provider_id")
+                    print(f"[{correlation_id}] Found match by provider_id")
+                else:
+                    logger.warning(f"[{correlation_id}] No match found in database for ID: {match_id}")
+                    print(f"[{correlation_id}] No match found in database for ID: {match_id}")
+            
+            # Convert DB model to domain model
+            if db_match:
+                match = DomainMatch(
+                    id=db_match.id,
+                    home_team_id=db_match.home_team_id,
+                    away_team_id=db_match.away_team_id,
+                    competition_id=db_match.competition_id or "unknown",
+                    season_id=db_match.season or "unknown",
+                    scheduled_at=db_match.scheduled_at,
+                    status=db_match.status,
+                    home_score=db_match.home_score,
+                    away_score=db_match.away_score,
+                    home_score_ht=db_match.home_score_ht,
+                    away_score_ht=db_match.away_score_ht,
+                    outcome=db_match.outcome,
+                    round=db_match.round,
+                    created_at=db_match.created_at,
+                    updated_at=db_match.updated_at,
+                )
+                logger.info(f"[{correlation_id}] Successfully loaded match from database")
+                print(f"[{correlation_id}] Successfully loaded match from database")
+                logger.info(f"[{correlation_id}] Match details - Home: {match.home_team_id[:8]}..., Away: {match.away_team_id[:8]}..., Status: {match.status}")
+                print(f"[{correlation_id}] Match - Home: {match.home_team_id[:8]}..., Away: {match.away_team_id[:8]}...")
+                
+        except Exception as e:
+            logger.warning(f"[{correlation_id}] Database lookup failed: {e}")
+            print(f"[{correlation_id}] Database lookup exception: {e}")
+    
     stage_timings["1_match_lookup"] = (time.time() - stage_start) * 1000
     logger.info(f"[{correlation_id}] Stage 1 complete: {stage_timings['1_match_lookup']:.1f}ms")
+    print(f"[{correlation_id}] Stage 1 complete: {stage_timings['1_match_lookup']:.1f}ms")
     
     # Return 404 if match doesn't exist
     if match is None:

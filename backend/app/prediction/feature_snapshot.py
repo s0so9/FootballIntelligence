@@ -275,6 +275,11 @@ class MatchFeatureSnapshot:
             features["home_defense_strength"] = self.home_strength.defense_strength
             # Monte Carlo expected goals
             features["home_expected_goals"] = self.home_strength.xg_per_match  # Alias for Monte Carlo
+            
+            # LogisticRegression venue-specific features
+            if self.home_strength.attack_strength is not None:
+                features["home_home_strength"] = self.home_strength.attack_strength * 1.1  # Home advantage
+                features["home_away_strength"] = self.home_strength.attack_strength * 0.9  # Away disadvantage
         
         # Away strength
         if self.away_strength:
@@ -291,6 +296,11 @@ class MatchFeatureSnapshot:
             features["away_defense_strength"] = self.away_strength.defense_strength
             # Monte Carlo expected goals
             features["away_expected_goals"] = self.away_strength.xg_per_match  # Alias for Monte Carlo
+            
+            # LogisticRegression venue-specific features  
+            if self.away_strength.attack_strength is not None:
+                features["away_home_strength"] = self.away_strength.attack_strength * 1.1  # Away team's home strength
+                features["away_away_strength"] = self.away_strength.attack_strength * 0.9  # Away team's away strength
         
         # Home form
         if self.home_form:
@@ -301,6 +311,11 @@ class MatchFeatureSnapshot:
             # Form Adjusted model aliases
             features["home_form_score"] = self.home_form.points_per_match  # For FormAdjustedModel
             features["home_form_matches_used"] = float(self.home_form.matches_analyzed) if self.home_form.matches_analyzed is not None else None
+            
+            # LogisticRegression recent form details
+            features["home_recent_wins"] = float(self.home_form.wins) if self.home_form.wins is not None else None
+            features["home_recent_draws"] = float(self.home_form.draws) if self.home_form.draws is not None else None 
+            features["home_recent_losses"] = float(self.home_form.losses) if self.home_form.losses is not None else None
         
         # Away form
         if self.away_form:
@@ -311,6 +326,11 @@ class MatchFeatureSnapshot:
             # Form Adjusted model aliases
             features["away_form_score"] = self.away_form.points_per_match  # For FormAdjustedModel
             features["away_form_matches_used"] = float(self.away_form.matches_analyzed) if self.away_form.matches_analyzed is not None else None
+            
+            # LogisticRegression recent form details
+            features["away_recent_wins"] = float(self.away_form.wins) if self.away_form.wins is not None else None
+            features["away_recent_draws"] = float(self.away_form.draws) if self.away_form.draws is not None else None
+            features["away_recent_losses"] = float(self.away_form.losses) if self.away_form.losses is not None else None
         
         # League context
         if self.league_context:

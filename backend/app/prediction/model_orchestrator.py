@@ -208,6 +208,12 @@ class ModelOrchestrator:
             f"{len(result.failed_models)} failed"
         )
         
+        # DEBUG: Print detailed model execution status
+        print(f"[DEBUG] SUCCESSFUL MODELS: {[o.model_id for o in result.successful_predictions]}")
+        print(f"[DEBUG] UNAVAILABLE MODELS: {[(o.model_id, o.availability.reason if o.availability else 'unknown') for o in result.unavailable_models]}")
+        if result.failed_models:
+            print(f"[DEBUG] FAILED MODELS: {[(o.model_id, o.error_message) for o in result.failed_models]}")
+        
         return result
     
     def _run_single_model(
@@ -339,8 +345,33 @@ class ModelOrchestrator:
         # Register adjusted models
         orchestrator.register_model(FormAdjustedModel(base_model=poisson_model))
         
-        # Register ML models
-        orchestrator.register_model(LogisticRegressionModel())
+        # Register ML models - Load pre-trained logistic regression if available
+        try:
+            # Try to load cached trained model
+            import pickle
+            from pathlib import Path
+            
+            model_cache_path = Path("backend/app/config/logistic_model.pkl")
+            if model_cache_path.exists():
+                logger.info("Loading cached logistic regression model")
+                with open(model_cache_path, 'rb') as f:
+                    model_data = pickle.load(f)
+                
+                logistic_model = LogisticRegressionModel()
+                logistic_model._weights = model_data['weights']
+                logistic_model._training_stats = model_data.get('training_stats')
+                logistic_model._is_fitted = model_data.get('is_fitted', True)
+                
+                orchestrator.register_model(logistic_model)
+                logger.info("Registered trained LogisticRegressionModel from cache")
+            else:
+                # Register unfitted model - will be unavailable
+                orchestrator.register_model(LogisticRegressionModel())
+                logger.warning("No trained logistic model found - registered unfitted model (unavailable)")
+                
+        except Exception as e:
+            logger.warning(f"Failed to load logistic regression model: {e}")
+            orchestrator.register_model(LogisticRegressionModel())
         
         logger.info(f"Created default orchestrator with {len(orchestrator._models)} models")
         

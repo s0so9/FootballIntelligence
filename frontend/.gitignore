@@ -31,3 +31,14 @@ dist-ssr
 
 # Build
 build/
+
+# Capacitor / Android local outputs
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/
+*.apk
+*.aab
+*.ap_

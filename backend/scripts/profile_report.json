@@ -1,0 +1,177 @@
+{
+  "total_duration_ms": 1713.2481999869924,
+  "stages": [
+    {
+      "stage": "TOTAL_PIPELINE",
+      "duration_ms": 0.0029000002541579306,
+      "percentage": 0.00016926912599003158,
+      "metadata": {}
+    },
+    {
+      "stage": "FEATURE_EXTRACTION",
+      "duration_ms": 1378.2517999934498,
+      "percentage": 80.44670935617583,
+      "metadata": {
+        "success": true,
+        "duration_ms": 1378.648042678833
+      }
+    },
+    {
+      "stage": "MODEL_ORCHESTRATOR",
+      "duration_ms": 18.783800005621742,
+      "percentage": 1.096385217609705,
+      "metadata": {
+        "success": true,
+        "models_count": 7,
+        "duration_ms": 18.25737953186035
+      }
+    },
+    {
+      "stage": "ENSEMBLE",
+      "duration_ms": 0.20939999376423657,
+      "percentage": 0.012222396834610794,
+      "metadata": {
+        "success": true,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "CALIBRATION",
+      "duration_ms": 0.035400000342633575,
+      "percentage": 0.0020662505492725657,
+      "metadata": {
+        "success": true,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "CONFIDENCE",
+      "duration_ms": 0.030499999411404133,
+      "percentage": 0.0017802440657247267,
+      "metadata": {
+        "success": true,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "MARKET_CONVERSION",
+      "duration_ms": 0.012099997547920793,
+      "percentage": 0.0007062606310056336,
+      "metadata": {
+        "success": true,
+        "score_count": 121,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "MARKET_DERIVATION",
+      "duration_ms": 0.3144000002066605,
+      "percentage": 0.01835110640764412,
+      "metadata": {
+        "success": true,
+        "markets_count": 8,
+        "duration_ms": 1.0063648223876953
+      }
+    },
+    {
+      "stage": "SHOT_MARKETS",
+      "duration_ms": 43.344099998648744,
+      "percentage": 2.5299369933076727,
+      "metadata": {
+        "success": true,
+        "shot_markets_count": 3,
+        "duration_ms": 42.923688888549805
+      }
+    },
+    {
+      "stage": "MARKET_SELECTOR",
+      "duration_ms": 0.18709999858401716,
+      "percentage": 0.010920776019810655,
+      "metadata": {
+        "success": true,
+        "pick_made": true,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "PREDICTED_SCORE",
+      "duration_ms": 0.0017999991541728377,
+      "percentage": 0.00010506353686444872,
+      "metadata": {
+        "success": true,
+        "score": "1-0",
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "VERSION_METADATA",
+      "duration_ms": 0.005599998985417187,
+      "percentage": 0.00032686443128670465,
+      "metadata": {
+        "success": true,
+        "models_count": 7,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "PREDICTION_VERSIONING",
+      "duration_ms": 0.3918000002158806,
+      "percentage": 0.022868840616254858,
+      "metadata": {
+        "success": true,
+        "version_id": "6c4bec98-d454-447e-803c-1cedd966a5fc",
+        "duration_ms": 1.0006427764892578
+      }
+    },
+    {
+      "stage": "LEGACY_PREDICTION",
+      "duration_ms": 0.11559999984456226,
+      "percentage": 0.006747416973526657,
+      "metadata": {
+        "success": true,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "ANALYSIS_MARKETS",
+      "duration_ms": 0.07970000297063962,
+      "percentage": 0.004651982297208585,
+      "metadata": {
+        "success": true,
+        "markets_count": 8,
+        "duration_ms": 0.0
+      }
+    },
+    {
+      "stage": "ANALYSIS_CONTEXT",
+      "duration_ms": 271.4821999979904,
+      "percentage": 15.846051961417592,
+      "metadata": {
+        "success": true,
+        "duration_ms": 271.10862731933594
+      }
+    }
+  ],
+  "summary": {
+    "feature_engineering": {
+      "total_ms": 1378.2517999934498,
+      "count": 1,
+      "average_ms": 1378.2517999934498
+    },
+    "ensemble": {
+      "total_ms": 0.24479999410687014,
+      "count": 2,
+      "average_ms": 0.12239999705343507
+    },
+    "markets": {
+      "total_ms": 43.93739999795798,
+      "count": 5,
+      "average_ms": 8.787479999591596
+    },
+    "other": {
+      "total_ms": 290.81420000147773,
+      "count": 8,
+      "average_ms": 36.351775000184716
+    }
+  }
+}

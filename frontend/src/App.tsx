@@ -15,11 +15,13 @@ import { ComponentsTest } from './pages/ComponentsTest';
 import { Favorites } from './pages/Favorites';
 import { PredictionCacheProvider } from './contexts/PredictionCacheContext';
 import { FavoritesProvider } from './contexts/FavoritesContext';
+import { AndroidBackHandler } from './native/AndroidBackHandler';
 import './pages/pages.css';
 
 function App() {
   return (
     <Router>
+      <AndroidBackHandler />
       <FavoritesProvider>
         <PredictionCacheProvider>
           <AppLayout>
