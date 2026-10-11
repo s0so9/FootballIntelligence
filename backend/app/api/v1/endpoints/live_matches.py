@@ -35,6 +35,8 @@ class LiveMatchResponse(BaseModel):
     away_score: int
     home_team_id: Optional[str] = None
     away_team_id: Optional[str] = None
+    home_team: Optional[str] = None  # Team name for display
+    away_team: Optional[str] = None  # Team name for display
     data_quality_flags: Dict[str, bool] = Field(default_factory=dict)
 
 
@@ -243,18 +245,16 @@ async def get_live_matches(
         # Convert to response schema
         matches_response = []
         for match in matches_raw:
-            # Extract team IDs if available (not in ProviderLiveMatch by default)
-            home_team_id = None
-            away_team_id = None
-            
             match_response = LiveMatchResponse(
                 match_id=match.match_id,
                 status=match.status.value if hasattr(match.status, 'value') else str(match.status),
                 minute=match.minute,
                 home_score=match.home_score,
                 away_score=match.away_score,
-                home_team_id=home_team_id,
-                away_team_id=away_team_id,
+                home_team_id=match.home_team_id,
+                away_team_id=match.away_team_id,
+                home_team=match.home_team_name,  # Add team names
+                away_team=match.away_team_name,  # Add team names
                 data_quality_flags=_build_data_quality_flags(match),
             )
             matches_response.append(match_response)

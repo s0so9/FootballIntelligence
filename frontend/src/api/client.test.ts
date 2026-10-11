@@ -204,11 +204,17 @@ describe('API Client - AbortController Behavior', () => {
 
     const timeoutPromise = getMatches({ status: 'scheduled' });
     
-    // Fast-forward past 30 second timeout
-    vi.advanceTimersByTime(31000);
+    // Create expectation promise before advancing timers
+    const expectationPromise = Promise.all([
+      expect(timeoutPromise).rejects.toThrow(ApiError),
+      expect(timeoutPromise).rejects.toThrow('timed out')
+    ]);
     
-    await expect(timeoutPromise).rejects.toThrow(ApiError);
-    await expect(timeoutPromise).rejects.toThrow('timed out');
+    // Fast-forward past 60 second timeout (getMatches uses 60s)
+    await vi.runAllTimersAsync();
+    
+    // Now await the expectations
+    await expectationPromise;
     
     vi.useRealTimers();
   });

@@ -450,3 +450,32 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+/* Favorite button positioning */
+.match-card-container {
+  position: relative;
+}
+
+.favorite-match-card {
+  position: relative;
+}
+
+.match-card-favorite {
+  z-index: 10;
+}
+
+.match-card-favorite:hover {
+  color: #ffb400 !important;
+  transform: scale(1.1);
+}
+
+.favorite-button {
+  transition: all 0.2s ease;
+}
+
+.favorite-button:hover {
+  transform: scale(1.1);
+}
+
+.favorite-button.is-favorite {
+  color: #ffb400 !important;
+}

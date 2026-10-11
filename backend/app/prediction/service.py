@@ -530,6 +530,7 @@ class PredictionService:
         prediction_markets: Optional[List[PredictionMarket]] = None,
         match_db_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        pass_reason: Optional[str] = None,
     ) -> AnalysisContext:
         """Build AnalysisContext for AI Analyst.
         
@@ -955,6 +956,73 @@ class PredictionService:
         
         return context
     
+    def _evaluate_withdrawal_conditions(
+        self,
+        snapshot: MatchFeatureSnapshot,
+        orchestration_result: ModelOrchestrationResult,
+        confidence_assessment,
+        calibration_metadata: Dict[str, Any],
+        correlation_id: str
+    ) -> bool:
+        """Evaluate whether prediction should be withdrawn (PASS decision).
+        
+        PHASE 6: Enhanced reliability checks for ensemble/calibration pipeline.
+        
+        Returns True if prediction should be withdrawn due to:
+        - Insufficient data (below min_sample_size=3)
+        - Poor calibration reliability
+        - Low model agreement
+        - High uncertainty
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # 1. Check minimum sample size requirement
+        if hasattr(snapshot, 'data_quality') and snapshot.data_quality:
+            n_matches = getattr(snapshot.data_quality, 'total_matches', 0)
+            if n_matches < self.config.min_sample_size:
+                logger.info(f"[{correlation_id}] PASS: Insufficient data - {n_matches} < {self.config.min_sample_size}")
+                return True
+        
+        # 2. Check calibration reliability
+        calibration_status = calibration_metadata.get("calibration_status", "unknown")
+        if calibration_status == "failed":
+            logger.info(f"[{correlation_id}] PASS: Calibration failed")
+            return True
+        
+        # Check if calibration has insufficient samples
+        calibration_samples = calibration_metadata.get("calibration_sample_size", 0)
+        if calibration_samples > 0 and calibration_samples < 30:  # MIN_SAMPLES_FOR_CALIBRATION
+            logger.info(f"[{correlation_id}] PASS: Insufficient calibration data - {calibration_samples} < 30")
+            return True
+        
+        # 3. Check model agreement
+        n_successful_models = len(orchestration_result.successful_predictions)
+        if n_successful_models < 2:
+            logger.info(f"[{correlation_id}] PASS: Insufficient model agreement - only {n_successful_models} models")
+            return True
+        
+        # Calculate model agreement if available
+        model_agreement = getattr(confidence_assessment.components, 'model_agreement', 0.5)
+        if model_agreement < 0.3:  # Low agreement threshold
+            logger.info(f"[{correlation_id}] PASS: Poor model agreement - {model_agreement:.3f}")
+            return True
+        
+        # 4. Check overall confidence
+        overall_confidence = confidence_assessment.overall_confidence
+        if overall_confidence < 0.4:  # Low confidence threshold
+            logger.info(f"[{correlation_id}] PASS: Low overall confidence - {overall_confidence:.3f}")
+            return True
+        
+        # 5. Check data quality component
+        data_quality = getattr(confidence_assessment.components, 'data_quality', 0.5)
+        if data_quality < 0.3:  # Low data quality threshold
+            logger.info(f"[{correlation_id}] PASS: Poor data quality - {data_quality:.3f}")
+            return True
+        
+        logger.info(f"[{correlation_id}] RELIABILITY CHECK PASSED - proceeding with prediction")
+        return False
+        
     def generate_full_prediction(
         self,
         match: Match,
@@ -1116,6 +1184,26 @@ class PredictionService:
             )
             stage_timings["5_confidence"] = (time.time() - step_start) * 1000
             profiler.end_stage(success=True, duration_ms=stage_timings["5_confidence"])
+            
+            # PHASE 6: Enhanced reliability and uncertainty checks
+            # Check for withdrawal conditions based on data quality and model agreement
+            should_pass = self._evaluate_withdrawal_conditions(
+                snapshot=snapshot,
+                orchestration_result=orchestration_result,
+                confidence_assessment=confidence_assessment,
+                calibration_metadata=calibration_metadata,
+                correlation_id=correlation_id
+            )
+            
+            if should_pass:
+                logger.info(f"[{correlation_id}] PASS decision triggered - insufficient reliability")
+                profiler.end_stage()  # End total pipeline
+                return self.build_analysis_context(
+                    match=match, 
+                    correlation_id=correlation_id,
+                    pass_reason="insufficient_reliability"
+                )
+                
         except Exception as e:
             import logging
             logging.error(f"Confidence assessment failed: {e}", exc_info=True)

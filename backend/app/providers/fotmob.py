@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 def _parse_round(value) -> int | None:
     """Safely parse a match round value to int.
-    
+
     FotMob sometimes returns round as an integer (e.g. 9) or as a string
     containing the round number mixed with text (e.g. "Clausura - Round 9").
     Returns None if the value cannot be parsed to a meaningful integer.
@@ -83,35 +83,35 @@ def _parse_round(value) -> int | None:
 
 class FotMobFootballProvider:
     """FotMob Football Provider (LIVE/FAST provider, unofficial).
-    
+
     This provider is designed for LIVE/FAST data where FotMob provides fresher
     information than other providers. It is NOT an official FotMob API integration.
-    
+
     PRIMARY USE CASES:
     - Live match data (scores, minute, events)
     - Daily match schedules with fresh data
     - Match details with real-time updates
-    
+
     STUB/NOT IMPLEMENTED:
     - League metadata (use Ryzellx instead)
     - Team details (use Ryzellx instead)
     - Player details (use Ryzellx instead)
     - Standings (use Ryzellx or OpenLigaDB instead)
-    
+
     Conservative request patterns only:
     - retry_count=1 max (no aggressive retry loops)
     - No bypasses, no anti-bot evasion, no scraping tricks
     - If request fails, raise ProviderError (never invent data)
-    
+
     Args:
         base_url: Base URL for FotMob endpoints (configurable)
         timeout_seconds: HTTP request timeout in seconds
         retry_count: Max retries for transient failures (default: 1, conservative)
         cache: Optional ProviderCache for caching responses
     """
-    
+
     PROVIDER_NAME = "fotmob"
-    
+
     def __init__(
         self,
         base_url: str,
@@ -123,24 +123,24 @@ class FotMobFootballProvider:
         self.timeout_seconds = timeout_seconds
         self.retry_count = retry_count
         self.cache = cache
-        
+
         # Create async HTTP client with timeout
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout_seconds),
             follow_redirects=True,
         )
-        
+
         logger.info(
             f"Initialized {self.PROVIDER_NAME} provider (UNOFFICIAL): "
             f"base_url={self.base_url}, timeout={timeout_seconds}s, "
             f"retry_count={retry_count}, cache={'enabled' if cache else 'disabled'}"
         )
-    
+
     async def close(self):
         """Close the HTTP client."""
         await self._client.aclose()
-    
+
     async def _request(
         self,
         method: str,
@@ -148,20 +148,20 @@ class FotMobFootballProvider:
         params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Make HTTP request with error handling and conservative retry logic.
-        
+
         Conservative retry policy:
         - retry_count=1 max (no aggressive retry loops)
         - Only retry on connection errors and 5xx server errors
         - No bypasses, no anti-bot evasion
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint path (e.g., '/api/matches')
             params: Optional query parameters
-            
+
         Returns:
             Parsed JSON response as dict
-            
+
         Raises:
             ProviderTimeoutError: Request timed out
             ProviderHTTPError: HTTP error response (4xx, 5xx after retries)
@@ -172,7 +172,7 @@ class FotMobFootballProvider:
         operation = f"{method} {endpoint}"
         attempt = 0
         last_error = None
-        
+
         while attempt <= self.retry_count:
             try:
                 if attempt > 0:
@@ -180,18 +180,18 @@ class FotMobFootballProvider:
                         f"[{self.PROVIDER_NAME}] Retry {attempt}/{self.retry_count} "
                         f"for {operation}"
                     )
-                
+
                 logger.debug(
                     f"[{self.PROVIDER_NAME}] {operation} "
                     f"params={params if params else 'none'}"
                 )
-                
+
                 response = await self._client.request(
                     method=method,
                     url=endpoint,
                     params=params
                 )
-                
+
                 # Check HTTP status
                 if response.status_code == 404:
                     raise ProviderNotFoundError(
@@ -199,7 +199,7 @@ class FotMobFootballProvider:
                         operation=operation,
                         message=f"Resource not found: {endpoint}"
                     )
-                
+
                 if 400 <= response.status_code < 500:
                     raise ProviderHTTPError(
                         provider_name=self.PROVIDER_NAME,
@@ -207,7 +207,7 @@ class FotMobFootballProvider:
                         message=f"Client error: {response.status_code} {response.reason_phrase}",
                         status_code=response.status_code
                     )
-                
+
                 if 500 <= response.status_code < 600:
                     # Server error - retry once (conservative)
                     last_error = ProviderHTTPError(
@@ -221,7 +221,7 @@ class FotMobFootballProvider:
                         await self._wait_before_retry(attempt)
                         continue
                     raise last_error
-                
+
                 # Success - parse JSON
                 try:
                     data = response.json()
@@ -230,7 +230,7 @@ class FotMobFootballProvider:
                         f"{response.status_code}"
                     )
                     return data
-                    
+
                 except Exception as e:
                     raise ProviderInvalidDataError(
                         provider_name=self.PROVIDER_NAME,
@@ -238,7 +238,7 @@ class FotMobFootballProvider:
                         message=f"Failed to parse JSON response: {str(e)}",
                         original_error=e
                     )
-            
+
             except httpx.TimeoutException as e:
                 raise ProviderTimeoutError(
                     provider_name=self.PROVIDER_NAME,
@@ -246,7 +246,7 @@ class FotMobFootballProvider:
                     message=f"Request timed out after {self.timeout_seconds}s",
                     original_error=e
                 )
-            
+
             except httpx.RequestError as e:
                 # Connection error - retry once (conservative)
                 last_error = ProviderError(
@@ -264,12 +264,12 @@ class FotMobFootballProvider:
                     await self._wait_before_retry(attempt)
                     continue
                 raise last_error
-            
-            except (ProviderTimeoutError, ProviderHTTPError, ProviderNotFoundError, 
+
+            except (ProviderTimeoutError, ProviderHTTPError, ProviderNotFoundError,
                     ProviderInvalidDataError, ProviderError):
                 # Re-raise provider exceptions as-is
                 raise
-            
+
             except Exception as e:
                 # Unexpected error
                 raise ProviderError(
@@ -278,7 +278,7 @@ class FotMobFootballProvider:
                     message=f"Unexpected error: {type(e).__name__}",
                     original_error=e
                 )
-        
+
         # Should not reach here, but raise last error if we do
         if last_error:
             raise last_error
@@ -287,27 +287,27 @@ class FotMobFootballProvider:
             operation=operation,
             message="Max retries exceeded"
         )
-    
+
     async def _wait_before_retry(self, attempt: int):
         """Wait before retry with exponential backoff."""
         import asyncio
         wait_seconds = min(2 ** attempt, 10)  # Max 10 seconds
         await asyncio.sleep(wait_seconds)
-    
+
     def _parse_match_status(self, status_str: Optional[str]) -> MatchStatus:
         """Parse FotMob match status to domain MatchStatus.
-        
+
         Args:
             status_str: Status string from FotMob API
-            
+
         Returns:
             Normalized MatchStatus
         """
         if not status_str:
             return MatchStatus.SCHEDULED
-        
+
         status_lower = status_str.lower()
-        
+
         # FotMob typically uses status strings like:
         # "live", "finished", "not_started", "halftime", "postponed", "fulltime_short", etc.
         if status_lower in ["live", "in_play", "playing"]:
@@ -330,44 +330,44 @@ class FotMobFootballProvider:
                 f"defaulting to SCHEDULED"
             )
             return MatchStatus.SCHEDULED
-    
+
     def _parse_match_outcome(
         self,
         home_score: Optional[int],
         away_score: Optional[int]
     ) -> Optional[MatchOutcome]:
         """Parse match outcome from scores.
-        
+
         Args:
             home_score: Home team score
             away_score: Away team score
-            
+
         Returns:
             MatchOutcome if match is finished, None otherwise
         """
         if home_score is None or away_score is None:
             return None
-        
+
         if home_score > away_score:
             return MatchOutcome.HOME_WIN
         elif away_score > home_score:
             return MatchOutcome.AWAY_WIN
         else:
             return MatchOutcome.DRAW
-    
+
     def _normalize_match(self, data: Dict[str, Any], is_live: bool = False, league_context: Optional[Dict[str, Any]] = None) -> ProviderMatch:
         """Normalize FotMob match data to ProviderMatch.
-        
+
         Args:
             data: Raw match data from FotMob API
             is_live: Whether this is live match data
             league_context: Optional league data when parsing from leagues list
-            
+
         Returns:
             Normalized ProviderMatch
         """
         now = datetime.now(timezone.utc)
-        
+
         # Parse scheduled time
         # Priority 1: general.matchTimeUTCDate (matchDetails primary field)
         # Priority 2-N: existing fallbacks preserved
@@ -410,7 +410,7 @@ class FotMobFootballProvider:
                             scheduled_at = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
                         except:
                             pass
-        
+
         status_data = data.get("status") or {}
 
         # Parse status from status.reason or status object
@@ -488,9 +488,9 @@ class FotMobFootballProvider:
         # Do NOT fabricate team IDs - fail safely
         if not home_team_id or not away_team_id:
             match_id_for_error = (
-                data.get("id") or 
-                data.get("matchId") or 
-                (general_data.get("matchId") if isinstance(general_data, dict) else None) or 
+                data.get("id") or
+                data.get("matchId") or
+                (general_data.get("matchId") if isinstance(general_data, dict) else None) or
                 "unknown"
             )
             raise ProviderInvalidDataError(
@@ -549,62 +549,62 @@ class FotMobFootballProvider:
                     league_id = data.get("leagueId")
                     competition_id = str(league_id) if league_id else None
                     competition_name = str(league_data) if league_data else None
-        
+
         # Parse minute
         minute = None
         if "minute" in data:
             minute = data.get("minute")
         elif isinstance(status_data, dict) and "minute" in status_data:
             minute = status_data.get("minute")
-        
+
         # Parse outcome
         outcome = None
         if status == MatchStatus.FINISHED:
             outcome = self._parse_match_outcome(home_score, away_score)
-        
+
         return ProviderMatch(
             # Source metadata
             provider=self.PROVIDER_NAME,
             source_id=str(
-                data.get("id") or 
-                data.get("matchId") or 
-                (general_data.get("matchId") if isinstance(general_data, dict) else None) or 
+                data.get("id") or
+                data.get("matchId") or
+                (general_data.get("matchId") if isinstance(general_data, dict) else None) or
                 ""
             ),
             fetched_at=now,
             source_updated_at=None,  # FotMob doesn't typically provide this
             is_live=is_live or status == MatchStatus.LIVE,
             data_freshness_seconds=None,
-            
+
             # Match identifiers
             competition_id=competition_id,
             competition_name=competition_name,
             season=None,  # FotMob doesn't always provide season in match data
-            
+
             # Teams
             home_team_id=home_team_id,
             home_team_name=home_team_name,
             away_team_id=away_team_id,
             away_team_name=away_team_name,
-            
+
             # Venue
             venue_name=data.get("venue") or data.get("stadium"),
-            
+
             # Timing
             scheduled_at=scheduled_at,
             status=status,
             minute=minute,
             added_time=data.get("addedTime") or data.get("added_time"),
-            
+
             # Scores
             home_score=home_score,
             away_score=away_score,
             home_score_ht=None,  # Would need to parse from detailed match data
             away_score_ht=None,
-            
+
             # Outcome
             outcome=outcome,
-            
+
             # Match round
             # Priority 1: general.matchRound (may be int or string like "Clausura - Round 9")
             # Priority 2: existing fallbacks
@@ -616,7 +616,7 @@ class FotMobFootballProvider:
                 ))() or data.get("round") or data.get("matchday")
             ),
         )
-    
+
     def _extract_match_statistics(
         self,
         data: Dict[str, Any],
@@ -625,59 +625,59 @@ class FotMobFootballProvider:
         away_team_id: str
     ) -> Tuple[Optional[ProviderMatchStats], Optional[ProviderMatchStats]]:
         """Extract match statistics from FotMob matchDetails response.
-        
+
         Args:
             data: Raw matchDetails data from FotMob
             match_id: Match ID
             home_team_id: Home team ID
             away_team_id: Away team ID
-            
+
         Returns:
             Tuple of (home_stats, away_stats), either may be None if unavailable
         """
         from app.providers.models import ProviderMatchStats
-        
+
         now = datetime.now(timezone.utc)
-        
+
         # Extract stats from content.stats.Periods.All
         content = data.get("content", {})
         if not content:
             return (None, None)
-        
+
         stats_data = content.get("stats", {})
         if not stats_data:
             return (None, None)
-        
+
         periods = stats_data.get("Periods", {})
         all_period = periods.get("All", {})
         stat_groups = all_period.get("stats", [])
-        
+
         if not stat_groups:
             return (None, None)
-        
+
         # Extract home/away values from nested structure
         home_values = {}
         away_values = {}
-        
+
         for group in stat_groups:
             group_stats = group.get("stats", [])
-            
+
             for stat in group_stats:
                 key = stat.get("key")
                 if not key:
                     continue
-                
+
                 raw_stats = stat.get("rawStats", [])
                 if len(raw_stats) >= 2 and raw_stats[0] and raw_stats[1]:
                     home_value = raw_stats[0].get("value")
                     away_value = raw_stats[1].get("value")
-                    
+
                     home_values[key] = home_value
                     away_values[key] = away_value
-        
+
         if not home_values and not away_values:
             return (None, None)
-        
+
         # Map FotMob keys to our ProviderMatchStats fields
         def create_stats(values: Dict, team_id: str) -> ProviderMatchStats:
             return ProviderMatchStats(
@@ -718,12 +718,12 @@ class FotMobFootballProvider:
                 clearances=int(values.get("clearances")) if values.get("clearances") is not None else None,
                 saves=int(values.get("keeper_saves")) if values.get("keeper_saves") is not None else None,
             )
-        
+
         home_stats = create_stats(home_values, home_team_id) if home_values else None
         away_stats = create_stats(away_values, away_team_id) if away_values else None
-        
+
         return (home_stats, away_stats)
-    
+
     def get_matches(
         self,
         competition_id: Optional[str] = None,
@@ -734,36 +734,36 @@ class FotMobFootballProvider:
         status: Optional[str] = None,
     ) -> List[ProviderMatch]:
         """Synchronous wrapper for async get_matches_by_range method.
-        
+
         This method provides compatibility with the base FootballDataProvider interface
         which requires a synchronous get_matches method for feature extraction.
-        
+
         Args:
             competition_id: Filter by competition (not supported, ignored)
-            season_id: Filter by season (not supported, ignored)  
+            season_id: Filter by season (not supported, ignored)
             team_id: Filter by team (not supported, ignored)
             from_date: Filter matches from this date
             to_date: Filter matches to this date
             status: Filter by match status (not supported, ignored)
-            
+
         Returns:
             List of ProviderMatch objects
-            
+
         Raises:
             ProviderError: On request failure
         """
         import asyncio
         import logging
-        
+
         logger = logging.getLogger(__name__)
-        
+
         # Only date range filtering is supported by FotMob
         if not from_date or not to_date:
             # Default to today if no dates provided
             from datetime import date
             to_date = to_date or date.today()
             from_date = from_date or to_date
-        
+
         try:
             # Use asyncio.run to make async method synchronous
             loop = None
@@ -773,7 +773,7 @@ class FotMobFootballProvider:
                     # If loop is already running, we need to use a different approach
                     import concurrent.futures
                     import threading
-                    
+
                     def run_in_thread():
                         new_loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(new_loop)
@@ -783,7 +783,7 @@ class FotMobFootballProvider:
                             )
                         finally:
                             new_loop.close()
-                    
+
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(run_in_thread)
                         matches = future.result(timeout=30)  # 30 second timeout
@@ -794,14 +794,14 @@ class FotMobFootballProvider:
             except RuntimeError:
                 # No event loop exists, create one
                 matches = asyncio.run(self.get_matches_by_range(from_date, to_date))
-            
+
             logger.debug(
                 f"[{self.PROVIDER_NAME}] Synchronous get_matches returned "
                 f"{len(matches)} matches for {from_date} to {to_date}"
             )
-            
+
             return matches
-            
+
         except Exception as e:
             logger.error(
                 f"[{self.PROVIDER_NAME}] Synchronous get_matches failed: {e}",
@@ -809,163 +809,163 @@ class FotMobFootballProvider:
             )
             # Return empty list rather than crashing - allows graceful fallback
             return []
-    
+
     def get_teams(self, competition_id: str, season_id: str):
         """Get teams for a competition season.
-        
+
         FotMob provider doesn't implement team lists - return empty list.
         Use Ryzellx for team metadata instead.
-        
+
         Args:
             competition_id: Competition ID (ignored)
             season_id: Season ID (ignored)
-            
+
         Returns:
             Empty list (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_teams not implemented - "
             f"use Ryzellx for team metadata"
         )
-        
+
         return []
-    
+
     def get_competitions(self):
         """Get available competitions.
-        
+
         FotMob provider doesn't implement competition lists - return empty list.
         Use Ryzellx for competition metadata instead.
-        
+
         Returns:
             Empty list (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_competitions not implemented - "
             f"use Ryzellx for competition metadata"
         )
-        
+
         return []
-    
+
     def get_competition(self, competition_id: str):
         """Get a specific competition.
-        
+
         Args:
             competition_id: Competition ID (ignored)
-            
+
         Returns:
             None (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_competition not implemented - "
             f"use Ryzellx for competition metadata"
         )
-        
+
         return None
-    
+
     def get_seasons(self, competition_id: str):
         """Get seasons for a competition.
-        
+
         Args:
             competition_id: Competition ID (ignored)
-            
+
         Returns:
             Empty list (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_seasons not implemented - "
             f"use Ryzellx for competition metadata"
         )
-        
+
         return []
-    
+
     def get_current_season(self, competition_id: str):
         """Get current season for a competition.
-        
+
         Args:
             competition_id: Competition ID (ignored)
-            
+
         Returns:
             None (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_current_season not implemented - "
             f"use Ryzellx for competition metadata"
         )
-        
+
         return None
-    
+
     def get_team(self, team_id: str):
         """Get a specific team.
-        
+
         Args:
             team_id: Team ID (ignored)
-            
+
         Returns:
             None (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_team not implemented - "
             f"use Ryzellx for team metadata"
         )
-        
+
         return None
-    
+
     def get_match(self, match_id: str):
         """Get a specific match.
-        
+
         Args:
             match_id: Match ID (ignored)
-            
+
         Returns:
-            None (not implemented)  
+            None (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] get_match not implemented - "
             f"use Ryzellx for match metadata"
         )
-        
+
         return None
-    
+
     async def get_match_statistics(
         self,
         match_id: str,
         period: str = 'full'
     ) -> Tuple[Optional[ProviderMatchStats], Optional[ProviderMatchStats]]:
         """Get match statistics from FotMob matchDetails.
-        
+
         Args:
             match_id: FotMob match ID
             period: Period to fetch ('full' only supported by FotMob)
-            
+
         Returns:
             Tuple of (home_stats, away_stats), both None if not found
-            
+
         Raises:
             ProviderError: On request failure (except 404)
         """
         from app.providers.models import ProviderMatchStats
-        
+
         # Check cache
         cache_key = f"{self.PROVIDER_NAME}:stats:{match_id}:{period}"
         if self.cache:
@@ -973,21 +973,21 @@ class FotMobFootballProvider:
             if cached is not None:
                 logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
                 return cached
-        
+
         # Fetch match details (includes statistics)
         try:
             endpoint = "/api/data/matchDetails"
             params = {"matchId": match_id}
             data = await self._request("GET", endpoint, params=params)
-            
+
             # Extract team IDs from match data first
             general_data = data.get("general", {})
             home_team_data = general_data.get("homeTeam", {})
             away_team_data = general_data.get("awayTeam", {})
-            
+
             home_team_id = str(home_team_data.get("id", ""))
             away_team_id = str(away_team_data.get("id", ""))
-            
+
             if not home_team_id or not away_team_id:
                 # Fallback to header.teams
                 header_data = data.get("header", {})
@@ -995,42 +995,42 @@ class FotMobFootballProvider:
                 if len(teams) >= 2:
                     home_team_id = str(teams[0].get("id", ""))
                     away_team_id = str(teams[1].get("id", ""))
-            
+
             if not home_team_id or not away_team_id:
                 logger.warning(f"[{self.PROVIDER_NAME}] Could not extract team IDs for match {match_id}")
                 return (None, None)
-            
+
             # Extract statistics
             home_stats, away_stats = self._extract_match_statistics(
                 data, match_id, home_team_id, away_team_id
             )
-            
+
             # Cache result
             if self.cache:
                 ttl = HISTORICAL_MATCH_TTL  # Statistics are static after match
                 self.cache.set(cache_key, (home_stats, away_stats), ttl_seconds=ttl)
-            
+
             logger.info(f"[{self.PROVIDER_NAME}] Fetched statistics for match {match_id}")
             return (home_stats, away_stats)
-            
+
         except ProviderNotFoundError:
             logger.info(f"[{self.PROVIDER_NAME}] Statistics for match {match_id} not found")
             return (None, None)
         except ProviderError:
             raise
-    
+
     async def get_matches_by_date(self, date_obj: date) -> List[ProviderMatch]:
         """Get matches for a specific date.
-        
+
         FotMob typically provides daily matches through endpoints like:
         /api/matches?date=YYYYMMDD
-        
+
         Args:
             date_obj: Date to fetch matches for
-            
+
         Returns:
             List of ProviderMatch for the date
-            
+
         Raises:
             ProviderError: On request failure
         """
@@ -1041,21 +1041,21 @@ class FotMobFootballProvider:
             if cached is not None:
                 logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
                 return cached
-        
+
         # Fetch from API - FotMob uses YYYYMMDD format
         date_str = date_obj.strftime("%Y%m%d")
         endpoint = "/api/data/matches"
         params = {"date": date_str}
-        
+
         try:
             data = await self._request("GET", endpoint, params=params)
         except ProviderError:
             # If request fails, raise error (never invent data)
             raise
-        
+
         # Parse response - FotMob structure may vary
         matches = []
-        
+
         # FotMob typically nests matches in leagues
         if isinstance(data, dict):
             # Check for matches in various possible structures
@@ -1089,7 +1089,7 @@ class FotMobFootballProvider:
                     logger.warning(
                         f"[{self.PROVIDER_NAME}] Failed to normalize match: {e}"
                     )
-        
+
         # Cache result with appropriate TTL
         if self.cache:
             today = date.today()
@@ -1098,12 +1098,12 @@ class FotMobFootballProvider:
             else:
                 ttl = UPCOMING_FIXTURES_TTL
             self.cache.set(cache_key, matches, ttl_seconds=ttl)
-        
+
         logger.info(
             f"[{self.PROVIDER_NAME}] Fetched {len(matches)} matches for {date_obj}"
         )
         return matches
-    
+
     async def get_matches_by_range(
         self,
         start_date: date,
@@ -1176,13 +1176,13 @@ class FotMobFootballProvider:
 
         FotMob typically provides match details through:
         /api/matchDetails?matchId={match_id}
-        
+
         Args:
             match_id: Match ID
-            
+
         Returns:
             ProviderMatch if found, None if not found
-            
+
         Raises:
             ProviderError: On request failure (except 404)
         """
@@ -1193,13 +1193,13 @@ class FotMobFootballProvider:
             if cached is not None:
                 logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
                 return cached
-        
+
         # Fetch from API
         try:
             endpoint = "/api/data/matchDetails"
             params = {"matchId": match_id}
             data = await self._request("GET", endpoint, params=params)
-            
+
             # Normalize match
             is_live = False
             if "status" in data:
@@ -1209,33 +1209,33 @@ class FotMobFootballProvider:
                 else:
                     status_str = str(status_data)
                 is_live = "live" in status_str.lower()
-            
+
             match = self._normalize_match(data, is_live=is_live)
-            
+
             # Cache result
             if self.cache:
                 ttl = LIVE_DATA_TTL if is_live else UPCOMING_FIXTURES_TTL
                 self.cache.set(cache_key, match, ttl_seconds=ttl)
-            
+
             logger.info(f"[{self.PROVIDER_NAME}] Fetched match {match_id}")
             return match
-            
+
         except ProviderNotFoundError:
             logger.info(f"[{self.PROVIDER_NAME}] Match {match_id} not found")
             return None
         except ProviderError:
             # If request fails, raise error (never invent data)
             raise
-    
+
     async def get_live_matches(self) -> List[ProviderLiveMatch]:
         """Get currently live matches.
-        
-        FotMob provides live matches through endpoints like:
-        /api/matches/live or similar
-        
+
+        FotMob's live match detection has issues. As emergency fallback,
+        we'll use ESPN's live data and cross-reference with FotMob match IDs.
+
         Returns:
             List of ProviderLiveMatch
-            
+
         Raises:
             ProviderError: On request failure
         """
@@ -1246,24 +1246,84 @@ class FotMobFootballProvider:
             if cached is not None:
                 logger.debug(f"[{self.PROVIDER_NAME}] Cache hit: {cache_key}")
                 return cached
-        
-        # Fetch from API - FotMob doesn't have a dedicated live endpoint
-        # Get today's matches and filter for live ones
+
+        # Emergency fix: Use ESPN for live detection, FotMob for match details
+        now = datetime.now(timezone.utc)
+        live_matches = []
+
         try:
+            # Step 1: Get live matches from ESPN using existing httpx client
+            espn_response = await self._client.get("https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard")
+
+            # Check ESPN HTTP status
+            if espn_response.status_code != 200:
+                logger.error(
+                    f"[{self.PROVIDER_NAME}] ESPN API failed with status {espn_response.status_code}"
+                )
+                raise ProviderError(
+                    provider_name=self.PROVIDER_NAME,
+                    operation="get_live_matches",
+                    message=f"ESPN API returned HTTP {espn_response.status_code}",
+                    original_error=None
+                )
+
+            # Parse ESPN JSON
+            try:
+                espn_data = espn_response.json()
+            except Exception as json_err:
+                logger.error(f"[{self.PROVIDER_NAME}] ESPN returned invalid JSON: {json_err}")
+                raise ProviderError(
+                    provider_name=self.PROVIDER_NAME,
+                    operation="get_live_matches",
+                    message="ESPN API returned invalid JSON",
+                    original_error=json_err
+                )
+
+            if not espn_data or 'events' not in espn_data:
+                logger.warning(f"[{self.PROVIDER_NAME}] ESPN response missing events field")
+                raise ProviderError(
+                    provider_name=self.PROVIDER_NAME,
+                    operation="get_live_matches",
+                    message="ESPN API response missing 'events' field",
+                    original_error=None
+                )
+
+            live_match_names = set()
+            for event in espn_data['events']:
+                status = event.get('status', {})
+                type_info = status.get('type', {})
+
+                if type_info.get('state') == 'in':  # ESPN live state
+                    match_name = event.get('name', '')
+                    if match_name:
+                        live_match_names.add(match_name.lower())
+
+            if not live_match_names:
+                logger.info(f"[{self.PROVIDER_NAME}] No live matches found via ESPN")
+                return []
+
+            logger.info(f"[{self.PROVIDER_NAME}] Found {len(live_match_names)} live matches via ESPN")
+
+            # Step 2: Get today's matches from FotMob and match with ESPN live matches
             today = date.today()
             date_str = today.strftime("%Y%m%d")
             endpoint = "/api/data/matches"
             params = {"date": date_str}
             data = await self._request("GET", endpoint, params=params)
+
         except ProviderError:
             # If request fails, raise error (never invent data)
             raise
-        
-        # Parse response
-        now = datetime.now(timezone.utc)
-        live_matches = []
-        
-        # Extract matches from various possible structures
+        except Exception as e:
+            logger.error(f"[{self.PROVIDER_NAME}] Emergency live match detection failed: {e}")
+            raise ProviderError(
+                provider_name=self.PROVIDER_NAME,
+                operation="get_live_matches",
+                message=f"Live match detection failed: {e}",
+                original_error=e
+            )
+
+        # Parse FotMob response and cross-reference with ESPN
         match_list = []
         if isinstance(data, dict):
             if "leagues" in data:
@@ -1273,89 +1333,156 @@ class FotMobFootballProvider:
                 match_list = data["matches"]
         elif isinstance(data, list):
             match_list = data
-        
-        # Filter and normalize live matches only
+
+        # Cross-reference FotMob matches with ESPN live matches
         for match_data in match_list:
             try:
-                # Check if match is live
+                # Build match name for comparison
+                home_team = match_data.get("home", {})
+                away_team = match_data.get("away", {})
+
+                if isinstance(home_team, dict):
+                    home_name = home_team.get("longName") or home_team.get("name", "")
+                    home_team_id = str(home_team.get("id", ""))
+                    home_score = home_team.get("score", 0) or 0
+                else:
+                    home_name = str(home_team)
+                    home_team_id = ""
+                    home_score = 0
+
+                if isinstance(away_team, dict):
+                    away_name = away_team.get("longName") or away_team.get("name", "")
+                    away_team_id = str(away_team.get("id", ""))
+                    away_score = away_team.get("score", 0) or 0
+                else:
+                    away_name = str(away_team)
+                    away_team_id = ""
+                    away_score = 0
+
+                # Skip matches without proper team data
+                if not home_name or not away_name or not home_team_id or not away_team_id:
+                    continue
+
+                # Normalize team names for safe matching (remove extra spaces, common suffixes)
+                def normalize_team_name(name: str) -> str:
+                    """Normalize team name for matching."""
+                    normalized = name.lower().strip()
+                    # Remove common prefixes and suffixes that might differ between providers
+                    # Handle prefix like "FC", "AC" at the start
+                    tokens = normalized.split()
+                    if len(tokens) > 1:
+                        if tokens[0] in ['fc', 'ac', 'sc', 'cf', 'bk', 'afc', 'rcd']:
+                            normalized = ' '.join(tokens[1:])
+                        elif tokens[-1] in ['fc', 'ac', 'sc', 'cf', 'bk', 'afc']:
+                            normalized = ' '.join(tokens[:-1])
+                    return normalized.strip()
+
+                home_normalized = normalize_team_name(home_name)
+                away_normalized = normalize_team_name(away_name)
+
+                # Check if this match is live according to ESPN
+                # ESPN format: "Away Team at Home Team"
+                # Match only if BOTH teams are found in the ESPN match name
+                is_live_match = False
+                for espn_live_name in live_match_names:
+                    # Extract teams from ESPN format: "team1 at team2"
+                    if ' at ' in espn_live_name:
+                        parts = espn_live_name.split(' at ')
+                        if len(parts) == 2:
+                            espn_away = normalize_team_name(parts[0])
+                            espn_home = normalize_team_name(parts[1])
+
+                            # Exact match: both teams must match (order matters)
+                            if espn_home == home_normalized and espn_away == away_normalized:
+                                is_live_match = True
+                                break
+
+                if not is_live_match:
+                    continue
+
+                logger.info(f"[{self.PROVIDER_NAME}] Matched live match: {home_name} vs {away_name} ({home_score}-{away_score})")
+
+                # Parse match data
+                status = MatchStatus.LIVE  # We know it's live from ESPN
+
+                # Parse minute and status details
+                minute = match_data.get("minute")
                 status_data = match_data.get("status", {})
                 if isinstance(status_data, dict):
-                    status_str = status_data.get("type", "")
-                else:
-                    status_str = str(status_data)
-                
-                status = self._parse_match_status(status_str)
-                
-                # Only include live matches
-                if status not in [MatchStatus.LIVE, MatchStatus.HALF_TIME]:
+                    if not minute:
+                        minute = status_data.get("minute")
+                    # Check if it's actually live
+                    if status_data.get("finished"):
+                        continue  # Skip finished matches
+                    if not status_data.get("started"):
+                        continue  # Skip not started matches
+
+                # Get match ID
+                match_id = str(match_data.get("id") or match_data.get("matchId", ""))
+                if not match_id:
                     continue
-                
-                # Parse scores
-                home_score = 0
-                away_score = 0
-                if "score" in match_data:
-                    home_score = match_data["score"].get("home", 0)
-                    away_score = match_data["score"].get("away", 0)
-                else:
-                    home_score = match_data.get("homeScore", 0) or match_data.get("home_score", 0)
-                    away_score = match_data.get("awayScore", 0) or match_data.get("away_score", 0)
-                
-                # Parse minute
-                minute = None
-                if "minute" in match_data:
-                    minute = match_data.get("minute")
-                elif isinstance(status_data, dict) and "minute" in status_data:
-                    minute = status_data.get("minute")
-                
+
+                # Parse league/competition info
+                competition_id = str(match_data.get("leagueId", ""))
+
                 live_match = ProviderLiveMatch(
                     # Source metadata
                     provider=self.PROVIDER_NAME,
-                    source_id=str(match_data.get("id") or match_data.get("matchId", "")),
+                    source_id=match_id,
                     fetched_at=now,
                     source_updated_at=None,
                     is_live=True,
                     data_freshness_seconds=None,
-                    
+
                     # Live state
-                    match_id=str(match_data.get("id") or match_data.get("matchId", "")),
+                    match_id=match_id,
                     status=status,
                     minute=minute,
                     added_time=match_data.get("addedTime") or match_data.get("added_time"),
-                    
+
+                    # Teams
+                    home_team_id=home_team_id,
+                    home_team_name=home_name,
+                    away_team_id=away_team_id,
+                    away_team_name=away_name,
+
+                    # Competition
+                    competition_id=competition_id,
+
                     # Scores
                     home_score=home_score,
                     away_score=away_score,
-                    
+
                     # Events (simplified)
                     live_events=match_data.get("events") if match_data.get("events") else None,
-                    
+
                     # Last updated
                     last_updated=now,
                 )
                 live_matches.append(live_match)
-                
+
             except Exception as e:
                 logger.warning(
                     f"[{self.PROVIDER_NAME}] Failed to normalize live match: {e}"
                 )
-        
+
         # Cache result
         if self.cache:
             self.cache.set(cache_key, live_matches, ttl_seconds=LIVE_DATA_TTL)
-        
+
         logger.info(
-            f"[{self.PROVIDER_NAME}] Fetched {len(live_matches)} live matches"
+            f"[{self.PROVIDER_NAME}] Fetched {len(live_matches)} live matches (ESPN cross-reference)"
         )
         return live_matches
-    
+
     async def get_league(self, league_id: str) -> Optional[ProviderCompetition]:
         """Get league/competition information.
-        
+
         STUB: FotMob league lookup not implemented — use Ryzellx or OpenLigaDB for metadata.
-        
+
         Args:
             league_id: League ID
-            
+
         Returns:
             None (not implemented)
         """
@@ -1364,15 +1491,15 @@ class FotMobFootballProvider:
             f"use Ryzellx or OpenLigaDB for league metadata"
         )
         return None
-    
+
     async def get_team(self, team_id: str) -> Optional[ProviderTeam]:
         """Get team information.
-        
+
         STUB: FotMob team lookup not a priority — use Ryzellx instead.
-        
+
         Args:
             team_id: Team ID
-            
+
         Returns:
             None (not implemented)
         """
@@ -1381,15 +1508,15 @@ class FotMobFootballProvider:
             f"use Ryzellx for team metadata"
         )
         return None
-    
+
     async def get_player(self, player_id: str) -> Optional[ProviderPlayer]:
         """Get player information.
-        
+
         STUB: FotMob player lookup not a priority — use Ryzellx instead.
-        
+
         Args:
             player_id: Player ID
-            
+
         Returns:
             None (not implemented)
         """
@@ -1398,15 +1525,15 @@ class FotMobFootballProvider:
             f"use Ryzellx for player metadata"
         )
         return None
-    
+
     async def get_standings(self, league_id: str) -> List[ProviderStanding]:
         """Get league standings/table.
-        
+
         STUB: FotMob standings not a priority — use Ryzellx or OpenLigaDB instead.
-        
+
         Args:
             league_id: League ID
-            
+
         Returns:
             Empty list (not implemented)
         """
@@ -1415,26 +1542,26 @@ class FotMobFootballProvider:
             f"use Ryzellx or OpenLigaDB for standings"
         )
         return []
-    
+
     def get_standings(self, competition_id: str, season_id: str):
         """Get league standings (synchronous wrapper).
-        
+
         This method provides compatibility with the base FootballDataProvider interface
         which requires a synchronous get_standings method.
-        
+
         Args:
             competition_id: Competition ID (ignored)
             season_id: Season ID (ignored)
-            
+
         Returns:
             Empty list (not implemented)
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.debug(
             f"[{self.PROVIDER_NAME}] synchronous get_standings not implemented — "
             f"use Ryzellx or OpenLigaDB for standings"
         )
-        
+
         return []

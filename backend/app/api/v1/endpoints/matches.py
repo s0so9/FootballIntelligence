@@ -154,6 +154,8 @@ async def list_matches(
     from_date: Optional[date] = Query(None, description="Filter matches from this date"),
     to_date: Optional[date] = Query(None, description="Filter matches to this date"),
     status: Optional[str] = Query(None, description="Filter by match status"),
+    limit: Optional[int] = Query(100, description="Maximum number of matches to return", ge=1, le=1000),
+    offset: Optional[int] = Query(0, description="Number of matches to skip", ge=0),
     provider: FootballDataProvider = Depends(get_data_provider),
 ) -> MatchListResponse:
     """
@@ -198,11 +200,17 @@ async def list_matches(
     # Convert domain models to API response schemas
     match_responses = []
     
+    # OPTIMIZATION: Batch load all teams to avoid N+1 queries
+    team_ids = set()
     for match in matches:
-        # Get team info from database instead of provider
-        home_team = None
-        away_team = None
-        
+        if match.home_team_id:
+            team_ids.add(match.home_team_id)
+        if match.away_team_id:
+            team_ids.add(match.away_team_id)
+    
+    # Batch load teams from database
+    teams_cache = {}
+    if team_ids:
         try:
             # Import here to avoid circular imports
             from app.database.models import Team
@@ -210,34 +218,27 @@ async def list_matches(
             
             db_session = next(get_db())
             try:
-                if match.home_team_id:
-                    home_team_db = db_session.query(Team).filter_by(id=match.home_team_id).first()
-                    if home_team_db:
-                        from app.domain.entities import Team as DomainTeam
-                        home_team = DomainTeam(
-                            id=home_team_db.id,
-                            name=home_team_db.name,
-                            short_name=home_team_db.short_name,
-                            code=home_team_db.code,
-                            logo_url=home_team_db.logo_url
-                        )
+                team_rows = db_session.query(Team).filter(Team.id.in_(team_ids)).all()
+                from app.domain.entities import Team as DomainTeam
                 
-                if match.away_team_id:
-                    away_team_db = db_session.query(Team).filter_by(id=match.away_team_id).first()
-                    if away_team_db:
-                        from app.domain.entities import Team as DomainTeam
-                        away_team = DomainTeam(
-                            id=away_team_db.id,
-                            name=away_team_db.name,
-                            short_name=away_team_db.short_name,
-                            code=away_team_db.code,
-                            logo_url=away_team_db.logo_url
-                        )
+                for team_row in team_rows:
+                    teams_cache[team_row.id] = DomainTeam(
+                        id=team_row.id,
+                        name=team_row.name,
+                        short_name=team_row.short_name,
+                        code=team_row.code,
+                        logo_url=team_row.logo_url
+                    )
             finally:
                 db_session.close()
         except Exception:
             # If team lookup fails, continue without team info
             pass
+    
+    for match in matches:
+        # Get team info from cache
+        home_team = teams_cache.get(match.home_team_id) if match.home_team_id else None
+        away_team = teams_cache.get(match.away_team_id) if match.away_team_id else None
 
         # Create basic match response
         match_response = MatchResponse(
@@ -268,10 +269,14 @@ async def list_matches(
         )
         match_responses.append(match_response)
     
+    # Apply pagination
+    total_count = len(match_responses)
+    paginated_matches = match_responses[offset:offset + limit] if offset is not None and limit is not None else match_responses
+    
     # Build response with development data flag
     return MatchListResponse(
-        matches=match_responses,
-        count=len(match_responses),
+        matches=paginated_matches,
+        count=len(paginated_matches),
         is_development_data=provider.is_development_data(),
     )
 

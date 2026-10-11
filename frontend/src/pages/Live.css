@@ -8,11 +8,57 @@
   margin-bottom: 2rem;
 }
 
+.live-page__back-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+}
+
+.live-page__back-btn:hover {
+  background-color: var(--surface);
+  color: var(--text-primary);
+}
+
 .live-page__title {
   font-size: 2rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0 0 0.5rem 0;
+  margin: 0;
+}
+
+.live-page__title-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.live-page__audio-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.live-page__audio-btn:hover {
+  background-color: var(--surface);
+  color: var(--text-primary);
+  border-color: var(--primary);
 }
 
 .live-page__subtitle {
@@ -141,6 +187,62 @@
   color: var(--text-secondary);
 }
 
+/* Live match details */
+.live-match-details {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.live-match-details__section {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+}
+
+.live-match-details__section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.live-match-details__info {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.live-match-details__quality {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.quality-flag {
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.quality-flag.available {
+  background: var(--success-bg);
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.quality-flag.unavailable {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
 @media (max-width: 768px) {
   .live-page {
     padding: 1rem;
@@ -162,5 +264,13 @@
   .live-match-card__scoreboard {
     order: -1;
     margin-bottom: 0.5rem;
+  }
+
+  .live-match-details {
+    gap: 1rem;
+  }
+
+  .live-match-details__section {
+    padding: 1rem;
   }
 }

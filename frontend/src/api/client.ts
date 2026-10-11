@@ -45,18 +45,28 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const timeoutMs = endpoint.includes('/prediction') ? 30000 : 60000;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+  // Track if this was aborted by caller vs timeout
+  let abortedByCaller = false;
+
   // If caller provided an AbortSignal, listen to it
   const callerSignal = options?.signal;
+  let callerAbortHandler: (() => void) | undefined;
+  
   if (callerSignal) {
     if (callerSignal.aborted) {
       clearTimeout(timeoutId);
       throw new DOMException('Request was aborted', 'AbortError');
     }
-    callerSignal.addEventListener('abort', () => {
+    
+    callerAbortHandler = () => {
+      abortedByCaller = true;
       clearTimeout(timeoutId);
       controller.abort();
-    });
+    };
+    
+    callerSignal.addEventListener('abort', callerAbortHandler);
   }
+  
   try {
     const response = await fetch(url, {
       ...options,
@@ -68,6 +78,11 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     });
 
     clearTimeout(timeoutId);
+    
+    // Clean up listener
+    if (callerSignal && callerAbortHandler) {
+      callerSignal.removeEventListener('abort', callerAbortHandler);
+    }
 
     if (!response.ok) {
       let detail = `HTTP ${response.status}: ${response.statusText}`;
@@ -89,18 +104,44 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     return await response.json();
   } catch (error) {
     clearTimeout(timeoutId);
+    
+    // Clean up listener
+    if (callerSignal && callerAbortHandler) {
+      callerSignal.removeEventListener('abort', callerAbortHandler);
+    }
 
     if (error instanceof ApiError) {
       throw error;
     }
 
-    // Handle abort/timeout
+    // Handle abort - check if it's from caller or timeout
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      if (abortedByCaller || (callerSignal && callerSignal.aborted)) {
+        // Re-throw the original AbortError when caller aborted
+        throw error;
+      } else {
+        // Internal timeout - convert to ApiError
+        throw new ApiError(
+          'Request timed out - server response too slow',
+          undefined,
+          'The server took too long to respond'
+        );
+      }
+    }
+
+    // Also handle Error with name 'AbortError' (for compatibility)
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new ApiError(
-        'Request timed out - server response too slow',
-        undefined,
-        'The server took too long to respond'
-      );
+      if (abortedByCaller || (callerSignal && callerSignal.aborted)) {
+        // Re-throw the original AbortError when caller aborted
+        throw error;
+      } else {
+        // Internal timeout - convert to ApiError
+        throw new ApiError(
+          'Request timed out - server response too slow',
+          undefined,
+          'The server took too long to respond'
+        );
+      }
     }
 
     // Network or other errors
@@ -129,13 +170,15 @@ export async function getMatches(params?: {
   from_date?: string;
   to_date?: string;
   status?: string;
+  limit?: number;
+  offset?: number;
 }): Promise<MatchListResponse> {
   const searchParams = new URLSearchParams();
   
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) {
-        searchParams.append(key, value);
+        searchParams.append(key, String(value));
       }
     });
   }

@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getMatches, getCompetitions } from '../api';
+import { getMatches, getCompetitions } from '../api/client';
 import type { CompetitionResponse } from '../api/types';
 import { normalizeMatches, type NormalizedMatch } from '../utils/matchNormalizer';
 import { formatCompetitionName, formatMatchDateTime, formatMatchStatus } from '../utils/formatters';
 import { normalizeCompetitionName } from '../utils/popularCompetitions';
+import { FavoriteButton } from '../components/FavoriteButton';
 import './Matches.css';
 
 export function Upcoming() {
   const [competitions, setCompetitions] = useState<CompetitionResponse[]>([]);
   const [matches, setMatches] = useState<NormalizedMatch[]>([]);
+  const [rawMatches, setRawMatches] = useState<import('../api/types').MatchResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDevelopmentData, setIsDevelopmentData] = useState(false);
@@ -37,16 +39,18 @@ export function Upcoming() {
         futureDate.setDate(futureDate.getDate() + 30); // Increased to 30 days
         const toDate = formatDateForAPI(futureDate);
 
-        // Fetch upcoming matches with broader date range
+        // Fetch upcoming matches with broader date range and pagination
         const matchesResponse = await getMatches({
           from_date: fromDate,
           to_date: toDate,
           status: 'scheduled',
+          limit: 300, // Limit for better performance
         });
         
         if (!isMounted) return;
 
         const normalizedMatches = normalizeMatches(matchesResponse.matches);
+        setRawMatches(matchesResponse.matches); // Store raw matches for FavoriteButton
         
         // Filter for truly upcoming matches - scheduled status AND future time
         const now = new Date();
@@ -183,50 +187,99 @@ export function Upcoming() {
                   <div className="competition-group__matches">
                     {matchesByCompetition[competitionName].map((match) => {
                       const dateTime = formatMatchDateTime(match.scheduledAt);
+                      // Find corresponding raw match for FavoriteButton
+                      const rawMatch = rawMatches.find(r => r.id === match.id);
 
                       return (
-                        <Link
-                          key={match.id}
-                          to={`/matches/${match.id}`}
-                          className="match-card"
-                        >
-                          <div className="match-card__header">
-                            <div className="match-card__competition">
-                              {competitionName}
-                              {match.round && ` - ${match.round}. Hafta`}
-                            </div>
-                            <span className={`match-status match-status--${match.status}`}>
-                              {formatMatchStatus(match.status as import('../api/types').MatchStatus)}
-                            </span>
-                          </div>
-
-                          <div className="match-card__body">
-                            <div className="match-card__datetime">
-                              <div className="match-date">{dateTime.date}</div>
-                              <div className="match-time">{dateTime.time}</div>
-                            </div>
-
-                            <div className="match-card__teams">
-                              <div className="team team--home">
-                                <span className="team-name">{match.homeTeam.name}</span>
+                        <div key={match.id} className="match-card-container">
+                          <Link
+                            to={`/matches/${match.id}`}
+                            className="match-card"
+                          >
+                            <div className="match-card__header">
+                              <div className="match-card__competition">
+                                {competitionName}
+                                {match.round && ` - ${match.round}. Hafta`}
                               </div>
-
-                              <div className="match-vs">
-                                <span className="vs-text">vs</span>
-                              </div>
-
-                              <div className="team team--away">
-                                <span className="team-name">{match.awayTeam.name}</span>
-                              </div>
-                            </div>
-
-                            <div className="match-card__indicator">
-                              <span className="prediction-indicator">
-                                📊 Tahmin Mevcut
+                              <span className={`match-status match-status--${match.status}`}>
+                                {formatMatchStatus(match.status as import('../api/types').MatchStatus)}
                               </span>
                             </div>
-                          </div>
-                        </Link>
+
+                            <div className="match-card__body">
+                              <div className="match-card__datetime">
+                                <div className="match-date">{dateTime.date}</div>
+                                <div className="match-time">{dateTime.time}</div>
+                              </div>
+
+                              <div className="match-card__teams">
+                                <div className="team team--home">
+                                  <div className="team-logo-container">
+                                    <img 
+                                      src={`/team-logos/${match.homeTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
+                                      alt={match.homeTeam.name || 'Home team'}
+                                      className="team-logo"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                        const fallback = target.nextElementSibling as HTMLDivElement;
+                                        if (fallback) fallback.style.display = 'flex';
+                                      }}
+                                    />
+                                    <div className="team-logo-fallback" style={{ display: 'none' }}>
+                                      {match.homeTeam.name ? match.homeTeam.name.charAt(0).toUpperCase() : 'H'}
+                                    </div>
+                                  </div>
+                                  <span className="team-name">{match.homeTeam.name}</span>
+                                </div>
+
+                                <div className="match-vs">
+                                  <span className="vs-text">vs</span>
+                                </div>
+
+                                <div className="team team--away">
+                                  <div className="team-logo-container">
+                                    <img 
+                                      src={`/team-logos/${match.awayTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
+                                      alt={match.awayTeam.name || 'Away team'}
+                                      className="team-logo"
+                                      onError={(e) => {
+                                        const target = e.target as HTMLImageElement;
+                                        target.style.display = 'none';
+                                        const fallback = target.nextElementSibling as HTMLDivElement;
+                                        if (fallback) fallback.style.display = 'flex';
+                                      }}
+                                    />
+                                    <div className="team-logo-fallback" style={{ display: 'none' }}>
+                                      {match.awayTeam.name ? match.awayTeam.name.charAt(0).toUpperCase() : 'A'}
+                                    </div>
+                                  </div>
+                                  <span className="team-name">{match.awayTeam.name}</span>
+                                </div>
+                              </div>
+
+                              <div className="match-card__indicator">
+                                <span className="prediction-indicator">
+                                  📊 Tahmin Mevcut
+                                </span>
+                              </div>
+                            </div>
+                          </Link>
+
+                          {/* Favorite Button - Outside of Link */}
+                          {rawMatch && (
+                            <FavoriteButton
+                              match={rawMatch}
+                              className="match-card-favorite"
+                              style={{
+                                position: 'absolute',
+                                top: '0.75rem',
+                                right: '0.75rem',
+                                zIndex: 10,
+                              }}
+                            />
+                          )}
+                        </div>
                       );
                     })}
                   </div>

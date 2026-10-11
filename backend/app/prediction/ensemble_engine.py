@@ -260,6 +260,8 @@ class EnsembleEngine:
     def _calculate_agreement(self, predictions: List[ModelPrediction]) -> float:
         """Calculate model agreement score.
         
+        PHASE 6: Enhanced agreement calculation using comprehensive probability variance.
+        
         Agreement = 1 - (std_dev of home_win_prob * 3), normalized to [0, 1]
         
         When all models agree perfectly: std_dev = 0, agreement = 1.0
@@ -274,20 +276,43 @@ class EnsembleEngine:
         if len(predictions) < 2:
             return 1.0
         
-        # Extract home win probabilities
-        home_probs = [pred.home_win_prob for pred in predictions]
+        # PHASE 6: Enhanced agreement using all 1X2 probabilities
+        # Extract all probability dimensions
+        home_probs = []
+        draw_probs = []
+        away_probs = []
         
-        # Calculate mean
-        mean_prob = sum(home_probs) / len(home_probs)
+        for pred in predictions:
+            # Handle both attribute name variations
+            home_prob = getattr(pred, 'home_win_probability', 
+                               getattr(pred, 'home_win_prob', 0.33))
+            draw_prob = getattr(pred, 'draw_probability', 
+                               getattr(pred, 'draw_prob', 0.33))
+            away_prob = getattr(pred, 'away_win_probability', 
+                               getattr(pred, 'away_win_prob', 0.33))
+            
+            home_probs.append(home_prob)
+            draw_probs.append(draw_prob)
+            away_probs.append(away_prob)
         
-        # Calculate standard deviation
-        variance = sum((p - mean_prob) ** 2 for p in home_probs) / len(home_probs)
-        std_dev = math.sqrt(variance)
+        # Calculate standard deviation for each outcome
+        def safe_std_dev(values):
+            if len(set(values)) <= 1:  # All identical
+                return 0.0
+            mean_val = sum(values) / len(values)
+            variance = sum((v - mean_val) ** 2 for v in values) / len(values)
+            return math.sqrt(variance)
+        
+        home_std = safe_std_dev(home_probs)
+        draw_std = safe_std_dev(draw_probs)
+        away_std = safe_std_dev(away_probs)
+        
+        # Average standard deviation across all outcomes
+        avg_std_dev = (home_std + draw_std + away_std) / 3.0
         
         # Convert to agreement score (normalize by factor of 3)
         # Max realistic std_dev for probabilities ≈ 0.33 (when probs range 0-1)
-        # Using factor of 3 keeps most real disagreements in [0, 1] range
-        agreement = max(0.0, 1.0 - (std_dev * 3.0))
+        agreement = max(0.0, 1.0 - (avg_std_dev * 3.0))
         
         return min(1.0, agreement)
     

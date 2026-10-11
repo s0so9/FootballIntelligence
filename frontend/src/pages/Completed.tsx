@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getMatches } from '../api/client';
 import type { MatchResponse } from '../api/types';
 import { normalizeMatch } from '../utils/matchNormalizer';
+import { FavoriteButton } from '../components/FavoriteButton';
 import './pages.css';
 
 export function Completed() {
@@ -15,8 +16,23 @@ export function Completed() {
         setLoading(true);
         setError(null);
 
-        // Fetch all matches with increased limit for completed matches
-        const response = await getMatches();
+        // Fetch completed matches with date filtering to reduce timeout risk
+        const today = new Date();
+        const pastDate = new Date(today);
+        pastDate.setDate(pastDate.getDate() - 30); // Last 30 days only
+        
+        const formatDateForAPI = (date: Date): string => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        const response = await getMatches({
+          status: 'finished',
+          from_date: formatDateForAPI(pastDate),
+          to_date: formatDateForAPI(today),
+        });
         
         // Filter for completed matches with strict status checking
         const completedMatches = response.matches.filter(match => {
@@ -108,46 +124,91 @@ export function Completed() {
             const matchTime = formatDateTime(match.scheduled_at);
             
             return (
-              <div 
-                key={match.id}
-                className="match-card match-card--completed"
-                onClick={() => window.location.href = `/matches/${match.id}`}
-              >
-                <div className="match-card-header">
-                  <div className="competition-info">
-                    <span className="competition-name">
-                      {/^\d+$/.test(normalizedMatch.competitionId) ? 'Bilinmeyen lig' : normalizedMatch.competitionId}
-                    </span>
-                    {match.round && <span className="round-info">{match.round}. Hafta</span>}
-                  </div>
-                  <div className="match-time">{matchTime}</div>
-                </div>
-                
-                <div className="match-teams">
-                  <div className="team home-team">
-                    <span className="team-name">{normalizedMatch.homeTeam.name}</span>
-                    {match.home_score !== undefined && (
-                      <span className="team-score">{match.home_score}</span>
-                    )}
+              <div key={match.id} className="match-card-container">
+                <div 
+                  className="match-card match-card--completed"
+                  onClick={() => window.location.href = `/matches/${match.id}`}
+                >
+                  <div className="match-card-header">
+                    <div className="competition-info">
+                      <span className="competition-name">
+                        {/^\d+$/.test(normalizedMatch.competitionId) ? 'Bilinmeyen lig' : normalizedMatch.competitionId}
+                      </span>
+                      {match.round && <span className="round-info">{match.round}. Hafta</span>}
+                    </div>
+                    <div className="match-time">{matchTime}</div>
                   </div>
                   
-                  <div className="match-vs">
-                    <span className="vs-text">
-                      {match.home_score !== undefined && match.away_score !== undefined
-                        ? `${match.home_score} - ${match.away_score}`
-                        : 'vs'
-                      }
-                    </span>
-                    <span className="match-status">Tamamlandı</span>
-                  </div>
-                  
-                  <div className="team away-team">
-                    <span className="team-name">{normalizedMatch.awayTeam.name}</span>
-                    {match.away_score !== undefined && (
-                      <span className="team-score">{match.away_score}</span>
-                    )}
+                  <div className="match-teams">
+                    <div className="team home-team">
+                      <div className="team-logo-container">
+                        <img 
+                          src={`/team-logos/${normalizedMatch.homeTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
+                          alt={normalizedMatch.homeTeam.name || 'Home team'}
+                          className="team-logo"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling as HTMLDivElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                        <div className="team-logo-fallback" style={{ display: 'none' }}>
+                          {normalizedMatch.homeTeam.name ? normalizedMatch.homeTeam.name.charAt(0).toUpperCase() : 'H'}
+                        </div>
+                      </div>
+                      <span className="team-name">{normalizedMatch.homeTeam.name}</span>
+                      {match.home_score !== undefined && (
+                        <span className="team-score">{match.home_score}</span>
+                      )}
+                    </div>
+                    
+                    <div className="match-vs">
+                      <span className="vs-text">
+                        {match.home_score !== undefined && match.away_score !== undefined
+                          ? `${match.home_score} - ${match.away_score}`
+                          : 'vs'
+                        }
+                      </span>
+                      <span className="match-status">Tamamlandı</span>
+                    </div>
+                    
+                    <div className="team away-team">
+                      <div className="team-logo-container">
+                        <img 
+                          src={`/team-logos/${normalizedMatch.awayTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
+                          alt={normalizedMatch.awayTeam.name || 'Away team'}
+                          className="team-logo"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling as HTMLDivElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                        <div className="team-logo-fallback" style={{ display: 'none' }}>
+                          {normalizedMatch.awayTeam.name ? normalizedMatch.awayTeam.name.charAt(0).toUpperCase() : 'A'}
+                        </div>
+                      </div>
+                      <span className="team-name">{normalizedMatch.awayTeam.name}</span>
+                      {match.away_score !== undefined && (
+                        <span className="team-score">{match.away_score}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {/* Favorite Button */}
+                <FavoriteButton
+                  match={match}
+                  className="match-card-favorite"
+                  style={{
+                    position: 'absolute',
+                    top: '0.75rem',
+                    right: '0.75rem',
+                    zIndex: 10,
+                  }}
+                />
               </div>
             );
           })}

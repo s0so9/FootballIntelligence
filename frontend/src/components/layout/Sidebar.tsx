@@ -45,6 +45,12 @@ const UpcomingIcon = () => (
 
 
 
+const FavoritesIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 2L12.5 7L18 8L14 12L15 18L10 15L5 18L6 12L2 8L7.5 7L10 2Z" fill="currentColor" stroke="currentColor" strokeWidth="1"/>
+  </svg>
+);
+
 const CompletedIcon = () => (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M16 6L8 14L4 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -77,6 +83,7 @@ const navigationItems: NavItem[] = [
   { path: '/upcoming', label: 'Yaklaşan Maçlar', icon: <UpcomingIcon />, isPrimary: true },
   { path: '/live', label: 'Canlı Maçlar', icon: <LiveIcon />, isPrimary: true },
   { path: '/completed', label: 'Tamamlanan Maçlar', icon: <CompletedIcon />, isPrimary: true },
+  { path: '/favorites', label: 'Favori Maçlar', icon: <FavoritesIcon />, isPrimary: true },
   { path: '/easy-matches', label: 'Easy Match', icon: <EasyMatchIcon />, isPrimary: true },
   { path: '/analytics', label: 'Analiz', icon: <AnalyticsIcon />, isPrimary: true },
   { path: '/settings', label: 'Ayarlar', icon: <SettingsIcon />, isPrimary: false },
