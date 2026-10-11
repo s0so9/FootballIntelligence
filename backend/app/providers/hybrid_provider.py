@@ -120,52 +120,76 @@ class HybridProvider(FootballDataProvider):
     
     def get_match(self, match_id: str) -> Optional[Match]:
         """Get match, trying external providers first, then database.
-        
+
+        Returns None (never raises) if no source can resolve the match ID.
+
         Args:
             match_id: Match ID (could be external provider ID or canonical UUID)
-            
+
         Returns:
             Match domain object or None if not found
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # First try external providers
         try:
             match = self.external_provider.get_match(match_id)
             if match is not None:
-                # Update status before returning - this fixes cached SCHEDULED matches  
+                # Update status before returning - this fixes cached SCHEDULED matches
                 updated_match = self._update_single_match_status(match)
                 return updated_match
-        except Exception:
-            # External provider failed, continue to database fallback
-            pass
-        
-        # If external providers fail or return None, try database
-        # This handles canonical UUIDs that external providers don't know about
-        db_match = self.db_provider.get_match(match_id)
-        if db_match is not None:
-            return self._update_single_match_status(db_match)
-        return None
+        except Exception as exc:
+            logger.debug(f"HybridProvider.get_match: external provider failed for {match_id}: {exc}")
+
+        # If external providers fail or return None, try database.
+        # This handles canonical UUIDs that external providers don't know about.
+        try:
+            db_match = self.db_provider.get_match(match_id)
+            if db_match is not None:
+                return self._update_single_match_status(db_match)
+            return None
+        except Exception as exc:
+            logger.warning(f"HybridProvider.get_match: DB fallback failed for {match_id}: {exc} – returning None")
+            return None
     
     def get_team(self, team_id: str) -> Optional[Team]:
         """Get team, trying external providers first, then database.
-        
+
+        Returns None (never raises) if no source can resolve the team ID.
+        On Vercel's ephemeral SQLite environment the 'teams' table may not
+        exist; that OperationalError is caught here so callers receive None
+        instead of an unhandled 500.
+
         Args:
             team_id: Team ID (could be external provider ID or canonical UUID)
-            
+
         Returns:
             Team domain object or None if not found
         """
-        # First try external providers
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # 1. Try external providers
         try:
             team = self.external_provider.get_team(team_id)
             if team is not None:
                 return team
-        except Exception:
-            # External provider failed, continue to database fallback
-            pass
-        
-        # If external providers fail or return None, try database
-        # This handles canonical UUIDs that external providers don't know about
-        return self.db_provider.get_team(team_id)
+        except Exception as exc:
+            logger.debug(
+                f"HybridProvider.get_team: external provider failed for "
+                f"team_id={team_id}: {exc}"
+            )
+
+        # 2. Try database (may fail if teams table does not exist)
+        try:
+            return self.db_provider.get_team(team_id)
+        except Exception as exc:
+            logger.warning(
+                f"HybridProvider.get_team: database fallback failed for "
+                f"team_id={team_id}: {exc} – returning None"
+            )
+            return None
     
     async def get_matches_async(
         self,

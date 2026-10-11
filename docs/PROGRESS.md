@@ -1,5 +1,56 @@
 # FOOTBALL INTELLIGENCE PROGRESS LOG
 
+## BUG FIX — PREDICTION "FAILED TO FETCH" (HTTP 500 ON MATCH DETAIL) — October 11, 2026
+
+**Root cause:** `GET /api/v1/matches/{id}` returned HTTP 500 for all FotMob match IDs.
+In `HybridProvider.get_team()`, the database fallback (`DatabaseBackedProvider.get_team()`)
+raised `sqlalchemy.exc.OperationalError: no such table: teams` — Vercel's ephemeral SQLite
+environment has no pre-populated `teams` table. This uncaught exception propagated to FastAPI
+producing a 500 response. The frontend showed "Failed to fetch" because it received a 500
+from the match detail endpoint before the prediction was even requested.
+
+**Fix:**
+- `HybridProvider.get_team()`: Wrap DB fallback in try/except; log at WARNING; return None.
+  Also fixed `HybridProvider.get_match()` DB fallback the same way.
+- `get_match()` endpoint: Use `_provider_home/away_team_name` attributes from the match
+  object as fallback when `get_team()` returns None (same pattern as `list_matches`).
+  Also added `competition_name` from `_provider_competition_name`. Removed DEBUG log spam.
+
+**Verified:** 36/36 backend tests pass. Frontend production build succeeds. Local test
+confirms MatchDetailResponse is built without crashing when teams table is missing.
+
+**Files changed:**
+- `backend/app/providers/hybrid_provider.py`
+- `backend/app/api/v1/endpoints/matches.py`
+
+---
+
+## BUG FIX — COMPETITIONS ENDPOINT RETURNING EMPTY LIST — October 11, 2026
+
+**Root cause:** `GET /api/v1/competitions` returned `[]` because:
+1. `ProviderManagerAdapter.get_competitions()` raises `NotImplementedError` (silently swallowed)
+2. `DatabaseBackedProvider.get_competitions()` raises `OperationalError: no such table: competitions`
+   (Vercel ephemeral SQLite has no competitions table, also silently swallowed)
+
+**Fix:**
+- `HybridProvider.get_competitions()`: Log root cause explicitly (NOT silently catch all).
+- `HybridProvider.get_competitions_from_matches_async()`: New async method that fetches
+  upcoming matches (today+30d) from FotMob and extracts unique (competition_id, competition_name)
+  pairs from the live match feed — the same IDs used by `/api/v1/matches`.
+- `competitions.py` endpoint: Falls back to `get_competitions_from_matches_async()` when
+  primary path returns empty. All exceptions logged.
+
+**Verified:** Returns 23 popular competitions live including Premier League (47),
+Bundesliga (54), LaLiga (87), Ligue 1 (53), Serie A (55). 36/36 tests pass.
+
+**Files changed:**
+- `backend/app/providers/hybrid_provider.py`
+- `backend/app/api/v1/endpoints/competitions.py`
+
+---
+
+
+
 ## PHASE 10.3 — CALIBRATION + MODEL OPTIMIZATION (COMPLETE)
 
 **Completed:** October 8, 2026

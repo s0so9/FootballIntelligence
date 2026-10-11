@@ -359,44 +359,70 @@ async def get_match(
     """
     import logging
     logger = logging.getLogger(__name__)
-    logger.warning(f"[DEBUG_TEST] get_match called with match_id: {match_id} - This should be visible!")
-    print(f"[CONSOLE_DEBUG] get_match called with match_id: {match_id}")  # Console output
-    
+    logger.info(f"get_match called with match_id: {match_id}")
+
     # Get match from provider
     match = provider.get_match(match_id)
-    
-    logger.warning(f"[DEBUG_TEST] provider.get_match returned: {match}")
-    print(f"[CONSOLE_DEBUG] provider.get_match returned: {match}")
-    
+
     # Return 404 if match doesn't exist
     if match is None:
-        logger.warning(f"[DEBUG_TEST] Returning 404 for match_id: {match_id}")
-        print(f"[CONSOLE_DEBUG] Returning 404 for match_id: {match_id}")
+        logger.info(f"Match not found: {match_id}")
         raise HTTPException(
             status_code=404,
             detail=f"Match with ID '{match_id}' not found"
         )
-    
-    # Get team information
+
+    # Get team information.
+    # get_team() returns None when no source can resolve the ID (e.g. the
+    # teams table does not exist in the Vercel ephemeral SQLite environment).
+    # Fall back to the _provider_*_team_name attributes attached by
+    # ProviderManagerAdapter._map_provider_match_to_domain(), mirroring the
+    # list_matches endpoint.
+    from app.domain.entities import Team as DomainTeam
+
     home_team = provider.get_team(match.home_team_id)
+    if home_team is None and hasattr(match, "_provider_home_team_name") and match._provider_home_team_name:
+        ht_name = match._provider_home_team_name
+        home_team = DomainTeam(
+            id=match.home_team_id,
+            name=ht_name,
+            short_name=ht_name[:3].upper(),
+            code=ht_name[:3].upper(),
+            logo_url=None,
+        )
+
     away_team = provider.get_team(match.away_team_id)
-    
+    if away_team is None and hasattr(match, "_provider_away_team_name") and match._provider_away_team_name:
+        at_name = match._provider_away_team_name
+        away_team = DomainTeam(
+            id=match.away_team_id,
+            name=at_name,
+            short_name=at_name[:3].upper(),
+            code=at_name[:3].upper(),
+            logo_url=None,
+        )
+
+    # Competition name from provider attribute
+    competition_name = getattr(match, "_provider_competition_name", None)
+
     # Initialize statistics as None
     home_statistics = None
     away_statistics = None
     home_statistics_ht = None
     away_statistics_ht = None
-    
+
     # Get statistics for finished matches
     if match.status == MatchStatus.FINISHED:
-        # Get full-match statistics
-        team_stats = provider.get_team_match_statistics(match.id)
-        for stat in team_stats:
-            if stat.team_id == match.home_team_id:
-                home_statistics = _map_statistic_to_response(stat)
-            elif stat.team_id == match.away_team_id:
-                away_statistics = _map_statistic_to_response(stat)
-        
+        try:
+            team_stats = provider.get_team_match_statistics(match.id)
+            for stat in team_stats:
+                if stat.team_id == match.home_team_id:
+                    home_statistics = _map_statistic_to_response(stat)
+                elif stat.team_id == match.away_team_id:
+                    away_statistics = _map_statistic_to_response(stat)
+        except Exception as exc:
+            logger.warning(f"get_match: get_team_match_statistics failed for {match_id}: {exc}")
+
         # Get first-half statistics (if provider supports it)
         try:
             ht_stats = provider.get_team_match_statistics_firsthalf(match.id)
@@ -405,14 +431,14 @@ async def get_match(
                     home_statistics_ht = _map_statistic_to_response(stat)
                 elif stat.team_id == match.away_team_id:
                     away_statistics_ht = _map_statistic_to_response(stat)
-        except NotImplementedError:
-            # Provider doesn't support first-half statistics
+        except (NotImplementedError, Exception):
             pass
-    
+
     # Convert domain model to API response schema with enriched data
     match_response = MatchResponse(
         id=match.id,
         competition_id=match.competition_id,
+        competition_name=competition_name,
         season_id=match.season_id,
         home_team_id=match.home_team_id,
         away_team_id=match.away_team_id,
@@ -437,12 +463,13 @@ async def get_match(
         updated_at=match.updated_at,
         provider_fetched_at=match.provider_fetched_at,
     )
-    
+
     # Build response with development data flag
     return MatchDetailResponse(
         match=match_response,
         is_development_data=provider.is_development_data(),
     )
+
 
 
 @router.get(
