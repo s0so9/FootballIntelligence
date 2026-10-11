@@ -9,7 +9,7 @@ from app.config import settings
 # Create database engine
 engine = create_engine(
     settings.database_url,
-    echo=settings.api_debug,  # Log SQL in debug mode
+    echo=False,  # Disable SQL logging in production for performance
     pool_pre_ping=True,  # Verify connections before using
     future=True,  # Use SQLAlchemy 2.0 style
 )
