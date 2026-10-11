@@ -109,6 +109,9 @@ class HybridProvider(FootballDataProvider):
     ) -> List[Match]:
         """Async version of get_matches for API endpoints.
         
+        PERFORMANCE OPTIMIZATION: Passes status filter to providers when safe to do so,
+        reducing data transfer and processing overhead.
+        
         Uses hybrid approach: merge external provider matches with database matches
         to ensure complete coverage of all matches.
         
@@ -126,20 +129,31 @@ class HybridProvider(FootballDataProvider):
         import logging
         logger = logging.getLogger(__name__)
         
-        # Store the requested status filter for later application
+        # PERFORMANCE: Determine if we can safely pass status filter to providers
+        # We can pass status filter directly when:
+        # 1. Status is provided
+        # 2. We don't need status updates (statuses are trusted from provider/DB)
+        # OR we're only querying database (which has canonical statuses)
+        
+        # For now, we need to update statuses after fetch, so we DON'T pass status
+        # to external providers (they may have stale data). But we CAN pass it to database.
+        
         requested_status = status
+        provider_status_filter = None  # Don't filter at provider level yet
+        db_status_filter = status  # Database has canonical statuses, filter there
+        
         all_matches = []
         
-        # Try external providers first
+        # Try external providers first (without status filter - may have stale statuses)
         try:
-            logger.debug(f"HybridProvider.get_matches_async: Trying external providers")
+            logger.debug(f"HybridProvider.get_matches_async: Trying external providers (no status filter)")
             external_matches = await self.external_provider.get_matches_async(
                 competition_id=competition_id,
                 season_id=season_id,
                 team_id=team_id,
                 from_date=from_date,
                 to_date=to_date,
-                status=None,  # CRITICAL: Don't filter by status yet - do it after update
+                status=provider_status_filter,
             )
             if external_matches:
                 logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
@@ -147,16 +161,16 @@ class HybridProvider(FootballDataProvider):
         except Exception as e:
             logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
         
-        # Always get database matches as well (for complete coverage)
+        # Always get database matches (with status filter for efficiency)
         try:
-            logger.debug(f"HybridProvider.get_matches_async: Getting database matches")
+            logger.debug(f"HybridProvider.get_matches_async: Getting database matches (status={db_status_filter})")
             db_matches = self.db_provider.get_matches(
                 competition_id=competition_id,
                 season_id=season_id,
                 team_id=team_id,
                 from_date=from_date,
                 to_date=to_date,
-                status=None,  # Don't filter by status yet
+                status=db_status_filter,  # OPTIMIZATION: Filter at DB level
             )
             
             if db_matches:
@@ -176,11 +190,11 @@ class HybridProvider(FootballDataProvider):
             logger.debug(f"HybridProvider.get_matches_async: No matches found from any source")
             return []
         
-        # Update statuses for all matches
+        # Update statuses for matches from external providers (database statuses are already canonical)
         updated_matches = self._update_match_statuses(all_matches)
         logger.debug(f"HybridProvider.get_matches_async: Status updates applied to {len(updated_matches)} matches")
         
-        # Now apply status filter after updates
+        # Apply status filter after updates (for external provider matches)
         if requested_status:
             from app.domain.enums import MatchStatus
             try:
@@ -205,6 +219,9 @@ class HybridProvider(FootballDataProvider):
     ) -> List[Match]:
         """Get matches, trying external providers first, then database.
         
+        PERFORMANCE OPTIMIZATION: Passes status filter to database queries when possible,
+        reducing data transfer and processing overhead.
+        
         Args:
             competition_id: Filter by competition
             season_id: Filter by season  
@@ -219,19 +236,20 @@ class HybridProvider(FootballDataProvider):
         import logging
         logger = logging.getLogger(__name__)
         
-        # Store the requested status filter for later application
         requested_status = status
+        provider_status_filter = None  # External providers may have stale statuses
+        db_status_filter = status  # Database has canonical statuses
         
-        # First try external providers
+        # First try external providers (without status filter)
         try:
-            logger.debug(f"HybridProvider.get_matches: Trying external providers")
+            logger.debug(f"HybridProvider.get_matches: Trying external providers (no status filter)")
             matches = self.external_provider.get_matches(
                 competition_id=competition_id,
                 season_id=season_id,
                 team_id=team_id,
                 from_date=from_date,
                 to_date=to_date,
-                status=None,  # Don't filter by status yet - do it after update
+                status=provider_status_filter,
             )
             if matches:
                 logger.debug(f"HybridProvider.get_matches: External providers returned {len(matches)} matches")
@@ -239,7 +257,7 @@ class HybridProvider(FootballDataProvider):
                 updated_matches = self._update_match_statuses(matches)
                 logger.debug(f"HybridProvider.get_matches: Status updates applied")
                 
-                # Now apply status filter after updates
+                # Apply status filter after updates
                 if requested_status:
                     from app.domain.enums import MatchStatus
                     try:
@@ -257,25 +275,24 @@ class HybridProvider(FootballDataProvider):
             # External provider failed, continue to database fallback
             pass
         
-        # If external providers fail or return empty, try database
-        logger.debug(f"HybridProvider.get_matches: Using database fallback")
-        # Get matches without status filter first, then update, then filter
+        # If external providers fail or return empty, try database (with status filter)
+        logger.debug(f"HybridProvider.get_matches: Using database fallback (status={db_status_filter})")
         db_matches = self.db_provider.get_matches(
             competition_id=competition_id,
             season_id=season_id,
             team_id=team_id,
             from_date=from_date,
             to_date=to_date,
-            status=None,  # Don't filter by status yet
+            status=db_status_filter,  # OPTIMIZATION: Filter at DB level
         )
         
         logger.debug(f"HybridProvider.get_matches: Database returned {len(db_matches)} matches")
         
-        # Update statuses first
+        # Update statuses (minimal work if from database)
         updated_matches = self._update_match_statuses(db_matches)
         logger.debug(f"HybridProvider.get_matches: Status updates applied to database matches")
         
-        # Now apply status filter after updates
+        # Apply status filter after updates (defensive, database should already be filtered)
         if requested_status:
             from app.domain.enums import MatchStatus
             try:
