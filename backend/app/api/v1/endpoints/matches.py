@@ -206,9 +206,14 @@ async def list_matches(
     # Convert domain models to API response schemas
     match_responses = []
     
-    # OPTIMIZATION: Batch load all teams to avoid N+1 queries
+    # CRITICAL FIX: Apply pagination BEFORE batch loading teams
+    # This prevents loading teams for 44k+ matches when only 20 are displayed
+    total_count = len(matches)
+    paginated_matches = matches[offset:offset + limit] if offset is not None and limit is not None else matches
+    
+    # OPTIMIZATION: Batch load teams only for VISIBLE matches (after pagination)
     team_ids = set()
-    for match in matches:
+    for match in paginated_matches:
         if match.home_team_id:
             team_ids.add(match.home_team_id)
         if match.away_team_id:
@@ -241,7 +246,7 @@ async def list_matches(
             # If team lookup fails, continue without team info
             pass
     
-    for match in matches:
+    for match in paginated_matches:
         try:
             # Get team info from cache
             home_team = teams_cache.get(match.home_team_id) if match.home_team_id else None
@@ -309,14 +314,10 @@ async def list_matches(
             # Skip this match and continue
             continue
     
-    # Apply pagination
-    total_count = len(match_responses)
-    paginated_matches = match_responses[offset:offset + limit] if offset is not None and limit is not None else match_responses
-    
     # Build response with development data flag
     return MatchListResponse(
-        matches=paginated_matches,
-        count=total_count,  # Return total count, not paginated count
+        matches=match_responses,
+        count=total_count,  # Total count from BEFORE pagination
         is_development_data=provider.is_development_data(),
     )
 
