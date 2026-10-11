@@ -23,10 +23,11 @@
   justify-content: center;
   padding: var(--spacing-16);
   text-align: center;
-  background: rgba(26, 26, 36, 0.7);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(13, 20, 36, 0.95);
+  border: 1px solid rgba(14, 165, 233, 0.3);
   border-radius: var(--radius-lg);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 }
 
 .empty-state-icon {

@@ -5,12 +5,12 @@
  */
 
 export type MatchStatus = 
-  | 'scheduled' 
-  | 'live' 
-  | 'finished' 
-  | 'postponed' 
-  | 'cancelled' 
-  | 'abandoned';
+  | 'SCHEDULED' 
+  | 'LIVE' 
+  | 'FINISHED' 
+  | 'POSTPONED' 
+  | 'CANCELLED' 
+  | 'SUSPENDED';
 
 export type MatchOutcome = 'home_win' | 'draw' | 'away_win';
 

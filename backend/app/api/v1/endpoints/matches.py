@@ -266,6 +266,7 @@ async def list_matches(
             round=match.round,  # Domain model uses 'round', schema also uses 'round'
             created_at=match.created_at,
             updated_at=match.updated_at,
+            provider_fetched_at=match.provider_fetched_at,
         )
         match_responses.append(match_response)
     
@@ -395,6 +396,7 @@ async def get_match(
         round=match.round,
         created_at=match.created_at,
         updated_at=match.updated_at,
+        provider_fetched_at=match.provider_fetched_at,
     )
     
     # Build response with development data flag

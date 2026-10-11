@@ -63,12 +63,12 @@ export function formatCompetitionName(competitionId: string): string {
  */
 export function formatMatchStatus(status: MatchStatus): string {
   const statusMap: Record<MatchStatus, string> = {
-    scheduled: 'Planlandı',
-    live: 'Canlı',
-    finished: 'Bitti',
-    postponed: 'Ertelendi',
-    cancelled: 'İptal',
-    abandoned: 'Yarıda Bırakıldı',
+    SCHEDULED: 'Planlandı',
+    LIVE: 'Canlı',
+    FINISHED: 'Bitti',
+    POSTPONED: 'Ertelendi',
+    CANCELLED: 'İptal',
+    SUSPENDED: 'Askıya Alındı',
   };
 
   return statusMap[status] || status;

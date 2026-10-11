@@ -181,7 +181,7 @@ export function Dashboard() {
       const candidateMatches = allMatches
         .filter(match => {
           // Must be scheduled
-          if (match.status !== 'scheduled') return false;
+          if (match.status !== 'SCHEDULED') return false;
           
           // Must be in priority competitions
           if (!match.competition_id || !priorityCompetitions.has(match.competition_id)) return false;
@@ -349,6 +349,10 @@ export function Dashboard() {
                     key={match.id}
                     homeTeam={normalizedMatch.homeTeam.name}
                     awayTeam={normalizedMatch.awayTeam.name}
+                    homeTeamLogoUrl={normalizedMatch.homeTeam.logoUrl || undefined}
+                    awayTeamLogoUrl={normalizedMatch.awayTeam.logoUrl || undefined}
+                    homeTeamCode={normalizedMatch.homeTeam.code || undefined}
+                    awayTeamCode={normalizedMatch.awayTeam.code || undefined}
                     marketName={marketName}
                     outcome={outcome}
                     confidence={pick.confidence ?? 0}

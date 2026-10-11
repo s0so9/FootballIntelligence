@@ -27,7 +27,7 @@ describe('matchNormalizer', () => {
         home_team: homeTeam,
         away_team: awayTeam,
         scheduled_at: '2026-10-10T15:00:00Z',
-        status: 'scheduled',
+        status: 'SCHEDULED',
         home_score: null,
         away_score: null,
         home_score_ht: null,

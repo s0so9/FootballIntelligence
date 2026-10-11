@@ -520,3 +520,101 @@ class TrackRecordDB(BaseModel, Base):
         Index("ix_track_record_league", "league_id", "prediction_timestamp"),
         Index("ix_track_record_model", "model_id", "prediction_timestamp"),
     )
+
+
+class BookmakerOdds(BaseModel, Base):
+    """Bookmaker odds data from The Odds API.
+    
+    Stores odds from multiple bookmakers for specific matches and markets.
+    Used to calculate average market odds.
+    """
+    
+    __tablename__ = "bookmaker_odds"
+    
+    # External event identification
+    provider_event_id = Column(String(100), nullable=False, index=True)  # The Odds API event ID
+    sport_key = Column(String(50), nullable=False, index=True)  # e.g., 'soccer_epl'
+    
+    # Match identification
+    match_id = Column(String(36), ForeignKey("matches.id"), nullable=True, index=True)  # TUTAR X match ID (if mapped)
+    home_team_name = Column(String(200), nullable=False)  # From The Odds API
+    away_team_name = Column(String(200), nullable=False)  # From The Odds API
+    commence_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    
+    # Market and outcome
+    market_key = Column(String(50), nullable=False, index=True)  # 'h2h', 'totals', 'spreads'
+    market_point = Column(Float, nullable=True)  # For totals/spreads: 2.5, 3.5, etc.
+    outcome_name = Column(String(100), nullable=False)  # 'Home', 'Draw', 'Away', 'Over', 'Under'
+    
+    # Bookmaker and odds
+    bookmaker_key = Column(String(50), nullable=False, index=True)  # e.g., 'bet365'
+    bookmaker_title = Column(String(100), nullable=False)  # e.g., 'Bet365'
+    odds = Column(Float, nullable=False)  # Decimal odds
+    
+    # Timestamps
+    odds_last_update = Column(DateTime(timezone=True), nullable=False)  # When bookmaker updated odds
+    fetched_at = Column(DateTime(timezone=True), nullable=False)  # When we fetched from API
+    
+    # Relationships
+    match = relationship("Match", backref="bookmaker_odds")
+    
+    # Unique constraint: one odds record per (event, market, outcome, bookmaker)
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_event_id",
+            "market_key",
+            "market_point",
+            "outcome_name",
+            "bookmaker_key",
+            name="uq_bookmaker_odds"
+        ),
+        Index("ix_bookmaker_odds_match_market", "match_id", "market_key"),
+        Index("ix_bookmaker_odds_commence", "commence_time"),
+    )
+
+
+class AverageMarketOdds(BaseModel, Base):
+    """Calculated average market odds from multiple bookmakers.
+    
+    Stores pre-calculated averages to avoid real-time API calls from frontend.
+    Updated by scheduled job.
+    """
+    
+    __tablename__ = "average_market_odds"
+    
+    # Event identification
+    provider_event_id = Column(String(100), nullable=False, index=True)
+    match_id = Column(String(36), ForeignKey("matches.id"), nullable=True, index=True)
+    
+    # Market and outcome
+    market_key = Column(String(50), nullable=False, index=True)
+    market_point = Column(Float, nullable=True)
+    outcome_name = Column(String(100), nullable=False)
+    
+    # Average odds calculation
+    average_odds = Column(Float, nullable=False)  # Arithmetic mean
+    bookmaker_count = Column(Integer, nullable=False)  # Number of bookmakers in average
+    min_odds = Column(Float, nullable=False)  # Minimum odds from bookmakers
+    max_odds = Column(Float, nullable=False)  # Maximum odds from bookmakers
+    
+    # Metadata
+    bookmakers = Column(JSON, nullable=False)  # List of bookmaker keys used
+    individual_odds = Column(JSON, nullable=False)  # List of individual odds values
+    
+    # Timestamps
+    calculated_at = Column(DateTime(timezone=True), nullable=False)  # When average was calculated
+    
+    # Relationships
+    match = relationship("Match", backref="average_odds")
+    
+    # Unique constraint: one average per (event, market, outcome)
+    __table_args__ = (
+        UniqueConstraint(
+            "provider_event_id",
+            "market_key",
+            "market_point",
+            "outcome_name",
+            name="uq_average_market_odds"
+        ),
+        Index("ix_average_odds_match_market", "match_id", "market_key"),
+    )

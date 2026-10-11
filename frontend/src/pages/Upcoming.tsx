@@ -43,7 +43,7 @@ export function Upcoming() {
         const matchesResponse = await getMatches({
           from_date: fromDate,
           to_date: toDate,
-          status: 'scheduled',
+          status: 'SCHEDULED',
           limit: 300, // Limit for better performance
         });
         
@@ -56,7 +56,7 @@ export function Upcoming() {
         const now = new Date();
         const upcomingMatches = normalizedMatches.filter(match => {
           // Must be scheduled status
-          if (match.status !== 'scheduled') return false;
+          if (match.status !== 'SCHEDULED') return false;
           
           // Must be in the future (Istanbul timezone consideration)
           const matchTime = new Date(match.scheduledAt);
@@ -214,23 +214,21 @@ export function Upcoming() {
 
                               <div className="match-card__teams">
                                 <div className="team team--home">
-                                  <div className="team-logo-container">
+                                  <span className="team-name">{match.homeTeam.name}</span>
+                                  {match.homeTeam.logoUrl ? (
                                     <img 
-                                      src={`/team-logos/${match.homeTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
-                                      alt={match.homeTeam.name || 'Home team'}
+                                      src={match.homeTeam.logoUrl} 
+                                      alt={match.homeTeam.name}
                                       className="team-logo"
                                       onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                        const fallback = target.nextElementSibling as HTMLDivElement;
-                                        if (fallback) fallback.style.display = 'flex';
+                                        e.currentTarget.style.display = 'none';
                                       }}
                                     />
-                                    <div className="team-logo-fallback" style={{ display: 'none' }}>
-                                      {match.homeTeam.name ? match.homeTeam.name.charAt(0).toUpperCase() : 'H'}
+                                  ) : (
+                                    <div className="team-logo-placeholder">
+                                      {match.homeTeam.code || match.homeTeam.name.substring(0, 3).toUpperCase()}
                                     </div>
-                                  </div>
-                                  <span className="team-name">{match.homeTeam.name}</span>
+                                  )}
                                 </div>
 
                                 <div className="match-vs">
@@ -238,22 +236,20 @@ export function Upcoming() {
                                 </div>
 
                                 <div className="team team--away">
-                                  <div className="team-logo-container">
+                                  {match.awayTeam.logoUrl ? (
                                     <img 
-                                      src={`/team-logos/${match.awayTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
-                                      alt={match.awayTeam.name || 'Away team'}
+                                      src={match.awayTeam.logoUrl} 
+                                      alt={match.awayTeam.name}
                                       className="team-logo"
                                       onError={(e) => {
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                        const fallback = target.nextElementSibling as HTMLDivElement;
-                                        if (fallback) fallback.style.display = 'flex';
+                                        e.currentTarget.style.display = 'none';
                                       }}
                                     />
-                                    <div className="team-logo-fallback" style={{ display: 'none' }}>
-                                      {match.awayTeam.name ? match.awayTeam.name.charAt(0).toUpperCase() : 'A'}
+                                  ) : (
+                                    <div className="team-logo-placeholder">
+                                      {match.awayTeam.code || match.awayTeam.name.substring(0, 3).toUpperCase()}
                                     </div>
-                                  </div>
+                                  )}
                                   <span className="team-name">{match.awayTeam.name}</span>
                                 </div>
                               </div>

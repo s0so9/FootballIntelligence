@@ -78,7 +78,7 @@ export function PopularLeagues() {
         const response = await getMatches({
           from_date: fromDate,
           to_date: toDate,
-          status: 'scheduled',
+          status: 'SCHEDULED',
         });
         
         // Abort check: if component unmounted or competition changed, ignore this response
@@ -250,15 +250,29 @@ export function PopularLeagues() {
                   <div className="match-card__teams">
                     <div className="team team--home">
                       <span className="team-name">{match.homeTeam.name}</span>
+                      {match.homeTeam.logoUrl ? (
+                        <img 
+                          src={match.homeTeam.logoUrl} 
+                          alt={match.homeTeam.name}
+                          className="team-logo"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="team-logo-placeholder">
+                          {match.homeTeam.code || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                        </div>
+                      )}
                     </div>
 
                     <div className="match-vs">
                       {/* CRITICAL: Scheduled matches must NEVER show scores */}
-                      {match.status === 'finished' && match.homeScore !== null && match.awayScore !== null ? (
+                      {match.status === 'FINISHED' && match.homeScore !== null && match.awayScore !== null ? (
                         <div className="match-score">
                           {match.homeScore} - {match.awayScore}
                         </div>
-                      ) : match.status === 'live' && match.homeScore !== null && match.awayScore !== null ? (
+                      ) : match.status === 'LIVE' && match.homeScore !== null && match.awayScore !== null ? (
                         <div className="match-score">
                           {match.homeScore} - {match.awayScore}
                         </div>
@@ -268,11 +282,25 @@ export function PopularLeagues() {
                     </div>
 
                     <div className="team team--away">
+                      {match.awayTeam.logoUrl ? (
+                        <img 
+                          src={match.awayTeam.logoUrl} 
+                          alt={match.awayTeam.name}
+                          className="team-logo"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="team-logo-placeholder">
+                          {match.awayTeam.code || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                        </div>
+                      )}
                       <span className="team-name">{match.awayTeam.name}</span>
                     </div>
                   </div>
 
-                  {match.status === 'scheduled' && (
+                  {match.status === 'SCHEDULED' && (
                     <div className="match-card__indicator">
                       <span className="prediction-indicator">
                         📊 Tahmin Mevcut

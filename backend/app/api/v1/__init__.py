@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import matches, live_matches, competitions
+from app.routers import odds
 
 # Create API v1 router
 api_router = APIRouter(prefix="/api/v1")
@@ -13,5 +14,6 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(competitions.router)
 api_router.include_router(live_matches.router)
 api_router.include_router(matches.router)
+api_router.include_router(odds.router)
 
 __all__ = ["api_router"]

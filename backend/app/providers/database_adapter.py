@@ -140,6 +140,7 @@ class DatabaseBackedProvider(FootballDataProvider):
             round=match_db.round,
             created_at=match_db.created_at,
             updated_at=match_db.updated_at,
+            provider_fetched_at=match_db.provider_fetched_at,
         )
     
     def get_team(self, team_id: str) -> Optional[Team]:
@@ -259,6 +260,7 @@ class DatabaseBackedProvider(FootballDataProvider):
                 round=match_db.round,
                 created_at=match_db.created_at,
                 updated_at=match_db.updated_at,
+                provider_fetched_at=match_db.provider_fetched_at,
             )
             matches.append(match)
         

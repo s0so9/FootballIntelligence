@@ -29,7 +29,7 @@ export function Completed() {
         };
 
         const response = await getMatches({
-          status: 'finished',
+          status: 'FINISHED',
           from_date: formatDateForAPI(pastDate),
           to_date: formatDateForAPI(today),
         });
@@ -37,10 +37,10 @@ export function Completed() {
         // Filter for completed matches with strict status checking
         const completedMatches = response.matches.filter(match => {
           // Primary completed status
-          if (match.status === 'finished') return true;
+          if (match.status === 'FINISHED') return true;
           
-          // Exclude postponed, cancelled, abandoned - these are not "completed"
-          if (match.status === 'postponed' || match.status === 'cancelled' || match.status === 'abandoned') {
+          // Exclude postponed, cancelled, suspended - these are not "completed"
+          if (match.status === 'POSTPONED' || match.status === 'CANCELLED' || match.status === 'SUSPENDED') {
             return false;
           }
           
@@ -142,20 +142,20 @@ export function Completed() {
                   <div className="match-teams">
                     <div className="team home-team">
                       <div className="team-logo-container">
-                        <img 
-                          src={`/team-logos/${normalizedMatch.homeTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
-                          alt={normalizedMatch.homeTeam.name || 'Home team'}
-                          className="team-logo"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const fallback = target.nextElementSibling as HTMLDivElement;
-                            if (fallback) fallback.style.display = 'flex';
-                          }}
-                        />
-                        <div className="team-logo-fallback" style={{ display: 'none' }}>
-                          {normalizedMatch.homeTeam.name ? normalizedMatch.homeTeam.name.charAt(0).toUpperCase() : 'H'}
-                        </div>
+                        {normalizedMatch.homeTeam.logoUrl ? (
+                          <img 
+                            src={normalizedMatch.homeTeam.logoUrl}
+                            alt={normalizedMatch.homeTeam.name || 'Home team'}
+                            className="team-logo"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="team-logo-placeholder">
+                            {normalizedMatch.homeTeam.code || normalizedMatch.homeTeam.name.substring(0, 3).toUpperCase()}
+                          </div>
+                        )}
                       </div>
                       <span className="team-name">{normalizedMatch.homeTeam.name}</span>
                       {match.home_score !== undefined && (
@@ -175,20 +175,20 @@ export function Completed() {
                     
                     <div className="team away-team">
                       <div className="team-logo-container">
-                        <img 
-                          src={`/team-logos/${normalizedMatch.awayTeam.name?.toLowerCase().replace(/\s+/g, '-')}.png`}
-                          alt={normalizedMatch.awayTeam.name || 'Away team'}
-                          className="team-logo"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const fallback = target.nextElementSibling as HTMLDivElement;
-                            if (fallback) fallback.style.display = 'flex';
-                          }}
-                        />
-                        <div className="team-logo-fallback" style={{ display: 'none' }}>
-                          {normalizedMatch.awayTeam.name ? normalizedMatch.awayTeam.name.charAt(0).toUpperCase() : 'A'}
-                        </div>
+                        {normalizedMatch.awayTeam.logoUrl ? (
+                          <img 
+                            src={normalizedMatch.awayTeam.logoUrl}
+                            alt={normalizedMatch.awayTeam.name || 'Away team'}
+                            className="team-logo"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="team-logo-placeholder">
+                            {normalizedMatch.awayTeam.code || normalizedMatch.awayTeam.name.substring(0, 3).toUpperCase()}
+                          </div>
+                        )}
                       </div>
                       <span className="team-name">{normalizedMatch.awayTeam.name}</span>
                       {match.away_score !== undefined && (

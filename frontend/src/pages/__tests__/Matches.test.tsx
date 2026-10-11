@@ -44,7 +44,7 @@ const premierLeagueMatches: MatchResponse[] = [
     home_team: { id: 'team_1', name: 'Arsenal', short_name: 'ARS', code: 'ARS', logo_url: null },
     away_team: { id: 'team_2', name: 'Chelsea', short_name: 'CHE', code: 'CHE', logo_url: null },
     scheduled_at: new Date(Date.now() + 86400000).toISOString(), // Tomorrow
-    status: 'scheduled',
+    status: 'SCHEDULED',
     home_score: null,
     away_score: null,
     home_score_ht: null,
@@ -70,7 +70,7 @@ const premierLeagueMatches: MatchResponse[] = [
     home_team: { id: 'team_3', name: 'Liverpool', short_name: 'LIV', code: 'LIV', logo_url: null },
     away_team: { id: 'team_4', name: 'Manchester City', short_name: 'MCI', code: 'MCI', logo_url: null },
     scheduled_at: new Date(Date.now() + 172800000).toISOString(), // 2 days
-    status: 'scheduled',
+    status: 'SCHEDULED',
     home_score: null,
     away_score: null,
     home_score_ht: null,
@@ -99,7 +99,7 @@ const bundesligaMatches: MatchResponse[] = [
     home_team: { id: 'team_5', name: 'Bayern Munich', short_name: 'BAY', code: 'BAY', logo_url: null },
     away_team: { id: 'team_6', name: 'Borussia Dortmund', short_name: 'BVB', code: 'BVB', logo_url: null },
     scheduled_at: new Date(Date.now() + 86400000).toISOString(),
-    status: 'scheduled',
+    status: 'SCHEDULED',
     home_score: null,
     away_score: null,
     home_score_ht: null,
@@ -129,7 +129,7 @@ const scheduledMatchesWithScores: MatchResponse[] = [
     home_team: { id: 'team_7', name: 'Manchester United', short_name: 'MUN', code: 'MUN', logo_url: null },
     away_team: { id: 'team_8', name: 'Tottenham', short_name: 'TOT', code: 'TOT', logo_url: null },
     scheduled_at: new Date(Date.now() + 86400000).toISOString(),
-    status: 'scheduled', // STATUS IS SCHEDULED
+    status: 'SCHEDULED', // STATUS IS SCHEDULED
     home_score: 2, // BUT SCORES ARE SET (BUG)
     away_score: 1,
     home_score_ht: null,
@@ -159,7 +159,7 @@ const finishedMatches: MatchResponse[] = [
     home_team: { id: 'team_9', name: 'Newcastle', short_name: 'NEW', code: 'NEW', logo_url: null },
     away_team: { id: 'team_10', name: 'Aston Villa', short_name: 'AVL', code: 'AVL', logo_url: null },
     scheduled_at: new Date(Date.now() - 86400000).toISOString(), // Yesterday
-    status: 'finished',
+    status: 'FINISHED',
     home_score: 3,
     away_score: 2,
     home_score_ht: 2,
@@ -189,7 +189,7 @@ const matchesWithNumericCompIds: MatchResponse[] = [
     home_team: { id: 'team_11', name: 'Gainare Tottori', short_name: 'TOT', code: 'TOT', logo_url: null },
     away_team: { id: 'team_12', name: 'Tokyo Verdy', short_name: 'VER', code: 'VER', logo_url: null },
     scheduled_at: new Date(Date.now() + 86400000).toISOString(),
-    status: 'scheduled',
+    status: 'SCHEDULED',
     home_score: null,
     away_score: null,
     home_score_ht: null,

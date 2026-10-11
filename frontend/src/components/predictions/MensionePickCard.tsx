@@ -15,6 +15,10 @@ type TabType = 'general' | 'first-half' | 'full-match'
 interface MensionePickCardProps {
   homeTeam: string
   awayTeam: string
+  homeTeamLogoUrl?: string
+  awayTeamLogoUrl?: string
+  homeTeamCode?: string
+  awayTeamCode?: string
   marketName: string
   outcome: string
   confidence: number
@@ -49,6 +53,11 @@ interface MensionePickCardProps {
   bookmakerSource?: string | null
   valueClassification?: string | null
   
+  // Market Odds Integration
+  averageMarketOdds?: number | null
+  bookmakerCount?: number | null
+  oddsLastUpdated?: string | null
+  
   // Backend fields - Full Match Statistics (when available)
   homeShots?: number | null
   awayShots?: number | null
@@ -81,6 +90,10 @@ interface MensionePickCardProps {
 export default function MensionePickCard({
   homeTeam,
   awayTeam,
+  homeTeamLogoUrl,
+  awayTeamLogoUrl,
+  homeTeamCode,
+  awayTeamCode,
   marketName,
   outcome,
   confidence,
@@ -109,6 +122,10 @@ export default function MensionePickCard({
   impliedProbability,
   bookmakerSource,
   valueClassification,
+  // Market Odds
+  averageMarketOdds,
+  bookmakerCount,
+  // oddsLastUpdated, // TODO: Implement odds update time display
   // Full match stats
   homeShots,
   awayShots,
@@ -212,7 +229,23 @@ export default function MensionePickCard({
           </button>
           
           <div className="collapsed-header__teams">
-            <span className="team-name">{homeTeam}</span>
+            <div className="team-with-logo">
+              {homeTeamLogoUrl ? (
+                <img 
+                  src={homeTeamLogoUrl} 
+                  alt={homeTeam}
+                  className="team-logo-mini"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : homeTeamCode ? (
+                <div className="team-logo-placeholder-mini">
+                  {homeTeamCode}
+                </div>
+              ) : null}
+              <span className="team-name">{homeTeam}</span>
+            </div>
             {(skor === null || skor === undefined) ? (
               <span className="vs-separator">VS</span>
             ) : (
@@ -222,7 +255,23 @@ export default function MensionePickCard({
                 <span className="score-away">{skor.dep}</span>
               </div>
             )}
-            <span className="team-name">{awayTeam}</span>
+            <div className="team-with-logo">
+              {awayTeamLogoUrl ? (
+                <img 
+                  src={awayTeamLogoUrl} 
+                  alt={awayTeam}
+                  className="team-logo-mini"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : awayTeamCode ? (
+                <div className="team-logo-placeholder-mini">
+                  {awayTeamCode}
+                </div>
+              ) : null}
+              <span className="team-name">{awayTeam}</span>
+            </div>
           </div>
           
           {/* TODO: Add live indicator when match is live */}
@@ -277,7 +326,7 @@ export default function MensionePickCard({
           <div className="intelligence-compact intelligence-compact--odds">
             <div className="intelligence-compact__label">ORAN</div>
             <div className="intelligence-compact__value intelligence-compact__value--gold">
-              {marketOdds ? marketOdds.toFixed(2) : '--'}
+              {averageMarketOdds ? averageMarketOdds.toFixed(2) : marketOdds ? marketOdds.toFixed(2) : '--'}
             </div>
           </div>
         </div>
@@ -366,16 +415,31 @@ export default function MensionePickCard({
             {/* Premium Odds Section */}
             <div className="odds-section">
               <div className="odds-primary">
-                <div className="odds-primary__label">GERÇEK ORAN</div>
-                <div className="odds-primary__value">
-                  {marketOdds ? marketOdds.toFixed(2) : '--'}
+                <div className="odds-primary__label">
+                  {averageMarketOdds ? 'ORTALAMA PİYASA ORANI' : 'GERÇEK ORAN'}
                 </div>
+                <div className="odds-primary__value">
+                  {averageMarketOdds ? averageMarketOdds.toFixed(2) : marketOdds ? marketOdds.toFixed(2) : '--'}
+                </div>
+                {bookmakerCount && bookmakerCount > 0 && (
+                  <div className="odds-primary__source">
+                    {bookmakerCount} bookmaker ortalaması
+                  </div>
+                )}
               </div>
               
               {fairOdds && (
                 <div className="odds-secondary">
                   <div className="odds-secondary__label">Model Fair Odds</div>
                   <div className="odds-secondary__value">{fairOdds.toFixed(2)}</div>
+                </div>
+              )}
+              
+              {/* Show single bookmaker odds as fallback if available */}
+              {averageMarketOdds && marketOdds && marketOdds !== averageMarketOdds && (
+                <div className="odds-secondary">
+                  <div className="odds-secondary__label">Tekil Bookmaker</div>
+                  <div className="odds-secondary__value">{marketOdds.toFixed(2)}</div>
                 </div>
               )}
             </div>

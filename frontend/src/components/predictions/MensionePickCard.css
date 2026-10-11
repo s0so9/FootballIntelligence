@@ -1082,3 +1082,33 @@
     font-size: 18px;
   }
 }
+
+/* Team Logo Styles for Collapsed Header */
+.team-with-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.team-logo-mini {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.team-logo-placeholder-mini {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--tutar-x-primary);
+  flex-shrink: 0;
+}

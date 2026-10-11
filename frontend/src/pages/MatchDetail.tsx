@@ -46,14 +46,14 @@ export function MatchDetail() {
   
   // Lazy load prediction (for matches that can have predictions)
   // Include scheduled and postponed matches - exclude only finished and live matches
-  const shouldLoadPrediction = match?.status?.toLowerCase() === 'scheduled' || match?.status?.toLowerCase() === 'postponed';
+  const shouldLoadPrediction = match?.status === 'SCHEDULED' || match?.status === 'POSTPONED';
   
   const { prediction, loading: predictionLoading, error: predictionError } = useLazyPrediction(
     shouldLoadPrediction ? id : null
   );
   
   // Live match polling (only when match is live)
-  const isMatchLive = match?.status?.toLowerCase() === 'live';
+  const isMatchLive = match?.status === 'LIVE';
   const { 
     liveMatch, 
     loading: liveLoading, 
@@ -432,7 +432,7 @@ export function MatchDetail() {
       )}
 
       {/* Live Match - Show Live Intelligence UI */}
-      {match.status === 'live' && (
+      {match.status === 'LIVE' && (
         <div className="live-match-section">
           {/* Live Match Header */}
           <LiveMatchHeader
@@ -509,7 +509,7 @@ export function MatchDetail() {
       )}
 
       {/* Finished Match - Show Results Only */}
-      {match.status === 'finished' && (
+      {match.status === 'FINISHED' && (
         <div className="match-result-section">
           <h2 className="section-title">Maç Sonucu</h2>
           <div className="final-score">

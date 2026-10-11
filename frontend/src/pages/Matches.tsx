@@ -80,7 +80,7 @@ export function Matches() {
           competition_id: selectedCompetitionId as string,
           from_date: fromDate,
           to_date: toDate,
-          status: 'scheduled',
+          status: 'SCHEDULED',
         });
         
         if (!isMounted) return;
@@ -230,11 +230,25 @@ export function Matches() {
                   <div className="match-card__teams">
                     <div className="team team--home">
                       <span className="team-name">{match.homeTeam.name}</span>
+                      {match.homeTeam.logoUrl ? (
+                        <img 
+                          src={match.homeTeam.logoUrl} 
+                          alt={match.homeTeam.name}
+                          className="team-logo"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="team-logo-placeholder">
+                          {match.homeTeam.code || match.homeTeam.name.substring(0, 3).toUpperCase()}
+                        </div>
+                      )}
                     </div>
 
                     <div className="match-vs">
                       {/* CRITICAL: Scheduled matches must NEVER show scores */}
-                      {(match.status === 'finished' || match.status === 'live') && 
+                      {(match.status === 'FINISHED' || match.status === 'LIVE') && 
                        match.homeScore !== null && match.awayScore !== null ? (
                         <div className="match-score">
                           {match.homeScore} - {match.awayScore}
@@ -245,11 +259,25 @@ export function Matches() {
                     </div>
 
                     <div className="team team--away">
+                      {match.awayTeam.logoUrl ? (
+                        <img 
+                          src={match.awayTeam.logoUrl} 
+                          alt={match.awayTeam.name}
+                          className="team-logo"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="team-logo-placeholder">
+                          {match.awayTeam.code || match.awayTeam.name.substring(0, 3).toUpperCase()}
+                        </div>
+                      )}
                       <span className="team-name">{match.awayTeam.name}</span>
                     </div>
                   </div>
 
-                  {match.status === 'scheduled' && (
+                  {match.status === 'SCHEDULED' && (
                     <div className="match-card__indicator">
                       <span className="prediction-indicator">
                         📊 Tahmin Mevcut

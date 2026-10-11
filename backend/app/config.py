@@ -44,14 +44,42 @@ class Settings(BaseSettings):
     # Provider behavior
     provider_timeout_seconds: float = 10.0
     provider_retry_count: int = 2
-    use_real_providers: bool = False  # Default False for tests, set True in production/dev env  # True = Real providers (FotMob, Ryzellx, OpenLigaDB)
+    use_real_providers: bool = True  # True = Use HybridProvider (database + external), False = DevelopmentProvider only
 
     # Feature Engineering
     team_form_window: int = 5  # Number of recent matches to consider for form
     min_sample_size: int = 3  # Minimum matches needed for reliable features
+    
+    # Data Freshness Configuration
+    # Controls when HybridProvider should refresh data from external providers vs using cached database data
+    
+    # SCHEDULED matches: Refresh if data is older than this (in minutes)
+    data_freshness_scheduled_minutes: int = 120  # 2 hours - scheduled matches don't change frequently
+    
+    # LIVE matches: Refresh if data is older than this (in seconds)
+    data_freshness_live_seconds: int = 30  # 30 seconds - live matches need real-time updates
+    
+    # FINISHED matches: Refresh if data is older than this (in minutes)
+    # Increased to 72 hours (3 days) to handle database-only scenarios better
+    data_freshness_finished_minutes: int = 4320  # 72 hours - finished matches are stable
+    
+    # Recently finished: Consider matches finished within this window as needing verification (in minutes)
+    data_freshness_finished_recent_minutes: int = 180  # 3 hours - final scores should be confirmed
+    
+    # Approaching kickoff: Refresh scheduled matches if kickoff is within this window (in minutes)
+    data_freshness_approaching_kickoff_minutes: int = 60  # 1 hour - lineup and last-minute changes
 
     # Logging
     log_level: str = "INFO"
+    
+    # The Odds API (Bookmaker Odds Provider)
+    the_odds_api_key: str = ""
+    the_odds_api_enabled: bool = False
+    the_odds_api_base_url: str = "https://api.the-odds-api.com/v4"
+    the_odds_api_cache_minutes: int = 60  # Cache odds for 1 hour
+    the_odds_api_timeout_seconds: float = 10.0
+    the_odds_api_min_remaining_requests: int = 50  # Skip updates if credits below this
+    the_odds_api_sports: str = "soccer_epl,soccer_germany_bundesliga,soccer_spain_la_liga,soccer_italy_serie_a,soccer_france_ligue_one"  # Comma-separated
 
     class Config:
         """Pydantic configuration."""

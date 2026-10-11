@@ -36,6 +36,9 @@ class Match(BaseEntity):
     # Match round/week
     round: Optional[int] = Field(None, description="Match round/gameweek")
     
+    # Data freshness
+    provider_fetched_at: Optional[datetime] = Field(None, description="When data was last fetched from provider")
+    
     class Config:
         """Pydantic configuration."""
 

@@ -2,10 +2,12 @@
 
 This provider tries external providers first for fresh data, but falls back
 to database lookups for canonical UUIDs that external providers cannot resolve.
+
+Implements smart data freshness policy based on match status and timestamps.
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session
 
 from app.providers.base import FootballDataProvider
@@ -14,6 +16,8 @@ from app.providers.database_adapter import DatabaseBackedProvider
 from app.domain.match import Match
 from app.domain.entities import Team, Competition, Season
 from app.domain.statistics import TeamMatchStatistic
+from app.domain.enums import MatchStatus
+from app.config import settings
 
 
 class HybridProvider(FootballDataProvider):
@@ -48,6 +52,71 @@ class HybridProvider(FootballDataProvider):
             True if it looks like a UUID (contains dashes and is 36 chars)
         """
         return len(id_str) == 36 and id_str.count('-') == 4
+    
+    def _should_refresh_from_external(self, db_matches: List[Match], status_filter: Optional[str] = None) -> bool:
+        """Determine if database matches need refreshing from external providers.
+        
+        Implements timestamp-based freshness policy:
+        - LIVE: Always refresh (handled by status-aware policy, not called here)
+        - SCHEDULED: Refresh if stale OR approaching kickoff
+        - FINISHED: Refresh if recently finished and stale OR very old
+        - No filter: Always refresh (handled by status-aware policy, not called here)
+        
+        Args:
+            db_matches: List of matches from database
+            status_filter: Status filter applied to query
+            
+        Returns:
+            True if external provider should be called for fresh data
+        """
+        if not db_matches:
+            # No data in database, need external refresh
+            return True
+        
+        now = datetime.now(tz=db_matches[0].scheduled_at.tzinfo if db_matches[0].scheduled_at.tzinfo else None)
+        
+        for match in db_matches:
+            # If any match lacks provider_fetched_at timestamp, refresh all
+            if match.provider_fetched_at is None:
+                return True
+            
+            # Calculate data age
+            data_age = now - match.provider_fetched_at
+            
+            if status_filter and status_filter.upper() == "SCHEDULED":
+                # SCHEDULED matches: Check for stale data or approaching kickoff
+                scheduled_minutes = settings.data_freshness_scheduled_minutes
+                approaching_minutes = settings.data_freshness_approaching_kickoff_minutes
+                
+                # Refresh if data is too old
+                if data_age > timedelta(minutes=scheduled_minutes):
+                    return True
+                
+                # Refresh if kickoff is approaching and data isn't very fresh
+                time_until_kickoff = match.scheduled_at - now
+                if time_until_kickoff < timedelta(minutes=approaching_minutes):
+                    # For approaching matches, require fresher data (15 minutes)
+                    if data_age > timedelta(minutes=15):
+                        return True
+            
+            elif status_filter and status_filter.upper() == "FINISHED":
+                # FINISHED matches: Check if recently finished or very old
+                finished_recent_minutes = settings.data_freshness_finished_recent_minutes
+                finished_minutes = settings.data_freshness_finished_minutes
+                
+                # Check if match finished recently (within last 3 hours)
+                time_since_match = now - match.scheduled_at
+                if time_since_match < timedelta(minutes=finished_recent_minutes):
+                    # Recently finished: need fresh data for score confirmation (30 minutes freshness)
+                    if data_age > timedelta(minutes=30):
+                        return True
+                
+                # For older finished matches, allow longer staleness
+                if data_age > timedelta(minutes=finished_minutes):
+                    return True
+        
+        # All matches are fresh enough
+        return False
     
     def get_match(self, match_id: str) -> Optional[Match]:
         """Get match, trying external providers first, then database.
@@ -144,69 +213,116 @@ class HybridProvider(FootballDataProvider):
         
         all_matches = []
         
-        # Try external providers first (without status filter - may have stale statuses)
-        try:
-            logger.debug(f"HybridProvider.get_matches_async: Trying external providers (no status filter)")
-            external_matches = await self.external_provider.get_matches_async(
-                competition_id=competition_id,
-                season_id=season_id,
-                team_id=team_id,
-                from_date=from_date,
-                to_date=to_date,
-                status=provider_status_filter,
-            )
-            if external_matches:
-                logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
-                all_matches.extend(external_matches)
-        except Exception as e:
-            logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
+        # DATA FRESHNESS POLICY:
+        # - Database-first for all status queries (canonical data is authoritative)
+        # - External only for no-status queries (fresh data across all statuses)
+        # - Trust database status filtering over external provider status
         
-        # Always get database matches (with status filter for efficiency)
-        try:
-            logger.debug(f"HybridProvider.get_matches_async: Getting database matches (status={db_status_filter})")
-            db_matches = self.db_provider.get_matches(
-                competition_id=competition_id,
-                season_id=season_id,
-                team_id=team_id,
-                from_date=from_date,
-                to_date=to_date,
-                status=db_status_filter,  # OPTIMIZATION: Filter at DB level
-            )
+        should_check_external_first = (
+            not status  # No status filter = user expects fresh data across all statuses
+        )
+        
+        if should_check_external_first:
+            # No status filter: Check external providers first for freshness
+            try:
+                logger.debug(f"HybridProvider.get_matches_async: Checking external providers first (no status filter)")
+                external_matches = await self.external_provider.get_matches_async(
+                    competition_id=competition_id,
+                    season_id=season_id,
+                    team_id=team_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    status=provider_status_filter,
+                )
+                if external_matches:
+                    logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
+                    all_matches.extend(external_matches)
+            except Exception as e:
+                logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
             
-            if db_matches:
-                logger.debug(f"HybridProvider.get_matches_async: Database returned {len(db_matches)} matches")
+            # Also get database matches for merge
+            try:
+                logger.debug(f"HybridProvider.get_matches_async: Getting database matches (status={db_status_filter})")
+                db_matches = self.db_provider.get_matches(
+                    competition_id=competition_id,
+                    season_id=season_id,
+                    team_id=team_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    status=db_status_filter,
+                )
                 
-                # Merge database matches, avoiding duplicates
-                external_ids = {m.id for m in all_matches}
-                for db_match in db_matches:
-                    if db_match.id not in external_ids:
-                        all_matches.append(db_match)
+                if db_matches:
+                    logger.debug(f"HybridProvider.get_matches_async: Database returned {len(db_matches)} matches")
+                    # Merge database matches, avoiding duplicates (external data takes precedence)
+                    external_ids = {m.id for m in all_matches}
+                    for db_match in db_matches:
+                        if db_match.id not in external_ids:
+                            all_matches.append(db_match)
+                    logger.debug(f"HybridProvider.get_matches_async: Total matches after merge: {len(all_matches)}")
+            except Exception as e:
+                logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
+        
+        else:
+            # ALL STATUS queries: Database-first optimization is safe
+            # Database is authoritative for status filtering (SCHEDULED, LIVE, FINISHED, CANCELLED)
+            db_matches = []
+            try:
+                logger.debug(f"HybridProvider.get_matches_async: Checking database first (status={db_status_filter})")
+                db_matches = self.db_provider.get_matches(
+                    competition_id=competition_id,
+                    season_id=season_id,
+                    team_id=team_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    status=db_status_filter,
+                )
                 
-                logger.debug(f"HybridProvider.get_matches_async: Total matches after merge: {len(all_matches)}")
-        except Exception as e:
-            logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
+                if db_matches:
+                    logger.debug(f"HybridProvider.get_matches_async: Database returned {len(db_matches)} matches")
+                    
+                    # DATABASE-FIRST OPTIMIZATION:
+                    # For status queries (SCHEDULED/LIVE/FINISHED/CANCELLED), database is authoritative.
+                    # Database has canonical UUIDs and team relationships.
+                    # Skip external provider refresh to avoid fotmob_* ID conflicts.
+                    logger.debug(f"HybridProvider.get_matches_async: Using database matches (canonical data)")
+                    all_matches.extend(db_matches)
+            except Exception as e:
+                logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
+            
+            # Only try external providers if database returned nothing AND no status filter
+            # For specific status requests (LIVE, CANCELLED, etc), trust database result
+            if not all_matches and not status:
+                try:
+                    logger.debug(f"HybridProvider.get_matches_async: Database empty, trying external providers")
+                    external_matches = await self.external_provider.get_matches_async(
+                        competition_id=competition_id,
+                        season_id=season_id,
+                        team_id=team_id,
+                        from_date=from_date,
+                        to_date=to_date,
+                        status=provider_status_filter,
+                    )
+                    if external_matches:
+                        logger.debug(f"HybridProvider.get_matches_async: External providers returned {len(external_matches)} matches")
+                        all_matches.extend(external_matches)
+                except Exception as e:
+                    logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
+            elif not all_matches and status:
+                logger.debug(f"HybridProvider.get_matches_async: No matches for status={status} in database, returning empty result")
         
         if not all_matches:
             logger.debug(f"HybridProvider.get_matches_async: No matches found from any source")
             return []
         
-        # Update statuses for matches from external providers (database statuses are already canonical)
-        updated_matches = self._update_match_statuses(all_matches)
-        logger.debug(f"HybridProvider.get_matches_async: Status updates applied to {len(updated_matches)} matches")
+        # DATABASE-FIRST: No status updates needed (database is canonical)
+        # Database query already filtered by correct status, results are authoritative
+        logger.debug(f"HybridProvider.get_matches_async: Returning {len(all_matches)} matches (database-first)")
         
-        # Apply status filter after updates (for external provider matches)
-        if requested_status:
-            from app.domain.enums import MatchStatus
-            try:
-                requested_match_status = MatchStatus(requested_status.upper())
-                before_filter = len(updated_matches)
-                updated_matches = [m for m in updated_matches if m.status == requested_match_status]
-                logger.debug(f"HybridProvider.get_matches_async: Status filter '{requested_status}' applied: {before_filter} -> {len(updated_matches)} matches")
-            except ValueError:
-                logger.warning(f"HybridProvider.get_matches_async: Invalid status '{requested_status}', returning empty")
-                return []
+        # No post-update status filtering - database already filtered by status before update
+        # This preserves matches that were corrected from SCHEDULED to FINISHED
         
-        return updated_matches
+        return all_matches
 
     def get_matches(
         self,
@@ -240,71 +356,143 @@ class HybridProvider(FootballDataProvider):
         provider_status_filter = None  # External providers may have stale statuses
         db_status_filter = status  # Database has canonical statuses
         
-        # First try external providers (without status filter)
-        try:
-            logger.debug(f"HybridProvider.get_matches: Trying external providers (no status filter)")
-            matches = self.external_provider.get_matches(
-                competition_id=competition_id,
-                season_id=season_id,
-                team_id=team_id,
-                from_date=from_date,
-                to_date=to_date,
-                status=provider_status_filter,
-            )
-            if matches:
-                logger.debug(f"HybridProvider.get_matches: External providers returned {len(matches)} matches")
-                # Update statuses first
-                updated_matches = self._update_match_statuses(matches)
-                logger.debug(f"HybridProvider.get_matches: Status updates applied")
-                
-                # Apply status filter after updates
-                if requested_status:
-                    from app.domain.enums import MatchStatus
-                    try:
-                        requested_match_status = MatchStatus(requested_status.upper())
-                        before_filter = len(updated_matches)
-                        updated_matches = [m for m in updated_matches if m.status == requested_match_status]
-                        logger.debug(f"HybridProvider.get_matches: Status filter '{requested_status}' applied: {before_filter} -> {len(updated_matches)} matches")
-                    except ValueError:
-                        logger.warning(f"HybridProvider.get_matches: Invalid status '{requested_status}', returning empty")
-                        return []
-                        
-                return updated_matches
-        except Exception as e:
-            logger.debug(f"HybridProvider.get_matches: External providers failed: {e}")
-            # External provider failed, continue to database fallback
-            pass
+        all_matches = []
         
-        # If external providers fail or return empty, try database (with status filter)
-        logger.debug(f"HybridProvider.get_matches: Using database fallback (status={db_status_filter})")
-        db_matches = self.db_provider.get_matches(
-            competition_id=competition_id,
-            season_id=season_id,
-            team_id=team_id,
-            from_date=from_date,
-            to_date=to_date,
-            status=db_status_filter,  # OPTIMIZATION: Filter at DB level
+        # DATA FRESHNESS POLICY:
+        # - For LIVE matches: Always check external providers (real-time data critical)
+        # - For SCHEDULED/FINISHED: Database-first is safe (stale data acceptable)
+        # - For no status filter: Check external providers (user expects fresh data)
+        
+        should_check_external_first = (
+            not status or  # No status filter = user expects fresh data
+            status.upper() == "LIVE"  # Live matches need real-time updates
         )
         
-        logger.debug(f"HybridProvider.get_matches: Database returned {len(db_matches)} matches")
-        
-        # Update statuses (minimal work if from database)
-        updated_matches = self._update_match_statuses(db_matches)
-        logger.debug(f"HybridProvider.get_matches: Status updates applied to database matches")
-        
-        # Apply status filter after updates (defensive, database should already be filtered)
-        if requested_status:
-            from app.domain.enums import MatchStatus
+        if should_check_external_first:
+            # LIVE or unfiltered queries: Check external providers first for freshness
             try:
-                requested_match_status = MatchStatus(requested_status.upper())
-                before_filter = len(updated_matches)
-                updated_matches = [m for m in updated_matches if m.status == requested_match_status]
-                logger.debug(f"HybridProvider.get_matches: Status filter '{requested_status}' applied: {before_filter} -> {len(updated_matches)} matches")
-            except ValueError:
-                logger.warning(f"HybridProvider.get_matches: Invalid status '{requested_status}', returning empty")
-                return []
+                logger.debug(f"HybridProvider.get_matches: Checking external providers first (status={status})")
+                external_matches = self.external_provider.get_matches(
+                    competition_id=competition_id,
+                    season_id=season_id,
+                    team_id=team_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    status=provider_status_filter,
+                )
+                if external_matches:
+                    logger.debug(f"HybridProvider.get_matches: External providers returned {len(external_matches)} matches")
+                    all_matches.extend(external_matches)
+            except Exception as e:
+                logger.debug(f"HybridProvider.get_matches: External providers failed: {e}")
+            
+            # Also get database matches for merge
+            try:
+                logger.debug(f"HybridProvider.get_matches: Getting database matches (status={db_status_filter})")
+                db_matches = self.db_provider.get_matches(
+                    competition_id=competition_id,
+                    season_id=season_id,
+                    team_id=team_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    status=db_status_filter,
+                )
+                
+                if db_matches:
+                    logger.debug(f"HybridProvider.get_matches: Database returned {len(db_matches)} matches")
+                    # Merge database matches, avoiding duplicates (external data takes precedence)
+                    external_ids = {m.id for m in all_matches}
+                    for db_match in db_matches:
+                        if db_match.id not in external_ids:
+                            all_matches.append(db_match)
+                    logger.debug(f"HybridProvider.get_matches: Total matches after merge: {len(all_matches)}")
+            except Exception as e:
+                logger.debug(f"HybridProvider.get_matches: Database lookup failed: {e}")
         
-        return updated_matches
+        else:
+            # SCHEDULED/FINISHED queries: Database-first optimization is safe
+            db_matches = []
+            try:
+                logger.debug(f"HybridProvider.get_matches: Checking database first (status={db_status_filter})")
+                db_matches = self.db_provider.get_matches(
+                    competition_id=competition_id,
+                    season_id=season_id,
+                    team_id=team_id,
+                    from_date=from_date,
+                    to_date=to_date,
+                    status=db_status_filter,
+                )
+                
+                if db_matches:
+                    logger.debug(f"HybridProvider.get_matches: Database returned {len(db_matches)} matches")
+                    
+                    # TIMESTAMP-BASED FRESHNESS CHECK
+                    should_refresh = self._should_refresh_from_external(db_matches, status)
+                    
+                    if should_refresh:
+                        logger.debug(f"HybridProvider.get_matches: Database data is stale, refreshing from external providers")
+                        # Fetch fresh data from external providers
+                        try:
+                            external_matches = self.external_provider.get_matches(
+                                competition_id=competition_id,
+                                season_id=season_id,
+                                team_id=team_id,
+                                from_date=from_date,
+                                to_date=to_date,
+                                status=provider_status_filter,
+                            )
+                            if external_matches:
+                                logger.debug(f"HybridProvider.get_matches: External providers returned {len(external_matches)} matches (refreshed)")
+                                # Merge: external data takes precedence
+                                external_ids = {m.id for m in external_matches}
+                                for db_match in db_matches:
+                                    if db_match.id not in external_ids:
+                                        external_matches.append(db_match)
+                                all_matches.extend(external_matches)
+                            else:
+                                # External failed, use stale DB data as fallback
+                                logger.debug(f"HybridProvider.get_matches: External refresh failed, using stale database data")
+                                all_matches.extend(db_matches)
+                        except Exception as e:
+                            # External failed, use stale DB data as fallback
+                            logger.debug(f"HybridProvider.get_matches: External refresh failed ({e}), using stale database data")
+                            all_matches.extend(db_matches)
+                    else:
+                        # Data is fresh enough, use database
+                        logger.debug(f"HybridProvider.get_matches: Database data is fresh, using cached data")
+                        all_matches.extend(db_matches)
+            except Exception as e:
+                logger.debug(f"HybridProvider.get_matches: Database lookup failed: {e}")
+            
+            # Only try external providers if database returned nothing
+            if not all_matches:
+                try:
+                    logger.debug(f"HybridProvider.get_matches: Database empty, trying external providers")
+                    matches = self.external_provider.get_matches(
+                        competition_id=competition_id,
+                        season_id=season_id,
+                        team_id=team_id,
+                        from_date=from_date,
+                        to_date=to_date,
+                        status=provider_status_filter,
+                    )
+                    if matches:
+                        logger.debug(f"HybridProvider.get_matches: External providers returned {len(matches)} matches")
+                        all_matches.extend(matches)
+                except Exception as e:
+                    logger.debug(f"HybridProvider.get_matches: External providers failed: {e}")
+        
+        if not all_matches:
+            return []
+        
+        # DATABASE-FIRST: No status updates needed (database is canonical)
+        # Database query already filtered by correct status, results are authoritative
+        logger.debug(f"HybridProvider.get_matches: Returning {len(all_matches)} matches (database-first)")
+        
+        # No post-update status filtering - database already filtered by status before update
+        # This preserves matches that were corrected from SCHEDULED to FINISHED
+        
+        return all_matches
     
     def get_team_match_statistics(self, match_id: str) -> List[TeamMatchStatistic]:
         """Get team match statistics, trying external providers first, then database.
@@ -476,11 +664,14 @@ class HybridProvider(FootballDataProvider):
     def _update_match_statuses(self, matches: List[Match]) -> List[Match]:
         """Update match statuses based on current time for stale SCHEDULED matches.
         
-        UPDATED POLICY: 
-        - Only update SCHEDULED matches that are clearly finished based on time
-        - Never modify other statuses or add fake scores
-        - Conservative 4-hour window to avoid false positives
-        - Preserve provider data integrity for all other cases
+        CONSERVATIVE POLICY: 
+        - Only update SCHEDULED matches that are clearly finished (>= 3 hours past kickoff)
+        - Never modify LIVE, FINISHED, CANCELLED statuses from providers
+        - Never add fake scores
+        - Preserve provider data integrity
+        
+        This handles edge case where database has old SCHEDULED status but match has finished.
+        External providers should provide authoritative real-time status.
         """
         from datetime import datetime, timezone
         from app.domain.enums import MatchStatus
@@ -491,7 +682,6 @@ class HybridProvider(FootballDataProvider):
         updated_matches = []
         
         status_changes = 0
-        target_match_id = '849f5743-1f96-4ade-be4c-af1c5d3da039'
         
         for match in matches:
             # Create a copy to preserve immutability
@@ -509,9 +699,11 @@ class HybridProvider(FootballDataProvider):
                 round=match.round,
                 created_at=match.created_at,
                 updated_at=match.updated_at,
+                provider_fetched_at=match.provider_fetched_at,
             )
             
             # ONLY update SCHEDULED matches that are clearly finished
+            # Use 3-hour threshold: typical match is 90 min + 15 min HT + buffer
             if match.status == MatchStatus.SCHEDULED and match.scheduled_at:
                 # Make scheduled_at timezone-aware if it isn't already
                 if match.scheduled_at.tzinfo is None:
@@ -522,20 +714,18 @@ class HybridProvider(FootballDataProvider):
                 time_diff = current_time - match_time
                 hours_passed = time_diff.total_seconds() / 3600
                 
-                # Conservative 4-hour window: only mark as finished if clearly over
-                if hours_passed > 4:
+                # Conservative 3-hour window: only mark as finished if clearly over
+                # This prevents false positives for delayed kickoffs
+                if hours_passed >= 3:
                     updated_match.status = MatchStatus.FINISHED
                     status_changes += 1
-                    
-                    if match.id == target_match_id:
-                        logger.debug(f"STATUS UPDATE: Target match {target_match_id} updated SCHEDULED->FINISHED (hours_passed: {hours_passed:.1f})")
-                    # SAFETY: Never add fake scores - preserve existing scores
+                    logger.debug(f"Auto-updated match {match.id[:8]} SCHEDULED->FINISHED (hours_passed: {hours_passed:.1f})")
             
-            # All other statuses remain unchanged (LIVE, FINISHED, etc.)
+            # All other statuses remain unchanged (LIVE, FINISHED, CANCELLED, etc.)
             updated_matches.append(updated_match)
         
         if status_changes > 0:
-            logger.debug(f"HybridProvider._update_match_statuses: Updated {status_changes} matches from SCHEDULED to FINISHED")
+            logger.info(f"HybridProvider._update_match_statuses: Updated {status_changes} matches from SCHEDULED to FINISHED")
         
         return updated_matches
     

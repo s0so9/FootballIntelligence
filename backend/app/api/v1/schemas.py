@@ -256,6 +256,7 @@ class MatchResponse(BaseModel):
     
     created_at: Optional[datetime] = Field(None, description="Record creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Record last update timestamp")
+    provider_fetched_at: Optional[datetime] = Field(None, description="When data was last fetched from provider")
 
     class Config:
         """Pydantic configuration."""

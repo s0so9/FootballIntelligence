@@ -227,7 +227,7 @@ export async function getUpcomingMatches(days: number = 7): Promise<MatchListRes
   return getMatches({
     from_date: fromDate,
     to_date: toDate,
-    status: 'scheduled',
+    status: 'SCHEDULED',
   });
 }
 
@@ -299,7 +299,7 @@ export async function getLiveMatchDetail(matchId: string): Promise<import('../ty
     const response = await getMatch(matchId);
     
     // Only return live state if match is actually live
-    if (response.match.status !== 'live') {
+    if (response.match.status !== 'LIVE') {
       return null;
     }
     

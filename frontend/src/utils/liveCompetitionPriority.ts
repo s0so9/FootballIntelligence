@@ -72,7 +72,7 @@ export function selectLiveCompetitionPriorityMatches(
     if (!compId || !liveCompetitionIds.includes(compId)) return;
     
     // Only scheduled matches
-    if (match.status !== 'scheduled') return;
+    if (match.status !== 'SCHEDULED') return;
     
     const matchDate = new Date(match.scheduled_at);
     if (matchDate < now || matchDate > next48Hours) return;
