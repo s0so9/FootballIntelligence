@@ -23,6 +23,7 @@ export interface NormalizedMatch {
   homeScore: number | null;
   awayScore: number | null;
   competitionId: string;
+  competitionName?: string;  // Optional competition name from provider
   seasonId: string;
   round: number | null;
   raw: MatchResponse; // Keep original for any edge cases
@@ -97,6 +98,7 @@ export function normalizeMatch(match: MatchResponse): NormalizedMatch {
     homeScore: match.home_score,
     awayScore: match.away_score,
     competitionId: match.competition_id,
+    competitionName: match.competition_name ?? undefined,
     seasonId: match.season_id,
     round: match.round,
     raw: match,

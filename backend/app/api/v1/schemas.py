@@ -226,6 +226,7 @@ class MatchResponse(BaseModel):
 
     id: str = Field(..., description="Match identifier")
     competition_id: str = Field(..., description="Competition identifier")
+    competition_name: Optional[str] = Field(None, description="Competition name (fallback from provider if not in database)")
     season_id: str = Field(..., description="Season identifier")
     home_team_id: str = Field(..., description="Home team identifier")
     away_team_id: str = Field(..., description="Away team identifier")

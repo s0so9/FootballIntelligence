@@ -1,0 +1,23 @@
+﻿
+
+StatusCode        : 200
+StatusDescription : OK
+Content           : {"matches":[{"id":"fotmob_5795469","competition_id":"47","season_id":"unknown_season","home_team_id":"9826","away_team_id":"102
+                    03","venue_id":null,"home_team":null,"away_team":null,"scheduled_at":"202...
+RawContent        : HTTP/1.1 200 OK
+                    Content-Length: 573
+                    Content-Type: application/json
+                    Date: Sun, 11 Oct 2026 03:25:01 GMT
+                    Server: uvicorn
+                    
+                    {"matches":[{"id":"fotmob_5795469","competition_id":"47","season_id":"unkn...
+Forms             : 
+Headers           : {[Content-Length, 573], [Content-Type, application/json], [Date, Sun, 11 Oct 2026 03:25:01 GMT], [Server, uvicorn]}
+Images            : {}
+InputFields       : {}
+Links             : {}
+ParsedHtml        : 
+RawContentLength  : 573
+
+
+

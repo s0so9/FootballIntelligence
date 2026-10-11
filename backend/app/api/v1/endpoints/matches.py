@@ -186,6 +186,12 @@ async def list_matches(
             to_date=to_date,
             status=status,
         )
+        
+        # DEBUG: Log match count from provider
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[DEBUG] Provider returned {len(matches)} matches for status={status}")
+        
     else:
         # Fall back to sync method (DevelopmentProvider)
         matches = provider.get_matches(
@@ -236,39 +242,72 @@ async def list_matches(
             pass
     
     for match in matches:
-        # Get team info from cache
-        home_team = teams_cache.get(match.home_team_id) if match.home_team_id else None
-        away_team = teams_cache.get(match.away_team_id) if match.away_team_id else None
+        try:
+            # Get team info from cache
+            home_team = teams_cache.get(match.home_team_id) if match.home_team_id else None
+            away_team = teams_cache.get(match.away_team_id) if match.away_team_id else None
+            
+            # FALLBACK: If team not in database, use provider team names
+            # ProviderManagerAdapter stores these as private attributes on Match objects
+            if home_team is None and hasattr(match, '_provider_home_team_name'):
+                from app.domain.entities import Team as DomainTeam
+                home_team = DomainTeam(
+                    id=match.home_team_id,
+                    name=match._provider_home_team_name,
+                    short_name=match._provider_home_team_name[:3].upper() if match._provider_home_team_name else None,
+                    code=match._provider_home_team_name[:3].upper() if match._provider_home_team_name else None,
+                    logo_url=None
+                )
+            
+            if away_team is None and hasattr(match, '_provider_away_team_name'):
+                from app.domain.entities import Team as DomainTeam
+                away_team = DomainTeam(
+                    id=match.away_team_id,
+                    name=match._provider_away_team_name,
+                    short_name=match._provider_away_team_name[:3].upper() if match._provider_away_team_name else None,
+                    code=match._provider_away_team_name[:3].upper() if match._provider_away_team_name else None,
+                    logo_url=None
+                )
+            
+            # Get competition name from provider if available
+            competition_name = None
+            if hasattr(match, '_provider_competition_name'):
+                competition_name = match._provider_competition_name
 
-        # Create basic match response
-        match_response = MatchResponse(
-            id=match.id,
-            competition_id=match.competition_id,
-            season_id=match.season_id,
-            home_team_id=match.home_team_id,
-            away_team_id=match.away_team_id,
-            venue_id=match.venue_id,
-            home_team=_map_team_to_response(home_team),
-            away_team=_map_team_to_response(away_team),
-            scheduled_at=match.scheduled_at,
-            status=match.status,
-            home_score=match.home_score,
-            away_score=match.away_score,
-            home_score_ht=match.home_score_ht,
-            away_score_ht=match.away_score_ht,
-            home_statistics=None,
-            away_statistics=None,
-            home_statistics_ht=None,
-            away_statistics_ht=None,
-            minute=match.minute,
-            added_time=match.added_time,
-            outcome=match.outcome,
-            round=match.round,  # Domain model uses 'round', schema also uses 'round'
-            created_at=match.created_at,
-            updated_at=match.updated_at,
-            provider_fetched_at=match.provider_fetched_at,
-        )
-        match_responses.append(match_response)
+            # Create basic match response
+            match_response = MatchResponse(
+                id=match.id,
+                competition_id=match.competition_id,
+                competition_name=competition_name,
+                season_id=match.season_id,
+                home_team_id=match.home_team_id,
+                away_team_id=match.away_team_id,
+                venue_id=match.venue_id,
+                home_team=_map_team_to_response(home_team),
+                away_team=_map_team_to_response(away_team),
+                scheduled_at=match.scheduled_at,
+                status=match.status,
+                home_score=match.home_score,
+                away_score=match.away_score,
+                home_score_ht=match.home_score_ht,
+                away_score_ht=match.away_score_ht,
+                home_statistics=None,
+                away_statistics=None,
+                home_statistics_ht=None,
+                away_statistics_ht=None,
+                minute=match.minute,
+                added_time=match.added_time,
+                outcome=match.outcome,
+                round=match.round,  # Domain model uses 'round', schema also uses 'round'
+                created_at=match.created_at,
+                updated_at=match.updated_at,
+                provider_fetched_at=match.provider_fetched_at,
+            )
+            match_responses.append(match_response)
+        except Exception as e:
+            logger.warning(f"[DEBUG] Failed to process match {match.id[:8]}...: {type(e).__name__}: {e}")
+            # Skip this match and continue
+            continue
     
     # Apply pagination
     total_count = len(match_responses)
@@ -277,7 +316,7 @@ async def list_matches(
     # Build response with development data flag
     return MatchListResponse(
         matches=paginated_matches,
-        count=len(paginated_matches),
+        count=total_count,  # Return total count, not paginated count
         is_development_data=provider.is_development_data(),
     )
 

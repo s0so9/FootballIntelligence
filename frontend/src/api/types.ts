@@ -50,6 +50,7 @@ export interface MatchStatisticsResponse {
 export interface MatchResponse {
   id: string;
   competition_id: string;
+  competition_name?: string | null;  // Optional competition name from provider
   season_id: string;
   home_team_id: string;
   away_team_id: string;

@@ -156,7 +156,13 @@ export function Upcoming() {
               const competition = competitions.find(c => c.id === match.competitionId);
               let competitionName: string;
               
-              if (competition) {
+              // Priority 1: Use match.competition_name from provider if available
+              // Priority 2: Use competition from competitions endpoint
+              // Priority 3: Format competition_id
+              if (match.competitionName) {
+                const normalizedFromProvider = normalizeCompetitionName(match.competitionName);
+                competitionName = normalizedFromProvider || match.competitionName;
+              } else if (competition) {
                 const normalizedName = normalizeCompetitionName(competition.name);
                 competitionName = normalizedName || competition.name;
               } else if (/^\d+$/.test(match.competitionId)) {
