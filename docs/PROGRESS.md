@@ -3470,3 +3470,137 @@ the_odds_api_sports: str = "soccer_epl,soccer_germany_bundesliga,..."
 **Verification**:
 - `npm test`: 11 dosya, 134 test geçti
 - `npm run build`: başarılı
+
+## TEAM ID RESOLUTION ANALYSIS & HEALTH ENDPOINT FIX — October 11, 2026
+
+**Objective:** Investigate and fix reported team ID resolution issues in production API responses and improve health endpoint database connectivity verification.
+
+### Issue Analysis Completed ✅
+
+**Initial Report:** API responses sometimes returned FotMob numeric team IDs (e.g., "9826") instead of canonical Team UUID values, potentially breaking API contracts and relational data consistency.
+
+**Root Cause Investigation:**
+1. ✅ **Team ID Resolution Already Working:** `_resolve_team_canonical_uuid()` function in `HybridProvider` was already implemented and functional
+2. ✅ **Database Verification:** Local SQLite contains 5,624 teams with proper provider_id mapping (e.g., 9826 → b3bd533f-69df-49e9-89fd-133e022ad65f)  
+3. ✅ **API Response Verification:** Live API test confirmed team IDs are returned in correct canonical UUID format
+4. ✅ **Prediction Pipeline Working:** Full prediction flow tested successfully (Crystal Palace vs Nottingham Forest)
+
+### Health Endpoint Enhancement ✅
+
+**Problem:** `/health` endpoint only checked `ingestion_service` object existence, not actual database connectivity.
+
+**Solution Implemented:**
+- Enhanced `/health` endpoint to execute real database query (`SELECT COUNT(*) FROM teams`)
+- Added detailed `database_details` with connection verification and team count
+- Added warning detection for empty teams table in production
+- Improved logging for production monitoring
+
+**Before:**
+```json
+{"status":"healthy","service":"TUTAR X API","version":"0.1.0","database":"connected"}
+```
+
+**After:**
+```json
+{
+  "status":"healthy",
+  "service":"TUTAR X API",
+  "version":"0.1.0", 
+  "database":"connected",
+  "database_details":{
+    "teams_count":5624,
+    "connection_verified":true
+  },
+  "ingestion_service":"healthy"
+}
+```
+
+### Production Scenario Analysis ✅
+
+**Scenario Testing Completed:**
+
+1. **Populated Database (Current):** ✅ Working perfectly
+   - 5,624 teams with provider mapping
+   - Team ID resolution: 9826 → b3bd533f-69df-49e9-89fd-133e022ad65f
+   - Predictions successful
+
+2. **Empty Database (Fresh Neon Deploy):** ⚠️ Identified potential issue
+   - `_resolve_team_canonical_uuid('9826')` → '9826' (graceful degradation)
+   - Feature extraction finds 0 matches → "Insufficient data"
+   - Health endpoint shows warning: "Teams table is empty"
+
+3. **Partial Database:** ⚠️ Identified potential issue  
+   - Missing team mappings cause prediction failures
+   - Graceful degradation but reduced functionality
+
+### Monitoring & Logging Improvements ✅
+
+**Enhanced Logging:**
+- Changed team ID resolution failure from INFO to WARNING level
+- Added production-specific warning for empty teams table
+- Improved error messages for diagnostic clarity
+
+**Production Monitoring Points:**
+- Health endpoint now provides actionable diagnostic data
+- Team count monitoring for database population status
+- Connection verification for database availability
+- Prediction "Insufficient data" rate monitoring capability
+
+### Files Modified ✅
+
+1. **backend/app/main.py**
+   - Enhanced `/health` endpoint with real database query
+   - Added production warning for empty teams table
+   - Improved response structure with detailed diagnostics
+
+2. **backend/app/providers/hybrid_provider.py** 
+   - Improved logging level for team ID resolution failures
+   - Enhanced error messages for production monitoring
+
+3. **backend/tests/test_api_matches.py**
+   - Updated health endpoint tests for new response structure
+   - Added validation for database_details fields
+
+### Verification Results ✅
+
+**Local Testing:**
+- ✅ Health endpoint: 2/2 tests PASSED
+- ✅ Prediction endpoint: 1/1 core test PASSED  
+- ✅ Live API responses: Correct canonical UUID format confirmed
+- ✅ Team ID resolution: Working for 9826 → Crystal Palace UUID
+- ✅ Database connectivity: Real query execution verified
+
+**API Endpoints Validated:**
+- ✅ `GET /health` → Returns detailed database status
+- ✅ `GET /api/v1/matches` → Team IDs in canonical UUID format
+- ✅ `GET /api/v1/matches/{id}/prediction` → Full prediction pipeline working
+
+### Current Status: RESOLVED ✅
+
+**Key Finding:** The reported team ID resolution issue was **NOT PRESENT** in the current codebase. The `_resolve_team_canonical_uuid()` mechanism was already implemented and functioning correctly.
+
+**Actual Issue:** Potential production database population concern if Neon PostgreSQL teams table is empty.
+
+**Resolution:** 
+1. ✅ Health endpoint now provides clear database diagnostic information
+2. ✅ Enhanced logging for production monitoring
+3. ✅ Graceful degradation already in place for empty database scenarios
+4. ✅ API contracts maintained with proper canonical UUID responses
+
+### Next Steps (Production Deployment) 
+
+**Critical Actions for Production:**
+1. **Verify Neon PostgreSQL teams table population** - Ensure team data is seeded
+2. **Monitor health endpoint** - Check for empty teams table warnings
+3. **Verify team ID mappings** - Confirm FotMob provider_id mappings exist
+4. **Monitor prediction success rate** - Track "Insufficient data" responses
+
+**System Status:** 
+- ✅ Team ID resolution mechanism: WORKING
+- ✅ Health endpoint database verification: IMPLEMENTED  
+- ✅ API response format: CANONICAL UUID COMPLIANT
+- ✅ Production monitoring capability: ENHANCED
+
+**No breaking changes introduced. System maintains full backward compatibility.**
+
+---

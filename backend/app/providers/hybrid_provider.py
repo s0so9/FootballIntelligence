@@ -169,9 +169,9 @@ class HybridProvider(FootballDataProvider):
             )
 
         # No mapping found – return original so callers still work (degraded mode)
-        logger.info(
-            f"_resolve_team_canonical_uuid: no UUID found for provider_team_id={provider_team_id}, "
-            f"returning original value"
+        logger.warning(
+            f"_resolve_team_canonical_uuid: no canonical UUID found for provider_team_id={provider_team_id}. "
+            f"This may indicate missing team data in the database. Returning original ID for graceful degradation."
         )
         return provider_team_id
 

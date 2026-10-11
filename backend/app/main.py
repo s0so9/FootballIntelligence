@@ -57,12 +57,53 @@ app.include_router(api_router)
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with real database connectivity verification."""
+    from app.database.session import get_session_factory
+    
+    # Check service initialization
+    service_status = "healthy" if app_state.ingestion_service else "not_initialized"
+    
+    # Perform actual database connectivity test
+    database_status = "unknown"
+    database_details = {}
+    
+    try:
+        session_factory = get_session_factory()
+        with session_factory() as session:
+            # Execute a simple query to verify database connectivity
+            from app.database.models import Team as TeamDB
+            team_count = session.query(TeamDB).count()
+            
+            database_status = "connected"
+            database_details = {
+                "teams_count": team_count,
+                "connection_verified": True
+            }
+            
+            # Add warning for empty teams table in production
+            if team_count == 0:
+                database_details["warning"] = "Teams table is empty - team ID resolution will fail"
+                # Log this as a warning for monitoring
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning("Production database teams table is empty - this will cause team ID resolution failures")
+    except Exception as exc:
+        database_status = "connection_failed"
+        database_details = {
+            "error": str(exc)[:100],  # Limit error message length for security
+            "connection_verified": False
+        }
+    
+    # Overall health determination
+    overall_status = "healthy" if (service_status == "healthy" and database_status == "connected") else "degraded"
+    
     return {
-        "status": "healthy",
+        "status": overall_status,
         "service": "TUTAR X API",
         "version": "0.1.0",
-        "database": "connected" if app_state.ingestion_service else "not_initialized",
+        "database": database_status,
+        "database_details": database_details,
+        "ingestion_service": service_status,
     }
 
 

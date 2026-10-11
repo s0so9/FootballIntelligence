@@ -53,7 +53,17 @@ class TestHealthEndpoint:
         assert "status" in data
         assert "service" in data
         assert "version" in data
-        assert data["status"] == "healthy"
+        assert "database" in data
+        assert "database_details" in data
+        assert "ingestion_service" in data
+        
+        # Status can be 'healthy' or 'degraded' depending on environment
+        assert data["status"] in ["healthy", "degraded"]
+        
+        # Database details should contain connection info
+        db_details = data["database_details"]
+        assert "connection_verified" in db_details
+        assert isinstance(db_details["connection_verified"], bool)
 
 
 class TestMatchListEndpoint:
