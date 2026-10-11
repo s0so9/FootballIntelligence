@@ -76,28 +76,28 @@ async def list_competitions(
             major_competitions = [
                 CompetitionResponse(
                     id="d13431f9-0ce0-46dd-a95b-76d6a9f71be8",
-                    name="English Football League",  # More generic than "Premier League"
-                    country="ENG",
+                    name="Premier League",
+                    country=None,  # Don't show country code
                 ),
                 CompetitionResponse(
                     id="148d29c5-1974-4484-8824-441d504d7b65",
-                    name="German Football League",
-                    country="GER",
+                    name="Bundesliga",
+                    country=None,
                 ),
                 CompetitionResponse(
                     id="83ef0537-3cb1-46a6-922f-9cd814c754ea",
-                    name="Spanish Football League",
-                    country="ESP",
+                    name="La Liga",
+                    country=None,
                 ),
                 CompetitionResponse(
                     id="d25a8066-f8b1-439f-9a08-049cee6a1965",
-                    name="Italian Football League",
-                    country="ITA",
+                    name="Serie A",
+                    country=None,
                 ),
                 CompetitionResponse(
                     id="265074a5-65ce-40fa-a4b8-f18ccc321010",
-                    name="French Football League",
-                    country="FRA",
+                    name="Ligue 1",
+                    country=None,
                 ),
                 ]
     
