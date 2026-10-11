@@ -29,7 +29,7 @@ export function GlobalSearch({ isOpen, onOpenChange }: GlobalSearchProps) {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
-  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Search function with Turkish character normalization
   const performSearch = useCallback(async (term: string) => {

@@ -3369,3 +3369,15 @@ the_odds_api_sports: str = "soccer_epl,soccer_germany_bundesliga,..."
 - Production deploy sonrası test edilecek
 
 **Impact**: Production'da boş dönen match endpoint'leri artık fallback ile sonuç dönecek.
+
+## 2026-10-11: Frontend TypeScript build düzeltmeleri
+
+**Problem**: Production `npm run build` (`tsc && vite build`) test dosyalarını type-check ettiği için `searchNormalizer.test.ts` (vitest globals) derlemeyi bozuyordu. Global Search debounce timer tipi tarayıcı ortamına uygun hale getirildi.
+
+**Çözüm**:
+- `GlobalSearch` debounce ref: `ReturnType<typeof setTimeout> | null` (NodeJS.Timeout yok)
+- `tsconfig.json`: test dosyaları ve `test-setup.ts` production `tsc` dışında; Vitest testleri çalışmaya devam eder
+
+**Verification**:
+- `npm test`: 11 dosya, 134 test geçti
+- `npm run build`: başarılı
