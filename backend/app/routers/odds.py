@@ -4,13 +4,15 @@ import logging
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.database.session import get_db
 from app.database.models import AverageMarketOdds, BookmakerOdds
 from app.providers.odds_api_provider import the_odds_api_provider
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +205,11 @@ async def search_match_odds(
     away_normalized = normalize_team_name(away_team)
     
     # Veritabanında benzer takım isimlerini ara
-    odds_records = db.query(AverageMarketOdds).join(BookmakerOdds).filter(
+    # Explicit join to avoid duplicate odds
+    odds_records = db.query(AverageMarketOdds).join(
+        BookmakerOdds,
+        AverageMarketOdds.provider_event_id == BookmakerOdds.provider_event_id
+    ).filter(
         BookmakerOdds.sport_key == sport_key,
         BookmakerOdds.home_team_name.ilike(f"%{home_normalized}%"),
         BookmakerOdds.away_team_name.ilike(f"%{away_normalized}%")
@@ -269,7 +275,8 @@ async def get_odds_health(db: Session = Depends(get_db)):
 @router.post("/manual-update")
 async def manual_odds_update(
     sport_key: Optional[str] = Query(None, description="Belirli bir spor için güncelleme"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None)
 ):
     """
     Manuel odds güncellemesi tetikle.
@@ -277,18 +284,59 @@ async def manual_odds_update(
     Bu endpoint admin/test amaçlı kullanılır.
     Production'da scheduler otomatik güncelleme yapar.
     
-    SECURITY NOTE: This endpoint should be protected with authentication/authorization
-    in production environments. Currently open for development only.
+    SECURITY: Requires FI_ADMIN_TOKEN in Authorization header.
     """
-    # TODO: Add authentication/authorization check
-    # Example: require admin role or API key
-    # if not current_user.is_admin:
-    #     raise HTTPException(status_code=403, detail="Admin access required")
+    # Authentication check
+    admin_token = getattr(settings, 'FI_ADMIN_TOKEN', None)
     
-    # Rate limiting: prevent multiple concurrent updates
-    # (In production, use proper distributed lock or rate limiter)
+    if admin_token:
+        # If admin token is configured, require it
+        if not authorization:
+            raise HTTPException(
+                status_code=401,
+                detail="Authorization header required for manual odds update"
+            )
+        
+        # Extract token from "Bearer <token>" or use as-is
+        provided_token = authorization.replace("Bearer ", "").strip()
+        
+        # Constant-time comparison to prevent timing attacks
+        import secrets
+        if not secrets.compare_digest(provided_token, admin_token):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid authorization token"
+            )
+    else:
+        # No admin token configured - log warning but allow (development mode)
+        logger.warning(
+            "FI_ADMIN_TOKEN not configured. Manual odds update endpoint is unprotected. "
+            "Set FI_ADMIN_TOKEN environment variable for production."
+        )
+    
+    # Rate limiting check (basic in-memory lock)
+    # In distributed deployment, use Redis or database lock
+    import threading
+    if not hasattr(manual_odds_update, '_update_lock'):
+        manual_odds_update._update_lock = threading.Lock()
+    
+    if not manual_odds_update._update_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="Odds update already in progress. Please wait."
+        )
     
     try:
+        # Validate sport_key if provided
+        if sport_key:
+            allowed_sports = ['soccer_epl', 'soccer_spain_la_liga', 'soccer_germany_bundesliga', 
+                            'soccer_italy_serie_a', 'soccer_france_ligue_one', 'soccer_turkey_super_league']
+            if sport_key not in allowed_sports:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid sport_key. Allowed: {', '.join(allowed_sports)}"
+                )
+        
         if sport_key:
             # Tek spor güncellemesi
             from app.services.odds_updater_service import OddsUpdaterService
@@ -306,6 +354,8 @@ async def manual_odds_update(
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         logger.error(f"Manual update failed: {e}", exc_info=True)
         # Don't expose internal error details to client
@@ -313,6 +363,8 @@ async def manual_odds_update(
             status_code=500,
             detail="Odds update failed. Please check server logs."
         )
+    finally:
+        manual_odds_update._update_lock.release()
 
 
 @router.get("/bookmakers")
@@ -327,8 +379,8 @@ async def get_available_bookmakers(db: Session = Depends(get_db)):
     bookmaker_stats = db.query(
         BookmakerOdds.bookmaker_key,
         BookmakerOdds.bookmaker_title,
-        db.func.count(BookmakerOdds.provider_event_id.distinct()).label('event_count'),
-        db.func.max(BookmakerOdds.fetched_at).label('last_seen')
+        func.count(BookmakerOdds.provider_event_id.distinct()).label('event_count'),
+        func.max(BookmakerOdds.fetched_at).label('last_seen')
     ).group_by(
         BookmakerOdds.bookmaker_key,
         BookmakerOdds.bookmaker_title

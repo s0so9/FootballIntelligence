@@ -16,6 +16,7 @@ from app.prediction.walk_forward import (
     WalkForwardEvaluator,
     WalkForwardMetrics,
     PipelinePredictionRecord,
+    RecordStatus,
     compare_configurations,
 )
 
@@ -146,6 +147,7 @@ class TestPipelinePredictionRecord:
             actual_home_score=2,
             actual_away_score=0,
             feature_config="baseline",
+            record_status=RecordStatus.SUCCESS,
             models_available=7,
             models_successful=7,
             model_outputs={},
@@ -188,6 +190,7 @@ class TestPipelinePredictionRecord:
             actual_home_score=2,
             actual_away_score=0,
             feature_config="baseline",
+            record_status=RecordStatus.SUCCESS,
             models_available=7,
             models_successful=7,
             model_outputs={},

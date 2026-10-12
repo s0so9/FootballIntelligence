@@ -51,43 +51,34 @@ export function useMatchOdds(matchId?: string) {
   const [odds, setOdds] = useState<MatchOdds | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentMatchId, setCurrentMatchId] = useState<string | undefined>(matchId)
 
   const fetchOdds = useCallback(async (id: string) => {
     setLoading(true)
     setError(null)
-    setCurrentMatchId(id)
 
     try {
-      const response = await apiClient.get(`/api/v1/odds/match/${id}`)
-      const data: MatchOdds = await response.json()
-      
-      // Only update if this is still the current match ID
-      setOdds(prevOdds => currentMatchId === id ? data : prevOdds)
+      // apiClient.get returns an object with .json() method
+      const data = await apiClient.get(`/odds/match/${id}`).json<MatchOdds>()
+      setOdds(data)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Odds fetch failed'
-      
-      // Only set error if this is still the current match ID
-      if (currentMatchId === id) {
-        setError(errorMessage)
-        console.error('Failed to fetch match odds:', err)
-      }
+      setError(errorMessage)
+      console.error('Failed to fetch match odds:', err)
     } finally {
       setLoading(false)
     }
-  }, [currentMatchId])
+  }, [])
 
   useEffect(() => {
     if (!matchId) {
       setOdds(null)
-      setCurrentMatchId(undefined)
+      setError(null)
       return
     }
 
-    if (matchId !== currentMatchId) {
-      fetchOdds(matchId)
-    }
-  }, [matchId, currentMatchId, fetchOdds])
+    // Fetch on mount or when matchId changes
+    fetchOdds(matchId)
+  }, [matchId, fetchOdds])
 
   const refetch = useCallback(() => {
     if (matchId) {
@@ -120,8 +111,8 @@ export function useSearchOdds() {
         sport_key: sportKey
       })
 
-      const response = await apiClient.get(`/api/v1/odds/search?${params}`)
-      const data: any = await response.json()
+      // apiClient.get returns an object with .json() method
+      const data = await apiClient.get(`/odds/search?${params}`).json<any>()
       
       if (data.match_found === false) {
         return null

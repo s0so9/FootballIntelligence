@@ -1,6 +1,7 @@
 """Application configuration management."""
 
 from typing import List
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -45,7 +46,11 @@ class Settings(BaseSettings):
     provider_timeout_seconds: float = 10.0
     provider_retry_count: int = 2
     use_real_providers: bool = True  # True = Use HybridProvider (database + external), False = DevelopmentProvider only
-    is_development: bool = False  # env: FI_IS_DEVELOPMENT - True for development mode
+    is_development: bool = Field(
+        default=False,
+        validation_alias="FI_IS_DEVELOPMENT",
+        description="Development mode flag. Set FI_IS_DEVELOPMENT=true in environment."
+    )
 
     # Feature Engineering
     team_form_window: int = 5  # Number of recent matches to consider for form
@@ -81,6 +86,12 @@ class Settings(BaseSettings):
     the_odds_api_timeout_seconds: float = 10.0
     the_odds_api_min_remaining_requests: int = 50  # Skip updates if credits below this
     the_odds_api_sports: str = "soccer_epl,soccer_germany_bundesliga,soccer_spain_la_liga,soccer_italy_serie_a,soccer_france_ligue_one"  # Comma-separated
+
+    # Admin API Security
+    FI_ADMIN_TOKEN: str = Field(
+        default="",
+        description="Admin token for protected endpoints (e.g., manual odds update). Leave empty to disable auth (dev only)."
+    )
 
     class Config:
         """Pydantic configuration."""

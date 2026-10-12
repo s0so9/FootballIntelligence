@@ -15,12 +15,15 @@ when fewer than 2 valid predictions are provided.
 from __future__ import annotations
 
 import math
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from app.prediction.interfaces import ModelPrediction, ModelAvailability
+
+logger = logging.getLogger(__name__)
 from app.domain.enums import ModelType
 
 
@@ -179,19 +182,43 @@ class EnsembleEngine:
         # Calculate weights
         raw_weights = self.strategy.calculate_weights(predictions, context)
         
+        # Validate weights
+        for model_id, weight in raw_weights.items():
+            if weight is None or not isinstance(weight, (int, float)):
+                logger.warning(
+                    f"Invalid weight type for model {model_id}: {type(weight)}. Using 0.0"
+                )
+                raw_weights[model_id] = 0.0
+            elif math.isnan(weight) or math.isinf(weight):
+                logger.warning(
+                    f"Invalid weight value for model {model_id}: {weight}. Using 0.0"
+                )
+                raw_weights[model_id] = 0.0
+            elif weight < 0:
+                logger.warning(
+                    f"Negative weight for model {model_id}: {weight}. Using 0.0"
+                )
+                raw_weights[model_id] = 0.0
+        
         # Normalize weights
         total_weight = sum(raw_weights.values())
         if total_weight == 0:
-            # All weights zero - fall back to equal weighting
-            normalized_weights = {
-                model_id: 1.0 / len(predictions)
-                for model_id in raw_weights
-            }
-        else:
-            normalized_weights = {
-                model_id: weight / total_weight
-                for model_id, weight in raw_weights.items()
-            }
+            # All weights zero - no eligible models
+            logger.warning(
+                f"All model weights are zero for {len(predictions)} predictions. "
+                f"Strategy: {self.strategy.__class__.__name__}. Returning unavailable."
+            )
+            return ModelAvailability(
+                model_id="ensemble_v1",
+                available=False,
+                reason="all_weights_zero",
+                missing_features=[f"All {len(predictions)} models have zero weight"]
+            )
+        
+        normalized_weights = {
+            model_id: weight / total_weight
+            for model_id, weight in raw_weights.items()
+        }
         
         # Combine predictions
         combined_home_win = 0.0

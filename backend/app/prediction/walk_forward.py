@@ -49,6 +49,7 @@ from app.prediction.calibration import (
     log_loss_multiclass,
     calibration_error,
 )
+from app.prediction.interfaces import ModelAvailability
 
 
 class FeatureGroup(str, Enum):
@@ -63,6 +64,15 @@ class FeatureGroup(str, Enum):
     SHOT_VOLUME = "shot_volume"
     COMMON_OPPONENT = "common_opponent"
     ADVANCED_FULL = "advanced_full"  # All advanced features
+
+
+class RecordStatus(str, Enum):
+    """Status of a pipeline prediction record."""
+    
+    SUCCESS = "success"  # Prediction completed successfully
+    INSUFFICIENT_DATA = "insufficient_data"  # Not enough data for prediction
+    PIPELINE_ERROR = "pipeline_error"  # Software/execution error
+    PASS = "pass"  # Smart selector decided to pass
 
 
 @dataclass
@@ -113,12 +123,15 @@ class PipelinePredictionRecord:
     # Match identification
     match_id: str
     predicted_at: datetime
-    actual_outcome: str  # "home_win", "draw", "away_win"
-    actual_home_score: int
-    actual_away_score: int
+    actual_outcome: Optional[str]  # "home_win", "draw", "away_win" or None for errors
+    actual_home_score: Optional[int]
+    actual_away_score: Optional[int]
     
     # Configuration
     feature_config: str
+    
+    # Record status
+    record_status: RecordStatus
     
     # Model orchestration
     models_available: int
@@ -126,23 +139,23 @@ class PipelinePredictionRecord:
     model_outputs: Dict[str, Dict[str, float]]  # model_id -> {home_win, draw, away_win}
     
     # Ensemble
-    ensemble_home_win: float
-    ensemble_draw: float
-    ensemble_away_win: float
-    model_agreement: float
+    ensemble_home_win: Optional[float]
+    ensemble_draw: Optional[float]
+    ensemble_away_win: Optional[float]
+    model_agreement: Optional[float]
     
     # Calibration
-    calibrated_home_win: float
-    calibrated_draw: float
-    calibrated_away_win: float
+    calibrated_home_win: Optional[float]
+    calibrated_draw: Optional[float]
+    calibrated_away_win: Optional[float]
     calibration_status: str
     
     # Confidence/Uncertainty
-    confidence_score: float
-    confidence_label: str
-    uncertainty_score: float
-    uncertainty_label: str
-    model_disagreement: float
+    confidence_score: Optional[float]
+    confidence_label: Optional[str]
+    uncertainty_score: Optional[float]
+    uncertainty_label: Optional[str]
+    model_disagreement: Optional[float]
     
     # Market selection
     selected_market: Optional[str]
@@ -153,20 +166,27 @@ class PipelinePredictionRecord:
     
     # Feature availability
     features_available: Dict[str, bool]
-    data_quality_score: float
+    data_quality_score: Optional[float]
     
     # Shot markets (when available)
     shot_markets_evaluated: bool = False
     shot_market_predictions: Dict[str, any] = field(default_factory=dict)
     
-    # Computed metrics
-    brier_score_ensemble: float = field(init=False)
-    brier_score_calibrated: float = field(init=False)
-    log_loss_ensemble: float = field(init=False)
-    log_loss_calibrated: float = field(init=False)
+    # Computed metrics (only for valid predictions with outcomes)
+    brier_score_ensemble: Optional[float] = field(default=None, init=False)
+    brier_score_calibrated: Optional[float] = field(default=None, init=False)
+    log_loss_ensemble: Optional[float] = field(default=None, init=False)
+    log_loss_calibrated: Optional[float] = field(default=None, init=False)
     
     def __post_init__(self):
-        """Compute evaluation metrics."""
+        """Compute evaluation metrics for valid predictions."""
+        # Only compute metrics for successful predictions with outcomes
+        if (self.record_status != RecordStatus.SUCCESS or 
+            self.actual_outcome is None or
+            self.ensemble_home_win is None or
+            self.calibrated_home_win is None):
+            return
+        
         h = 1 if self.actual_outcome == "home_win" else 0
         d = 1 if self.actual_outcome == "draw" else 0
         a = 1 if self.actual_outcome == "away_win" else 0
@@ -376,6 +396,42 @@ class WalkForwardEvaluator:
                 
                 if record is not None:
                     records.append(record)
+                else:
+                    # Record insufficient data case
+                    actual_outcome = self._match_outcome(test_match)
+                    insufficient_record = PipelinePredictionRecord(
+                        match_id=test_match.id,
+                        predicted_at=datetime.utcnow(),
+                        actual_outcome=actual_outcome,
+                        actual_home_score=test_match.home_score,
+                        actual_away_score=test_match.away_score,
+                        feature_config=config.name,
+                        record_status=RecordStatus.INSUFFICIENT_DATA,
+                        models_available=0,
+                    models_successful=0,
+                    model_outputs={},
+                    ensemble_home_win=None,
+                    ensemble_draw=None,
+                    ensemble_away_win=None,
+                    model_agreement=None,
+                    calibrated_home_win=None,
+                    calibrated_draw=None,
+                    calibrated_away_win=None,
+                    calibration_status="unavailable",
+                    confidence_score=None,
+                    confidence_label=None,
+                    uncertainty_score=None,
+                    uncertainty_label=None,
+                    model_disagreement=None,
+                    selected_market=None,
+                    selection_probability=None,
+                    selection_confidence=None,
+                    is_pass=True,
+                    pass_reason="insufficient_data",
+                    features_available={},
+                    data_quality_score=None,
+                )
+                    records.append(insufficient_record)
             
             train_end += self.step_size
         
@@ -440,7 +496,6 @@ class WalkForwardEvaluator:
             )
             
             # Check if ensemble returned ModelAvailability (insufficient data)
-            from app.prediction.model_prediction import ModelAvailability
             if isinstance(ensemble_pred, ModelAvailability):
                 return None
             
@@ -449,9 +504,14 @@ class WalkForwardEvaluator:
             
             # 5. Confidence/Uncertainty
             confidence_engine = ConfidenceEngine()
-            data_quality_score = snapshot.data_quality_report.overall_score if snapshot.data_quality_report else None
+            data_quality_score = snapshot.data_quality_report.overall_score if snapshot.data_quality_report else 0.0
+            
+            # Compute feature availability from snapshot
+            # Count non-null features in snapshot attributes
+            feature_availability = 0.8  # Simplified: real implementation should introspect snapshot
+            
             confidence_assessment = confidence_engine.assess(
-                model_agreement=ensemble_pred.metadata.get("model_agreement", 0.5),
+                model_agreement=ensemble_pred.metadata.get("model_agreement", None),
                 data_quality_score=data_quality_score,
                 n_matches=len(train_matches),
                 brier_score=None,  # Not available during prediction
@@ -468,7 +528,7 @@ class WalkForwardEvaluator:
             uncertainty_assessment = uncertainty_engine.assess(
                 model_disagreement=disagreement.disagreement_score,
                 data_quality=data_quality_score,
-                feature_availability=0.8,  # Simplified
+                feature_availability=feature_availability,
                 sample_size=len(train_matches),
                 probability_dispersion=disagreement.probability_range,
                 calibration_status=calibration_engine.status.value
@@ -509,6 +569,7 @@ class WalkForwardEvaluator:
                 actual_home_score=test_match.home_score,
                 actual_away_score=test_match.away_score,
                 feature_config=config.name,
+                record_status=RecordStatus.PASS if is_pass else RecordStatus.SUCCESS,
                 models_available=len(orchestration_result.get_all_outputs()),
                 models_successful=len(orchestration_result.successful_predictions),
                 model_outputs={
@@ -522,7 +583,7 @@ class WalkForwardEvaluator:
                 ensemble_home_win=ensemble_pred.home_win_prob,
                 ensemble_draw=ensemble_pred.draw_prob,
                 ensemble_away_win=ensemble_pred.away_win_prob,
-                model_agreement=ensemble_pred.metadata.get("model_agreement", 0.5),
+                model_agreement=ensemble_pred.metadata.get("model_agreement"),
                 calibrated_home_win=calibrated_pred.home_win_prob,
                 calibrated_draw=calibrated_pred.draw_prob,
                 calibrated_away_win=calibrated_pred.away_win_prob,
@@ -551,38 +612,39 @@ class WalkForwardEvaluator:
                 f"Walk-forward evaluation failed for match {test_match.id}: {e}",
                 exc_info=True,
             )
-            # Yazılım hatası: evaluation_error olarak kaydet
-            # Bu kayıtlar _aggregate_metrics içinde özel olarak işlenir
+            # Software error: return a PIPELINE_ERROR record
+            actual_outcome = self._match_outcome(test_match)
             return PipelinePredictionRecord(
                 match_id=test_match.id,
                 predicted_at=datetime.utcnow(),
-                actual_outcome=self._match_outcome(test_match) or "unknown",
-                actual_home_score=test_match.home_score if test_match.home_score is not None else 0,
-                actual_away_score=test_match.away_score if test_match.away_score is not None else 0,
+                actual_outcome=actual_outcome,
+                actual_home_score=test_match.home_score,
+                actual_away_score=test_match.away_score,
                 feature_config=config.name,
+                record_status=RecordStatus.PIPELINE_ERROR,
                 models_available=0,
                 models_successful=0,
                 model_outputs={},
-                ensemble_home_win=0.33,
-                ensemble_draw=0.34,
-                ensemble_away_win=0.33,
-                model_agreement=0.0,
-                calibrated_home_win=0.33,
-                calibrated_draw=0.34,
-                calibrated_away_win=0.33,
+                ensemble_home_win=None,
+                ensemble_draw=None,
+                ensemble_away_win=None,
+                model_agreement=None,
+                calibrated_home_win=None,
+                calibrated_draw=None,
+                calibrated_away_win=None,
                 calibration_status="error",
-                confidence_score=0.0,
+                confidence_score=None,
                 confidence_label="ERROR",
-                uncertainty_score=0.0,
+                uncertainty_score=None,
                 uncertainty_label="unknown",
-                model_disagreement=0.0,
+                model_disagreement=None,
                 selected_market=None,
                 selection_probability=None,
                 selection_confidence=None,
                 is_pass=True,
-                pass_reason=f"evaluation_error: {str(e)[:200]}",
+                pass_reason=f"pipeline_error: {str(e)[:200]}",
                 features_available={},
-                data_quality_score=0.0,
+                data_quality_score=None,
                 shot_markets_evaluated=False,
                 shot_market_predictions={},
             )
@@ -597,21 +659,42 @@ class WalkForwardEvaluator:
         
         In production, this would use database queries with temporal constraints.
         For walk-forward evaluation, we simulate by using only train_matches.
-        """
-        # This is a simplified implementation
-        # In production, extract_feature_snapshot would query database
-        # with WHERE match_date < test_match.scheduled_at
         
-        # For now, return a minimal snapshot with only required fields
-        # Real implementation requires full feature extraction infrastructure
+        Args:
+            match: Match to predict
+            train_matches: Historical training data (cutoff enforced)
+            config: Feature configuration
+            
+        Returns:
+            MatchFeatureSnapshot or None if insufficient data
+        """
+        # Temporal cutoff: use only matches before test_match.scheduled_at
+        cutoff_date = match.scheduled_at
+        historical_matches = [m for m in train_matches if m.scheduled_at < cutoff_date]
+        
+        # In production, extract_feature_snapshot would query database
+        # with WHERE match_date < cutoff_date
+        # For walk-forward simulation, we create a minimal snapshot
+        # Real implementation requires full feature extraction with cutoff enforcement
+        
         from app.prediction.data_quality import DataQualityReport, DataQualityCheck
+        
+        # Retrieve team names: ORM models have home_team/away_team relationships
+        home_team_name = None
+        away_team_name = None
+        
+        # Check if match has loaded relationships (ORM query), else lookup by ID
+        if hasattr(match, 'home_team') and match.home_team is not None:
+            home_team_name = match.home_team.name
+        if hasattr(match, 'away_team') and match.away_team is not None:
+            away_team_name = match.away_team.name
         
         return MatchFeatureSnapshot(
             match_id=match.id,
             home_team_id=match.home_team_id,
             away_team_id=match.away_team_id,
-            home_team_name=match.home_team.name if match.home_team else None,
-            away_team_name=match.away_team.name if match.away_team else None,
+            home_team_name=home_team_name,
+            away_team_name=away_team_name,
             scheduled_at=match.scheduled_at,
             data_quality_report=DataQualityReport(
                 overall_score=0.5,  # walk-forward simülasyon: orta kalite
@@ -629,56 +712,40 @@ class WalkForwardEvaluator:
     ) -> CalibrationEngine:
         """Fit calibration using only training data (temporal cutoff).
         
+        Real calibration requires stored out-of-sample predictions.
+        In walk-forward evaluation without stored predictions, we return
+        an unfitted calibration engine.
+        
         Args:
             train_matches: Training matches (chronologically before test)
             config: Feature configuration
             
         Returns:
-            Fitted CalibrationEngine
+            CalibrationEngine (fitted if stored predictions exist, else NOT_FITTED)
         """
         calibration_engine = CalibrationEngine(method="isotonic")
         
-        # Walk-forward: historical predictions needed.
-        # If no stored predictions exist, build a minimal out-of-sample approximation
-        # using the same pipeline on a holdout subset, recording actuals.
-        # For this implementation, use the ensemble home_win probability from each
-        # train match as the predicted probability and the actual home_win outcome
-        # as the binary outcome (0.0/1.0). This is a documented simplification:
-        # real production calibration should use stored prediction versions.
+        # Walk-forward calibration requires:
+        # 1. Real out-of-sample predictions stored in database
+        # 2. Actual outcomes for those predictions
+        # 3. Temporal cutoff ensuring no future data leakage
+        #
+        # Without stored prediction versions, we return an unfitted engine.
+        # The pipeline will use this and mark calibration_status as NOT_FITTED.
+        #
+        # To properly fit calibration in walk-forward:
+        # - Use PredictionVersionRepository to retrieve historical predictions
+        # - Ensure each prediction was made with data < prediction timestamp
+        # - Match predictions to actual outcomes from train_matches
+        #
+        # This is documented as a limitation of simplified walk-forward evaluation.
         
-        predicted_probs = []
-        actual_outcomes = []
-        timestamps = []
-        
-        MIN_SAMPLES = 30  # CalibrationEngine.MIN_SAMPLES
-        
-        for m in train_matches:
-            if m.home_score is None or m.away_score is None:
-                continue
-            outcome = 1.0 if m.home_score > m.away_score else 0.0
-            # Use a neutral 0.5 as placeholder for predicted home_win probability
-            # when no stored prediction exists; this is documented as a limitation.
-            predicted_probs.append(0.5)
-            actual_outcomes.append(outcome)
-            timestamps.append(m.scheduled_at)
-        
-        if len(predicted_probs) >= MIN_SAMPLES:
-            from app.prediction.calibration_engine import CalibrationData
-            cutoff = max(timestamps) if timestamps else None
-            try:
-                calibration_engine.fit(
-                    CalibrationData(
-                        predicted_probs=predicted_probs,
-                        actual_outcomes=actual_outcomes,
-                        timestamps=timestamps,
-                    ),
-                    cutoff_date=cutoff,
-                )
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"Walk-forward calibration fit failed, using unfitted engine: {e}"
-                )
+        import logging
+        logging.getLogger(__name__).warning(
+            "Walk-forward calibration: no stored predictions available, "
+            "returning unfitted engine. For real calibration, use "
+            "PredictionVersionRepository with settled outcomes."
+        )
         
         return calibration_engine
     
@@ -699,23 +766,34 @@ class WalkForwardEvaluator:
         if not records:
             return self._empty_metrics(config_name)
         
-        n = len(records)
-        n_pass = sum(1 for r in records if r.is_pass)
+        # Track all attempted evaluations
+        n_total = len(records)
+        n_success = sum(1 for r in records if r.record_status == RecordStatus.SUCCESS)
+        n_insufficient = sum(1 for r in records if r.record_status == RecordStatus.INSUFFICIENT_DATA)
+        n_error = sum(1 for r in records if r.record_status == RecordStatus.PIPELINE_ERROR)
+        n_pass = sum(1 for r in records if r.record_status == RecordStatus.PASS)
         
-        # Filter to non-pass predictions for evaluation
-        # Exclude evaluation_error records from metrics (but count them in n_predictions)
-        eval_records = [
-            r for r in records 
-            if not r.is_pass and not (r.pass_reason and r.pass_reason.startswith("evaluation_error"))
-        ]
+        # Validate counts
+        assert n_success + n_insufficient + n_error + n_pass == n_total, \
+            f"Record count mismatch: {n_success}+{n_insufficient}+{n_error}+{n_pass} != {n_total}"
+        
+        # Only evaluate metrics on successful predictions
+        eval_records = [r for r in records if r.record_status == RecordStatus.SUCCESS]
         n_eval = len(eval_records)
         
-        coverage = (n_eval) / n if n > 0 else 0.0
+        # Coverage = fraction with valid predictions (not insufficient/error)
+        coverage = n_eval / n_total if n_total > 0 else 0.0
         
         if n_eval == 0:
+            # No successful predictions
+            pass_reasons: Dict[str, int] = {}
+            for r in records:
+                if r.is_pass and r.pass_reason:
+                    pass_reasons[r.pass_reason] = pass_reasons.get(r.pass_reason, 0) + 1
+            
             return WalkForwardMetrics(
                 config_name=config_name,
-                n_predictions=n,
+                n_predictions=n_total,
                 n_pass=n_pass,
                 coverage=coverage,
                 accuracy_ensemble=None,
@@ -726,7 +804,7 @@ class WalkForwardEvaluator:
                 brier_calibrated=None,
                 log_loss_calibrated=None,
                 calibration_error_calibrated=None,
-                avg_models_available=0.0,
+                avg_models_available=sum(r.models_available for r in records) / n_total,
                 avg_model_agreement=0.0,
                 avg_model_disagreement=0.0,
                 avg_confidence=0.0,
@@ -734,7 +812,7 @@ class WalkForwardEvaluator:
                 high_confidence_count=0,
                 high_uncertainty_count=0,
                 avg_data_quality=0.0,
-                pass_reasons={}
+                pass_reasons=pass_reasons
             )
         
         # Accuracy (ensemble)
@@ -752,12 +830,12 @@ class WalkForwardEvaluator:
         accuracy_calibrated = correct_calibrated / n_eval
         
         # Brier scores
-        brier_ensemble = sum(r.brier_score_ensemble for r in eval_records) / n_eval
-        brier_calibrated = sum(r.brier_score_calibrated for r in eval_records) / n_eval
+        brier_ensemble = sum(r.brier_score_ensemble for r in eval_records if r.brier_score_ensemble is not None) / n_eval
+        brier_calibrated = sum(r.brier_score_calibrated for r in eval_records if r.brier_score_calibrated is not None) / n_eval
         
         # Log loss
-        log_loss_ensemble = sum(r.log_loss_ensemble for r in eval_records) / n_eval
-        log_loss_calibrated = sum(r.log_loss_calibrated for r in eval_records) / n_eval
+        log_loss_ensemble = sum(r.log_loss_ensemble for r in eval_records if r.log_loss_ensemble is not None) / n_eval
+        log_loss_calibrated = sum(r.log_loss_calibrated for r in eval_records if r.log_loss_calibrated is not None) / n_eval
         
         # Calibration error (on ensemble home_win probabilities)
         home_probs = [r.ensemble_home_win for r in eval_records]
@@ -770,17 +848,28 @@ class WalkForwardEvaluator:
         ece_cal_result = calibration_error(cal_home_probs, home_acts, n_bins=10)
         calibration_error_calibrated = ece_cal_result.ece if not math.isnan(ece_cal_result.ece) else None
         
-        # Averages
-        avg_models_available = sum(r.models_available for r in records) / n
-        avg_model_agreement = sum(r.model_agreement for r in records) / n
-        avg_model_disagreement = sum(r.model_disagreement for r in records) / n
-        avg_confidence = sum(r.confidence_score for r in records) / n
-        avg_uncertainty = sum(r.uncertainty_score for r in records) / n
-        avg_data_quality = sum(r.data_quality_score for r in records) / n
+        # Averages (computed on all records with non-None values)
+        avg_models_available = sum(r.models_available for r in records) / n_total
+        
+        # Only average agreement/disagreement/confidence/uncertainty over records with valid values
+        records_with_agreement = [r for r in records if r.model_agreement is not None]
+        avg_model_agreement = (sum(r.model_agreement for r in records_with_agreement) / len(records_with_agreement)) if records_with_agreement else 0.0
+        
+        records_with_disagreement = [r for r in records if r.model_disagreement is not None]
+        avg_model_disagreement = (sum(r.model_disagreement for r in records_with_disagreement) / len(records_with_disagreement)) if records_with_disagreement else 0.0
+        
+        records_with_confidence = [r for r in records if r.confidence_score is not None]
+        avg_confidence = (sum(r.confidence_score for r in records_with_confidence) / len(records_with_confidence)) if records_with_confidence else 0.0
+        
+        records_with_uncertainty = [r for r in records if r.uncertainty_score is not None]
+        avg_uncertainty = (sum(r.uncertainty_score for r in records_with_uncertainty) / len(records_with_uncertainty)) if records_with_uncertainty else 0.0
+        
+        records_with_quality = [r for r in records if r.data_quality_score is not None]
+        avg_data_quality = (sum(r.data_quality_score for r in records_with_quality) / len(records_with_quality)) if records_with_quality else 0.0
         
         # Counts
-        high_confidence_count = sum(1 for r in records if r.confidence_score >= 0.7)
-        high_uncertainty_count = sum(1 for r in records if r.uncertainty_score >= 0.7)
+        high_confidence_count = sum(1 for r in records_with_confidence if r.confidence_score >= 0.7)
+        high_uncertainty_count = sum(1 for r in records_with_uncertainty if r.uncertainty_score >= 0.7)
         
         # Pass reasons
         pass_reasons: Dict[str, int] = {}
@@ -790,7 +879,7 @@ class WalkForwardEvaluator:
         
         return WalkForwardMetrics(
             config_name=config_name,
-            n_predictions=n,
+            n_predictions=n_total,
             n_pass=n_pass,
             coverage=coverage,
             accuracy_ensemble=accuracy_ensemble,

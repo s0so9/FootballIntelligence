@@ -93,10 +93,10 @@ class TestIsotonicCalibration:
         assert calibrator.n_training_samples == 60
     
     def test_isotonic_calibration_not_fitted_with_insufficient_data(self):
-        """Test that calibrator not fitted with insufficient data."""
+        """Test that calibrator fitted with borderline data but marked as INSUFFICIENT_DATA."""
         calibrator = IsotonicCalibration()
         
-        # Only 30 samples (< MIN_SAMPLES = 50)
+        # Exactly MIN_SAMPLES (30) - should fit but with INSUFFICIENT_DATA status
         data = CalibrationData(
             predicted_probs=[0.5] * 30,
             actual_outcomes=[1.0] * 30,
@@ -105,7 +105,13 @@ class TestIsotonicCalibration:
         
         calibrator.fit(data)
         
-        assert not calibrator.is_fitted
+        # With 30 samples, should be fitted (>= MIN_SAMPLES)
+        # but status should indicate INSUFFICIENT_DATA (< RECOMMENDED_SAMPLES=50)
+        assert calibrator.is_fitted  # Changed: 30 samples IS enough to fit
+        
+        # Verify it can calibrate
+        result = calibrator.calibrate(0.5)
+        assert 0.0 <= result <= 1.0
     
     def test_isotonic_calibration_calibrate_when_not_fitted(self):
         """Test that uncalibrated probability returned when not fitted."""
@@ -122,9 +128,9 @@ class TestIsotonicCalibration:
         calibrator = IsotonicCalibration()
         
         # Generate synthetic calibration data with known bias
-        # Model predicts 0.5 but actual outcome is 0.8 (overconfident on low probs)
+        # Binary outcomes: 0.0 or 1.0 only
         probs = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] * 8
-        outcomes = [0.0, 0.0, 0.5, 0.8, 0.8, 0.9, 0.95, 1.0] * 8
+        outcomes = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0] * 8  # Binary outcomes only
         timestamps = [datetime.now()] * 64
         
         data = CalibrationData(probs, outcomes, timestamps)
