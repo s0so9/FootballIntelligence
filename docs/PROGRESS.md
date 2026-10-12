@@ -5866,3 +5866,64 @@ All changes are backward compatible:
 6. Deploy to production with monitoring
 
 **Status:** ✅ Implementation complete, ready for measurement and verification
+
+
+---
+
+## FEATURE — ANA SAYFAYA MAÇ LİSTESİ ENTEGRASYONU — October 12, 2026
+
+**Problem:** `/matches` sayfasındaki maç listeleme bölümü ayrı bir sayfadaydı. Ana sayfa
+sadece tahminleri gösteriyordu, kullanıcılar maçlara doğrudan ulaşamıyordu.
+
+**Çözüm:** `DashboardV2` bileşenine maç merkezi entegre edildi:
+- Tahminler bölümü korundu (üstte)
+- Yeni "Tüm Maçlar" bölümü eklendi (altta)
+- `MatchesV2` ile aynı API, veri normalizasyonu ve bileşenler kullanıldı
+- Tarih seçici (DateStrip) eklendi
+- Lig grupları (LeagueGroup) ile maçlar gösteriliyor
+- Maç, lig sayısı istatistikleri gösteriliyor
+- Yükleme, hata ve boş durum kontrolü yapılıyor
+
+**Teknik detaylar:**
+- `getMatches()` ve `getCompetitions()` API çağrıları eklendi
+- `matchesByCompetition` useMemo ile gruplama yapılıyor
+- `selectedDate` state ile tarih filtreleme
+- `DateStrip` ve `LeagueGroup` bileşenleri kullanıldı
+- Responsive tasarım korundu
+- `/matches` rotası çalışmaya devam ediyor (bozulmadı)
+
+**Doğrulama:**
+- ✅ TypeScript: 0 hata
+- ✅ Build: Başarılı (6.00s)
+- ✅ Ana sayfa: Tahminler + Maç Listesi görünüyor
+- ✅ `/matches` rotası: Çalışmaya devam ediyor
+- ✅ Tarih değiştirme: Çalışıyor
+- ✅ Lig grupları: Açılıp kapanabiliyor
+- ✅ Maç detayına geçiş: Çalışıyor
+- ✅ Favoriler: Çalışıyor
+- ✅ Boş durum: "Maç Bulunamadı" mesajı gösteriliyor
+- ✅ Hata durumu: "Tekrar Dene" butonu çalışıyor
+- ✅ Yükleme durumu: Skeleton gösteriliyor
+
+**Bundle boyutu:**
+- CSS: 172.19 kB (27.22 kB gzipped) — +2.86 kB
+- JS: 370.80 kB (102.20 kB gzipped) — +3.15 kB
+- Build süresi: 6.00s (optimal)
+
+**Değiştirilen dosyalar:**
+- `frontend/src/pages/DashboardV2.tsx` — Maç merkezi entegrasyonu
+- `frontend/src/pages/DashboardV2.css` — Yeni bölüm stilleri
+
+**Kullanıcı deneyimi:**
+Ana sayfada artık hem tahminler hem de tüm maçlar görünüyor. Kullanıcılar:
+1. Üstte: TUTAR X Intelligence tahminleri görüyor
+2. Altta: Tüm maçları tarih bazlı görüyor
+3. Tarih değiştirip farklı günlerdeki maçları görebiliyor
+4. Lig gruplarını açıp kapayabiliyor
+5. Maç kartlarına tıklayıp detay sayfasına gidebiliyor
+
+**Sonuç:** Ana sayfa artık daha zengin ve kullanışlı. Kullanıcılar tek sayfada hem tahminleri
+hem de tüm maçları görebiliyor. `/matches` rotası bozulmadı, ayrı bir maç merkezi olarak
+çalışmaya devam ediyor.
+
+---
