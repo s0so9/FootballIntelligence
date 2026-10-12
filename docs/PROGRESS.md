@@ -4507,3 +4507,247 @@ See `docs/FIXES-10-12-ANALYSIS.md` for detailed analysis and recommendations.
 **Lines Changed:** +490 (6 files)
 **Test Coverage:** 100% for changed code
 **Status:** ✅ COMPLETE (Fixes 7-9), ⚠️ BLOCKED (Fixes 10-12 require user decision)
+
+
+---
+
+## 2026-10-12: Code Review Fix #10 - Prediction Persistence
+
+**What:** Implemented database-backed prediction persistence (Fix #10)
+**Why:** Enable prediction history tracking, settlement, and backtesting
+**How:** Created repository pattern with SQLAlchemy integration
+
+### Changes Made
+
+#### Fix #10: PredictionVersionManager Database Persistence
+**Problem:** PredictionVersionManager used in-memory storage (`persistence_service=None`)
+- No database persistence for prediction versions
+- Prediction history lost on service restart
+- Cannot track prediction accuracy over time
+- Settlement and backtesting impossible
+
+**Solution:**
+Created complete persistence layer:
+
+**1. Repository Layer** (`backend/app/database/prediction_repository.py` - NEW)
+- `PredictionVersionRepository` class with CRUD operations
+- `save()` - Save version with constraint violation handling
+- `get_by_match()` - Retrieve all versions for a match
+- `get_by_id()` - Get specific version by UUID
+- `get_by_stage()` - Get versions by stage
+- `get_settled_picks_by_market()` - Query settled predictions by market type
+- `to_domain()` - Convert DB model to domain model
+- UUID string handling for SQLite compatibility
+
+**2. Service Layer** (`backend/app/services/prediction_persistence.py` - NEW)
+- `PredictionPersistenceService` implements persistence interface
+- Wraps repository with transaction management
+- IntegrityError → ValueError conversion for PredictionVersionManager
+- Commit/rollback handling
+
+**3. Database Model Updates** (`backend/app/database/models.py`)
+- Updated `PredictionVersionDB` settlement fields
+- Changed `outcome/is_correct/actual_odds` → `actual_result` (aligned with domain model)
+- Kept existing frozen pick fields from migration a02cb3bda619
+- Updated indexes for settlement queries
+
+**4. Service Integration** (`backend/app/prediction/service.py`)
+- Conditional persistence: uses `PredictionPersistenceService` when `db_session` available
+- Falls back to in-memory storage when no database session
+- Backward compatible with existing tests
+
+### Technical Details
+
+**Database Compatibility:**
+- SQLite: Uses string IDs (BaseModel.id is String)
+- PostgreSQL: Ready for UUID column type (migration compatible)
+- JSON columns for prediction_data and model_versions
+
+**Field Mapping:**
+- Domain: `actual_result` (PredictionVersion)
+- Database: `actual_result` (PredictionVersionDB)
+- Migration: a02cb3bda619 already added frozen pick fields
+
+**Unique Constraints:**
+- Existing: (match_id, stage, created_at) from migration
+- Allows multiple versions at same stage if created at different times
+- Prevents concurrent writer conflicts
+
+### Test Results
+
+**New Tests:** 3 tests added (`test_prediction_persistence.py`)
+- test_save_version_basic
+- test_get_versions_retrieves_all
+- test_save_version_with_frozen_pick
+
+**All Tests:** 38/38 passing ✅
+- 4 ensemble static weights tests (Fix #8)
+- 4 calibration rescaling tests (Fix #7)
+- 6 confidence gate config tests (Fix #9)
+- 3 prediction persistence tests (Fix #10) ← NEW
+- 21 regression tests (Fixes #1-6)
+
+**Total Coverage:** Fixes 1-10 complete
+
+### Git Commits
+
+**Commit:** `1b5abcb` - "fix: #10 Prediction persistence with database"
+
+```bash
+git log --oneline -3
+1b5abcb fix: #10 Prediction persistence with database
+4825b52 fix: 3 additional code review fixes (#7-9)
+ebd355d fix: 6 kod inceleme hata düzeltmesi uygulandı
+```
+
+### Verification Steps
+
+1. ✅ Repository CRUD operations work
+2. ✅ Service layer transaction handling correct
+3. ✅ UUID string conversion for SQLite
+4. ✅ Conditional persistence based on db_session
+5. ✅ All tests passing (38/38)
+6. ✅ Backward compatible with existing code
+7. ✅ Changes committed and pushed
+
+### Impact
+
+**Positive:**
+- Prediction history now persisted to database
+- Settlement tracking enabled
+- Backtesting infrastructure ready
+- Track record queries possible
+- Production-ready with existing migration
+
+**No Breaking Changes:**
+- Falls back to in-memory when no db_session
+- Existing tests still pass
+- API unchanged
+
+### Remaining Work
+
+**Fixes 11-12** still pending:
+- **Fix #11:** BTTS settlement canonical IDs (requires data migration)
+- **Fix #12:** Walk-forward backtest framework (requires extensive refactoring)
+
+See `docs/FIXES-10-12-ANALYSIS.md` for detailed analysis.
+
+### Next Steps
+
+**Immediate:**
+- Consider Fix #11 (settlement canonical IDs)
+- Plan Fix #12 (walk-forward framework)
+
+**Long-term:**
+- Implement settlement service using persistence
+- Build backtest framework on top of persistence
+- Add prediction performance analytics
+
+---
+
+**Session Duration:** ~2.5 hours
+**Lines Changed:** +899 -4 (7 files)
+**Tests:** 38/38 passing
+**Status:** ✅ COMPLETE (Fixes 1-10), ⚠️ PENDING (Fixes 11-12)
+
+
+---
+
+## FEATURE — SETTLEMENT KANONİK KİMLİK DESTEĞI — October 12, 2026
+
+**Problem:** Settlement engine (`backend/app/prediction/settlement.py`), tahmin sonuçlarını
+belirlerken `selection_text` alanındaki görüntüleme metnini ayrıştırıyordu. Örneğin, BTTS
+piyasasında "YES" kelimesinin metinde olup olmadığına bakıyordu:
+
+```python
+# ESKİ - HATALI
+predicted_btts_yes = 'YES' in selection_text.upper()
+```
+
+Bu yaklaşım:
+- Metin formatına bağımlıydı (kırılgan)
+- Türkçe/farklı diller için çalışmıyordu
+- `selection_text` değiştiğinde hata veriyordu
+- Uluslararasılaşmayı engelliyordu
+
+**Çözüm:** Settlement engine, artık `market_selector.py` tarafından üretilen **kanonik
+market identifier**'ları (`BTTS_YES`, `HOME_WIN`, `OVER_2_5` gibi) kullanıyor.
+`selection_text` alanı artık sadece görüntüleme için korunuyor, settlement mantığında
+kullanılmıyor.
+
+```python
+# YENİ - DOĞRU
+if selected_market == 'BTTS_YES':
+    return WIN if btts_actual else LOSS
+elif selected_market == 'BTTS_NO':
+    return WIN if not btts_actual else LOSS
+```
+
+**Değişiklikler:**
+- `_settle_match_result()`: `HOME_WIN`, `DRAW`, `AWAY_WIN` doğrudan eşleştirildi
+- `_settle_over_under()`: `selected_market.startswith('OVER_')` kontrolü
+- `_settle_btts()`: `BTTS_YES` / `BTTS_NO` doğrudan karşılaştırma (ana düzeltme)
+- `_settle_double_chance()`: `HOME_OR_DRAW`, `DRAW_OR_AWAY`, `HOME_OR_AWAY` + legacy `1X`, `12`, `X2`
+- `_settle_handicap()`: Kanonik identifier'dan team ve handikap değeri çıkarılıyor
+- `_parse_market_type()`: Yeni kanonik identifier'ları tanıyor
+
+**Desteklenen Kanonik Identifier'lar:**
+- **1X2**: `HOME_WIN`, `DRAW`, `AWAY_WIN`
+- **Over/Under**: `OVER_2_5`, `UNDER_2_5`, `OVER_1_5`, vb.
+- **BTTS**: `BTTS_YES`, `BTTS_NO`
+- **Double Chance**: `HOME_OR_DRAW`, `DRAW_OR_AWAY`, `HOME_OR_AWAY`
+- **Legacy**: `1X`, `12`, `X2` (geriye uyumluluk)
+- **Handicap**: `HANDICAP_-1.5_HOME`, `HANDICAP_+1_AWAY`, vb.
+
+**Test Kapsamı:**
+- 63 test (hepsi geçti ✅)
+- 24 mevcut test (geriye uyumluluk)
+- 27 yeni kanonik identifier testi
+- 12 entegrasyon testi (Türkçe text, kar/zarar hesaplama, gerçek senaryolar)
+
+**Kabul Kriterleri (Hepsi Karşılandı):**
+✅ BTTS_YES + 1-1 skor → WIN
+✅ BTTS_YES + 1-0 skor → LOSS
+✅ BTTS_NO ters davranış gösteriyor
+✅ Selector çıktısı doğrudan settlement'a verilebiliyor
+✅ Orijinal prediction/selection alanları değişmiyor
+
+**Uluslararasılaşma:**
+Settlement artık `selection_text` içeriğinden tamamen bağımsız. Türkçe görüntüleme metni
+kullanılsa bile doğru çalışıyor:
+
+```python
+engine.settle_prediction(
+    selected_market='BTTS_YES',              # İngilizce kanonik
+    selection_text='İki Takım da Gol Atar', # Türkçe görüntüleme
+    selection_odds=1.85,
+    match_result=result
+)
+# ✅ Doğru sonuç
+```
+
+**Verification:**
+```bash
+cd backend
+python -m pytest tests/test_settlement*.py -v
+# Result: 63 passed, 92 warnings in 0.76s
+```
+
+**Files changed:**
+- `backend/app/prediction/settlement.py` (ana değişiklik)
+- `backend/tests/test_settlement_canonical.py` (yeni - 27 test)
+- `backend/tests/test_settlement_simple_integration.py` (yeni - 12 test)
+
+**Impact:**
+- ✅ Güvenilirlik: Metin formatına bağımlılık yok
+- ✅ Uluslararasılaşma: Display text herhangi bir dilde olabilir
+- ✅ Bakım: Tek doğruluk kaynağı (market alanı)
+- ✅ Geriye Uyumlu: Mevcut testler ve legacy notation çalışıyor
+- ✅ Üretimde kullanıma hazır
+
+**Documentation:**
+- `.agents/tasks/settlement-canonical/IMPLEMENTATION-REPORT.md` (detaylı)
+- `.agents/tasks/settlement-canonical/SUMMARY.md` (özet)
+- `.agents/tasks/settlement-canonical/FINAL-SUMMARY.md` (final)
+
+---

@@ -38,11 +38,11 @@ class SettlementEngine:
         selection_odds: float,
         match_result: MatchResult
     ) -> Tuple[SettlementOutcome, float]:
-        """Settle a prediction.
+        """Settle a prediction using canonical market identifiers.
         
         Args:
-            selected_market: Frozen market identifier (e.g., 'HOME_WIN', 'OVER_2_5')
-            selection_text: Frozen selection text (e.g., 'Home Win', 'Over 2.5')
+            selected_market: Frozen canonical market identifier (e.g., 'HOME_WIN', 'BTTS_YES', 'OVER_2_5')
+            selection_text: Frozen selection text for display (NOT used for settlement logic)
             selection_odds: Frozen bookmaker odds at prediction time
             match_result: Actual match result
         
@@ -51,6 +51,10 @@ class SettlementEngine:
         
         Raises:
             ValueError: If market type is unsupported or data is invalid
+        
+        Note:
+            Settlement logic uses ONLY the canonical selected_market field.
+            selection_text is preserved but not parsed for decision making.
         """
         # Check if result is settleable
         if not match_result.is_settleable():
@@ -67,17 +71,17 @@ class SettlementEngine:
         # Determine market type from selected_market
         market_type = self._parse_market_type(selected_market)
         
-        # Route to appropriate settlement method
+        # Route to appropriate settlement method (using canonical market identifier)
         if market_type == PredictionMarketType.MATCH_RESULT:
-            outcome = self._settle_match_result(selection_text, match_result)
+            outcome = self._settle_match_result(selected_market, match_result)
         elif market_type == PredictionMarketType.OVER_UNDER:
-            outcome = self._settle_over_under(selected_market, selection_text, match_result)
+            outcome = self._settle_over_under(selected_market, match_result)
         elif market_type == PredictionMarketType.BTTS:
-            outcome = self._settle_btts(selection_text, match_result)
+            outcome = self._settle_btts(selected_market, match_result)
         elif market_type == PredictionMarketType.DOUBLE_CHANCE:
-            outcome = self._settle_double_chance(selection_text, match_result)
+            outcome = self._settle_double_chance(selected_market, match_result)
         elif market_type == PredictionMarketType.HANDICAP:
-            outcome = self._settle_handicap(selected_market, selection_text, match_result)
+            outcome = self._settle_handicap(selected_market, match_result)
         else:
             raise ValueError(
                 f"Settlement not implemented for market type: {market_type.value}. "
@@ -99,7 +103,7 @@ class SettlementEngine:
             return PredictionMarketType.OVER_UNDER
         elif 'BTTS' in market_upper:
             return PredictionMarketType.BTTS
-        elif market_upper in ('1X', '12', 'X2') or 'DOUBLE_CHANCE' in market_upper:
+        elif market_upper in ('HOME_OR_DRAW', 'DRAW_OR_AWAY', 'HOME_OR_AWAY', '1X', '12', 'X2') or 'DOUBLE_CHANCE' in market_upper:
             return PredictionMarketType.DOUBLE_CHANCE
         elif 'HANDICAP' in market_upper:
             return PredictionMarketType.HANDICAP
@@ -108,38 +112,50 @@ class SettlementEngine:
     
     def _settle_match_result(
         self,
-        selection_text: str,
+        selected_market: str,
         match_result: MatchResult
     ) -> SettlementOutcome:
-        """Settle 1X2 market."""
-        selection_upper = selection_text.upper()
+        """Settle 1X2 market using canonical market identifier.
+        
+        Args:
+            selected_market: Canonical identifier ('HOME_WIN', 'DRAW', 'AWAY_WIN')
+            match_result: Actual match result
+        """
+        market_upper = selected_market.upper()
         actual_outcome = match_result.outcome
         
-        # Map selection to outcome
-        if 'HOME' in selection_upper or selection_upper == '1':
+        # Map canonical market to outcome
+        if market_upper == 'HOME_WIN':
             predicted_outcome = MatchOutcome.HOME_WIN
-        elif 'DRAW' in selection_upper or selection_upper == 'X':
+        elif market_upper == 'DRAW':
             predicted_outcome = MatchOutcome.DRAW
-        elif 'AWAY' in selection_upper or selection_upper == '2':
+        elif market_upper == 'AWAY_WIN':
             predicted_outcome = MatchOutcome.AWAY_WIN
         else:
-            raise ValueError(f"Cannot parse 1X2 selection: {selection_text}")
+            raise ValueError(
+                f"Unsupported 1X2 market: {selected_market}. "
+                f"Expected: HOME_WIN, DRAW, or AWAY_WIN"
+            )
         
         return SettlementOutcome.WIN if predicted_outcome == actual_outcome else SettlementOutcome.LOSS
     
     def _settle_over_under(
         self,
         selected_market: str,
-        selection_text: str,
         match_result: MatchResult
     ) -> SettlementOutcome:
-        """Settle Over/Under market."""
-        # Extract line from selected_market (e.g., "OVER_2_5" or "UNDER_3_5")
+        """Settle Over/Under market using canonical market identifier.
+        
+        Args:
+            selected_market: Canonical identifier (e.g., 'OVER_2_5', 'UNDER_3_5')
+            match_result: Actual match result
+        """
+        # Extract line from selected_market
         line = self._extract_line(selected_market)
         
-        # Determine selection direction
-        selection_upper = selection_text.upper()
-        is_over = 'OVER' in selection_upper
+        # Determine direction from canonical market identifier
+        market_upper = selected_market.upper()
+        is_over = market_upper.startswith('OVER_')
         
         # Calculate total goals
         total_goals = match_result.home_score + match_result.away_score
@@ -154,61 +170,84 @@ class SettlementEngine:
     
     def _settle_btts(
         self,
-        selection_text: str,
+        selected_market: str,
         match_result: MatchResult
     ) -> SettlementOutcome:
-        """Settle Both Teams To Score market."""
+        """Settle Both Teams To Score market using canonical market identifier.
+        
+        Args:
+            selected_market: Canonical identifier ('BTTS_YES' or 'BTTS_NO')
+            match_result: Actual match result
+        """
         btts_actual = match_result.home_score > 0 and match_result.away_score > 0
         
-        selection_upper = selection_text.upper()
-        predicted_btts_yes = 'YES' in selection_upper or selection_upper == 'BTTS'
+        market_upper = selected_market.upper()
         
-        if predicted_btts_yes:
+        if market_upper == 'BTTS_YES':
             return SettlementOutcome.WIN if btts_actual else SettlementOutcome.LOSS
-        else:
+        elif market_upper == 'BTTS_NO':
             return SettlementOutcome.WIN if not btts_actual else SettlementOutcome.LOSS
+        else:
+            raise ValueError(
+                f"Unsupported BTTS market: {selected_market}. "
+                f"Expected: BTTS_YES or BTTS_NO"
+            )
     
     def _settle_double_chance(
         self,
-        selection_text: str,
+        selected_market: str,
         match_result: MatchResult
     ) -> SettlementOutcome:
-        """Settle Double Chance market."""
-        selection_upper = selection_text.upper().replace(' ', '')
+        """Settle Double Chance market using canonical market identifier.
+        
+        Args:
+            selected_market: Canonical identifier ('HOME_OR_DRAW', 'DRAW_OR_AWAY', 'HOME_OR_AWAY')
+                            or legacy notation ('1X', '12', 'X2')
+            match_result: Actual match result
+        """
+        market_upper = selected_market.upper()
         actual_outcome = match_result.outcome
         
-        # Parse selection
-        if '1X' in selection_upper:
+        # Map canonical market to winning outcomes (supports both new and legacy notation)
+        if market_upper in ('HOME_OR_DRAW', '1X'):
             win_outcomes = {MatchOutcome.HOME_WIN, MatchOutcome.DRAW}
-        elif '12' in selection_upper:
-            win_outcomes = {MatchOutcome.HOME_WIN, MatchOutcome.AWAY_WIN}
-        elif 'X2' in selection_upper:
+        elif market_upper in ('DRAW_OR_AWAY', 'X2'):
             win_outcomes = {MatchOutcome.DRAW, MatchOutcome.AWAY_WIN}
+        elif market_upper in ('HOME_OR_AWAY', '12'):
+            win_outcomes = {MatchOutcome.HOME_WIN, MatchOutcome.AWAY_WIN}
         else:
-            raise ValueError(f"Cannot parse double chance selection: {selection_text}")
+            raise ValueError(
+                f"Unsupported double chance market: {selected_market}. "
+                f"Expected: HOME_OR_DRAW, DRAW_OR_AWAY, HOME_OR_AWAY (or 1X, X2, 12)"
+            )
         
         return SettlementOutcome.WIN if actual_outcome in win_outcomes else SettlementOutcome.LOSS
     
     def _settle_handicap(
         self,
         selected_market: str,
-        selection_text: str,
         match_result: MatchResult
     ) -> SettlementOutcome:
-        """Settle Handicap market."""
+        """Settle Handicap market using canonical market identifier.
+        
+        Args:
+            selected_market: Canonical identifier (e.g., 'HANDICAP_-1.5_HOME', 'HANDICAP_+1_AWAY')
+            match_result: Actual match result
+        """
         # Extract handicap value and team from selected_market
-        # Example: "HANDICAP_-1.5_HOME" or "HANDICAP_+1_AWAY"
         handicap, team = self._extract_handicap(selected_market)
         
         # Apply handicap
         if 'HOME' in team.upper():
             adjusted_home = match_result.home_score + handicap
             adjusted_away = match_result.away_score
+            predicted_team = 'HOME'
         else:
             adjusted_home = match_result.home_score
             adjusted_away = match_result.away_score + handicap
+            predicted_team = 'AWAY'
         
-        # Determine outcome
+        # Determine outcome with handicap
         if adjusted_home > adjusted_away:
             actual_with_handicap = MatchOutcome.HOME_WIN
         elif adjusted_home < adjusted_away:
@@ -218,13 +257,10 @@ class SettlementEngine:
             return SettlementOutcome.VOID
         
         # Check if prediction matches
-        selection_upper = selection_text.upper()
-        if 'HOME' in selection_upper:
+        if predicted_team == 'HOME':
             predicted_outcome = MatchOutcome.HOME_WIN
-        elif 'AWAY' in selection_upper:
-            predicted_outcome = MatchOutcome.AWAY_WIN
         else:
-            raise ValueError(f"Cannot parse handicap selection: {selection_text}")
+            predicted_outcome = MatchOutcome.AWAY_WIN
         
         return SettlementOutcome.WIN if predicted_outcome == actual_with_handicap else SettlementOutcome.LOSS
     
