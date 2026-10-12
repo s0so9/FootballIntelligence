@@ -14,6 +14,7 @@ from app.ingestion.service import IngestionService
 class AppState:
     """Application state container."""
     ingestion_service: IngestionService = None
+    provider_cache = None  # Application-level provider cache shared across requests
 
 
 app_state = AppState()
@@ -22,14 +23,28 @@ app_state = AppState()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Startup
+    from app.providers.cache import ProviderCache
+    
+    # Initialize application-level provider cache
+    # This cache is shared across all requests within the same worker process
+    app_state.provider_cache = ProviderCache()
+    logger.info("✓ Initialized application-level provider cache")
+    
     session_factory = get_session_factory()
     app_state.ingestion_service = IngestionService(session_factory)
+    logger.info("✓ Initialized ingestion service")
     
     yield
     
     # Shutdown
-    # Clean up resources if needed
+    if app_state.provider_cache:
+        app_state.provider_cache.clear()
+        logger.info("✓ Cleared provider cache")
+        app_state.provider_cache = None
 
 
 app = FastAPI(

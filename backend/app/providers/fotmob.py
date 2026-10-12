@@ -1137,27 +1137,49 @@ class FotMobFootballProvider:
                 return cached
 
         # Iterate through dates and collect matches
+        # OPTIMIZATION: Use bounded concurrency instead of serial loop
         # Track successful vs failed days to distinguish legitimate empty from failure
         all_matches = []
         successful_dates = []
         failed_dates = []
+        
+        # OPTIMIZATION: Bounded concurrent fetching (Section 1 & 4 of performance spec)
+        # Use semaphore to limit concurrent requests (respects rate limits)
+        # Conservative limit: 2 concurrent requests to unofficial FotMob API
+        import asyncio
+        MAX_CONCURRENT_REQUESTS = 2
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        
+        async def fetch_single_date(fetch_date: date) -> tuple:
+            """Fetch matches for a single date with semaphore control."""
+            async with semaphore:
+                try:
+                    daily_matches = await self.get_matches_by_date(fetch_date)
+                    return (fetch_date, daily_matches, None)
+                except ProviderError as e:
+                    return (fetch_date, [], str(e))
+        
+        # Generate all dates in range
+        dates_to_fetch = []
         current_date = start_date
-
         while current_date <= end_date:
-            try:
-                daily_matches = await self.get_matches_by_date(current_date)
-                # Successfully queried this date (even if empty)
-                successful_dates.append(current_date)
-                all_matches.extend(daily_matches)
-            except ProviderError as e:
-                # Failed to query this date
-                failed_dates.append(current_date)
-                logger.warning(
-                    f"[{self.PROVIDER_NAME}] Failed to fetch matches for {current_date}: {e}"
-                )
-                # Continue with other dates even if one fails
-
+            dates_to_fetch.append(current_date)
             current_date += timedelta(days=1)
+        
+        # Fetch all dates concurrently with bounded parallelism
+        tasks = [fetch_single_date(d) for d in dates_to_fetch]
+        results = await asyncio.gather(*tasks)
+        
+        # Process results
+        for fetch_date, daily_matches, error in results:
+            if error is None:
+                successful_dates.append(fetch_date)
+                all_matches.extend(daily_matches)
+            else:
+                failed_dates.append(fetch_date)
+                logger.warning(
+                    f"[{self.PROVIDER_NAME}] Failed to fetch matches for {fetch_date}: {error}"
+                )
 
         # If NO successful dates, raise ProviderError (don't return empty list)
         # This allows manager to try fallback providers

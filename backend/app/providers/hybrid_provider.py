@@ -122,6 +122,48 @@ class HybridProvider(FootballDataProvider):
     # Team ID resolution — FotMob numeric ID → canonical UUID
     # -------------------------------------------------------------------------
 
+    def _batch_resolve_team_ids(self, team_ids: set) -> Dict[str, str]:
+        """Batch resolve provider team IDs to canonical UUIDs.
+        
+        OPTIMIZATION (Section 5): Single batch query instead of individual lookups per team.
+        
+        Args:
+            team_ids: Set of provider team IDs to resolve
+            
+        Returns:
+            Dict mapping provider_id -> canonical UUID
+        """
+        if not team_ids:
+            return {}
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            session = self.db_provider.session
+            from app.database.models import Team as TeamDB
+            
+            # Single batch query for all team IDs
+            rows = (
+                session.query(TeamDB.provider_id, TeamDB.id)
+                .filter(TeamDB.provider_id.in_(team_ids))
+                .all()
+            )
+            
+            mapping = {provider_id: canonical_id for provider_id, canonical_id in rows}
+            
+            if len(mapping) < len(team_ids):
+                missing = team_ids - set(mapping.keys())
+                logger.warning(
+                    f"_batch_resolve_team_ids: {len(missing)} team IDs not found in database: {list(missing)[:5]}..."
+                )
+            
+            return mapping
+        
+        except Exception as exc:
+            logger.error(f"_batch_resolve_team_ids: batch lookup failed: {exc}")
+            return {}
+
     def _resolve_team_canonical_uuid(self, provider_team_id: str) -> str:
         """Resolve a FotMob numeric team ID to the canonical UUID in the teams table.
 
@@ -174,6 +216,55 @@ class HybridProvider(FootballDataProvider):
             f"This may indicate missing team data in the database. Returning original ID for graceful degradation."
         )
         return provider_team_id
+
+    def _batch_resolve_match_team_uuids(self, matches: List[Match]) -> List[Match]:
+        """Batch replace FotMob numeric team IDs with canonical UUIDs for multiple matches.
+        
+        OPTIMIZATION (Section 5): Collect all unique team IDs across all matches,
+        resolve in one batch query, then apply mappings. This replaces O(n*2) individual
+        queries with O(1) batch query where n is number of matches.
+        
+        Args:
+            matches: List of Match objects with potentially numeric team IDs
+            
+        Returns:
+            Same list of Match objects with team IDs updated in-place
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Collect all unique provider team IDs
+        provider_team_ids = set()
+        for match in matches:
+            if not self._is_canonical_uuid(match.home_team_id):
+                provider_team_ids.add(match.home_team_id)
+            if not self._is_canonical_uuid(match.away_team_id):
+                provider_team_ids.add(match.away_team_id)
+        
+        if not provider_team_ids:
+            # All team IDs are already canonical
+            return matches
+        
+        # Batch resolve all team IDs
+        team_id_mapping = self._batch_resolve_team_ids(provider_team_ids)
+        
+        # Apply mappings to all matches
+        for match in matches:
+            if match.home_team_id in team_id_mapping:
+                match.home_team_id = team_id_mapping[match.home_team_id]
+            elif not self._is_canonical_uuid(match.home_team_id):
+                logger.warning(
+                    f"No canonical UUID found for home_team_id={match.home_team_id} (match {match.id})"
+                )
+            
+            if match.away_team_id in team_id_mapping:
+                match.away_team_id = team_id_mapping[match.away_team_id]
+            elif not self._is_canonical_uuid(match.away_team_id):
+                logger.warning(
+                    f"No canonical UUID found for away_team_id={match.away_team_id} (match {match.id})"
+                )
+        
+        return matches
 
     def _resolve_match_team_uuids(self, match: Match) -> Match:
         """Replace FotMob numeric team IDs on a Match with canonical UUIDs.

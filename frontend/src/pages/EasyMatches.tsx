@@ -62,30 +62,48 @@ export function EasyMatches() {
           return matchDate >= now && matchDate <= next48Hours;
         });
 
-        // Load predictions for each match
+        // OPTIMIZATION (Section 8): Bounded concurrency for predictions
+        // Instead of serial for loop, use bounded concurrent fetching
+        const MAX_CONCURRENT_PREDICTIONS = 3;
         const enrichedPicks: EnrichedPick[] = [];
 
-        for (const match of scheduledMatches) {
-          try {
-            const prediction = await getMatchPrediction(match.id);
+        // Process in batches
+        for (let i = 0; i < scheduledMatches.length; i += MAX_CONCURRENT_PREDICTIONS) {
+          const batch = scheduledMatches.slice(i, i + MAX_CONCURRENT_PREDICTIONS);
+          
+          const batchResults = await Promise.allSettled(
+            batch.map(async (match) => {
+              try {
+                const prediction = await getMatchPrediction(match.id);
 
-            // Check if we have a mensione_pick (TUTAR X PICK)
-            if (prediction.mensione_pick && !prediction.mensione_pick.pass_decision) {
-              const pick = prediction.mensione_pick;
+                // Check if we have a mensione_pick (TUTAR X PICK)
+                if (prediction.mensione_pick && !prediction.mensione_pick.pass_decision) {
+                  const pick = prediction.mensione_pick;
 
-              enrichedPicks.push({
-                match,
-                prediction,
-                marketName: pick.market || 'Unknown Market',
-                outcome: pick.selection || '',
-                confidence: pick.confidence ? pick.confidence * 100 : 0,
-                marketOdds: pick.bookmaker_odds || null,
-                pickProbability: pick.probability || null,
-              });
+                  return {
+                    match,
+                    prediction,
+                    marketName: pick.market || 'Unknown Market',
+                    outcome: pick.selection || '',
+                    confidence: pick.confidence ? pick.confidence * 100 : 0,
+                    marketOdds: pick.bookmaker_odds || null,
+                    pickProbability: pick.probability || null,
+                  };
+                }
+                return null;
+              } catch (err) {
+                // Skip matches without predictions
+                console.warn(`Failed to load prediction for match ${match.id}:`, err);
+                return null;
+              }
+            })
+          );
+          
+          // Collect successful results
+          for (const result of batchResults) {
+            if (result.status === 'fulfilled' && result.value !== null) {
+              enrichedPicks.push(result.value);
             }
-          } catch (err) {
-            // Skip matches without predictions
-            console.warn(`Failed to load prediction for match ${match.id}:`, err);
           }
         }
 

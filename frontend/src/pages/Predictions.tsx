@@ -34,22 +34,31 @@ export function Predictions() {
         const matchesResponse = await getUpcomingMatches(14);
         setIsDevelopmentData(matchesResponse.is_development_data);
 
-        // Fetch predictions for each match
-        const predictionsData: PredictionData[] = await Promise.all(
-          matchesResponse.matches.map(async (match) => {
-            try {
-              const prediction = await getMatchPrediction(match.id);
-              return { match, prediction };
-            } catch (err) {
-              // Prediction might not be available for this match
-              return { 
-                match, 
-                prediction: null,
-                error: err instanceof Error ? err.message : 'Tahmin mevcut değil'
-              };
-            }
-          })
-        );
+        // OPTIMIZATION (Section 8): Bounded concurrency for predictions
+        // Instead of unlimited Promise.all, use bounded queue
+        const MAX_CONCURRENT_PREDICTIONS = 3;
+        const predictionsData: PredictionData[] = [];
+        
+        // Process in batches
+        for (let i = 0; i < matchesResponse.matches.length; i += MAX_CONCURRENT_PREDICTIONS) {
+          const batch = matchesResponse.matches.slice(i, i + MAX_CONCURRENT_PREDICTIONS);
+          const batchResults = await Promise.all(
+            batch.map(async (match) => {
+              try {
+                const prediction = await getMatchPrediction(match.id);
+                return { match, prediction };
+              } catch (err) {
+                // Prediction might not be available for this match
+                return { 
+                  match, 
+                  prediction: null,
+                  error: err instanceof Error ? err.message : 'Tahmin mevcut değil'
+                };
+              }
+            })
+          );
+          predictionsData.push(...batchResults);
+        }
 
         setPredictions(predictionsData);
       } catch (err) {

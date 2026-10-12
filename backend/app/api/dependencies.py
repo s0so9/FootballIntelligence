@@ -49,7 +49,20 @@ def get_data_provider() -> Generator[FootballDataProvider, None, None]:
         db_session = SessionLocal()
         
         try:
-            cache = ProviderCache()
+            # OPTIMIZATION: Use application-level cache shared across requests
+            # instead of creating a new cache per request
+            from app.main import app_state
+            
+            if app_state.provider_cache is None:
+                # Fallback: create request-local cache if app cache not initialized
+                # This can happen during testing or if app startup failed
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning("Application-level cache not initialized, using request-local cache")
+                from app.providers.cache import ProviderCache
+                cache = ProviderCache()
+            else:
+                cache = app_state.provider_cache
             
             # Create provider instances
             # NOTE: Ryzellx temporarily disabled due to 402 Payment Required errors
