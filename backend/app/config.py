@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     provider_timeout_seconds: float = 10.0
     provider_retry_count: int = 2
     use_real_providers: bool = True  # True = Use HybridProvider (database + external), False = DevelopmentProvider only
+    is_development: bool = False  # env: FI_IS_DEVELOPMENT - True for development mode
 
     # Feature Engineering
     team_form_window: int = 5  # Number of recent matches to consider for form

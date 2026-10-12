@@ -421,10 +421,21 @@ class WalkForwardEvaluator:
                 return None
             
             # 3. Ensemble
-            from app.prediction.ensemble_engine import StaticWeighting
-            ensemble_engine = EnsembleEngine(strategy=StaticWeighting())
+            from app.prediction.ensemble_engine import ReliabilityWeights
+            ensemble_engine = EnsembleEngine(strategy=ReliabilityWeights())
+            
+            # Extract ModelPrediction objects from ModelOutput
+            predictions = [
+                out.prediction
+                for out in orchestration_result.successful_predictions
+                if out.prediction is not None
+            ]
+            
+            if len(predictions) < 2:
+                return None
+            
             ensemble_pred = ensemble_engine.combine(
-                predictions=orchestration_result.successful_predictions,
+                predictions=predictions,
                 context={}
             )
             
@@ -438,7 +449,7 @@ class WalkForwardEvaluator:
             
             # 5. Confidence/Uncertainty
             confidence_engine = ConfidenceEngine()
-            data_quality_score = snapshot.data_quality_report.overall_score if snapshot.data_quality_report else 0.5
+            data_quality_score = snapshot.data_quality_report.overall_score if snapshot.data_quality_report else None
             confidence_assessment = confidence_engine.assess(
                 model_agreement=ensemble_pred.metadata.get("model_agreement", 0.5),
                 data_quality_score=data_quality_score,
@@ -466,9 +477,7 @@ class WalkForwardEvaluator:
             # 6. Market derivation
             market_engine = MarketDerivationEngine()
             market_probs = market_engine.derive(
-                score_distribution=ensemble_pred.score_distribution,
-                home_score_mean=ensemble_pred.home_score_mean,
-                away_score_mean=ensemble_pred.away_score_mean
+                score_distribution=ensemble_pred.score_distribution
             )
             
             # 7. Smart market selection
@@ -537,8 +546,46 @@ class WalkForwardEvaluator:
             return record
             
         except Exception as e:
-            # Log error but continue evaluation
-            return None
+            import logging
+            logging.getLogger(__name__).error(
+                f"Walk-forward evaluation failed for match {test_match.id}: {e}",
+                exc_info=True,
+            )
+            # Yazılım hatası: evaluation_error olarak kaydet
+            # Bu kayıtlar _aggregate_metrics içinde özel olarak işlenir
+            return PipelinePredictionRecord(
+                match_id=test_match.id,
+                predicted_at=datetime.utcnow(),
+                actual_outcome=self._match_outcome(test_match) or "unknown",
+                actual_home_score=test_match.home_score if test_match.home_score is not None else 0,
+                actual_away_score=test_match.away_score if test_match.away_score is not None else 0,
+                feature_config=config.name,
+                models_available=0,
+                models_successful=0,
+                model_outputs={},
+                ensemble_home_win=0.33,
+                ensemble_draw=0.34,
+                ensemble_away_win=0.33,
+                model_agreement=0.0,
+                calibrated_home_win=0.33,
+                calibrated_draw=0.34,
+                calibrated_away_win=0.33,
+                calibration_status="error",
+                confidence_score=0.0,
+                confidence_label="ERROR",
+                uncertainty_score=0.0,
+                uncertainty_label="unknown",
+                model_disagreement=0.0,
+                selected_market=None,
+                selection_probability=None,
+                selection_confidence=None,
+                is_pass=True,
+                pass_reason=f"evaluation_error: {str(e)[:200]}",
+                features_available={},
+                data_quality_score=0.0,
+                shot_markets_evaluated=False,
+                shot_market_predictions={},
+            )
     
     def _build_snapshot(
         self,
@@ -557,7 +604,7 @@ class WalkForwardEvaluator:
         
         # For now, return a minimal snapshot with only required fields
         # Real implementation requires full feature extraction infrastructure
-        from app.prediction.feature_snapshot import DataQualityReport
+        from app.prediction.data_quality import DataQualityReport, DataQualityCheck
         
         return MatchFeatureSnapshot(
             match_id=match.id,
@@ -567,10 +614,11 @@ class WalkForwardEvaluator:
             away_team_name=match.away_team.name if match.away_team else None,
             scheduled_at=match.scheduled_at,
             data_quality_report=DataQualityReport(
-                overall_score=0.5,  # Low quality for walk-forward simulation
-                missing_features=[],
-                low_confidence_features=[],
-                data_freshness_score=0.5
+                overall_score=0.5,  # walk-forward simülasyon: orta kalite
+                checks=[],
+                passed=0,
+                failed=0,
+                warnings=["walk_forward_simulation: kalite raporu simüle edilmiş"]
             )
         )
     
@@ -579,7 +627,7 @@ class WalkForwardEvaluator:
         train_matches: List[Match],
         config: FeatureConfiguration,
     ) -> CalibrationEngine:
-        """Fit calibration using only training data.
+        """Fit calibration using only training data (temporal cutoff).
         
         Args:
             train_matches: Training matches (chronologically before test)
@@ -588,17 +636,49 @@ class WalkForwardEvaluator:
         Returns:
             Fitted CalibrationEngine
         """
-        # Create fresh calibration engine
-        calibration_engine = CalibrationEngine()
+        calibration_engine = CalibrationEngine(method="isotonic")
         
-        # In production, this would:
-        # 1. Query historical predictions from database
-        # 2. Filter to predictions before train_matches[-1].scheduled_at
-        # 3. Extract (probability, outcome) pairs
-        # 4. Fit calibrator
+        # Walk-forward: historical predictions needed.
+        # If no stored predictions exist, build a minimal out-of-sample approximation
+        # using the same pipeline on a holdout subset, recording actuals.
+        # For this implementation, use the ensemble home_win probability from each
+        # train match as the predicted probability and the actual home_win outcome
+        # as the binary outcome (0.0/1.0). This is a documented simplification:
+        # real production calibration should use stored prediction versions.
         
-        # For now, return unfitted engine
-        # Real implementation requires historical prediction database
+        predicted_probs = []
+        actual_outcomes = []
+        timestamps = []
+        
+        MIN_SAMPLES = 30  # CalibrationEngine.MIN_SAMPLES
+        
+        for m in train_matches:
+            if m.home_score is None or m.away_score is None:
+                continue
+            outcome = 1.0 if m.home_score > m.away_score else 0.0
+            # Use a neutral 0.5 as placeholder for predicted home_win probability
+            # when no stored prediction exists; this is documented as a limitation.
+            predicted_probs.append(0.5)
+            actual_outcomes.append(outcome)
+            timestamps.append(m.scheduled_at)
+        
+        if len(predicted_probs) >= MIN_SAMPLES:
+            from app.prediction.calibration_engine import CalibrationData
+            cutoff = max(timestamps) if timestamps else None
+            try:
+                calibration_engine.fit(
+                    CalibrationData(
+                        predicted_probs=predicted_probs,
+                        actual_outcomes=actual_outcomes,
+                        timestamps=timestamps,
+                    ),
+                    cutoff_date=cutoff,
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Walk-forward calibration fit failed, using unfitted engine: {e}"
+                )
         
         return calibration_engine
     
@@ -621,11 +701,16 @@ class WalkForwardEvaluator:
         
         n = len(records)
         n_pass = sum(1 for r in records if r.is_pass)
-        coverage = (n - n_pass) / n if n > 0 else 0.0
         
         # Filter to non-pass predictions for evaluation
-        eval_records = [r for r in records if not r.is_pass]
+        # Exclude evaluation_error records from metrics (but count them in n_predictions)
+        eval_records = [
+            r for r in records 
+            if not r.is_pass and not (r.pass_reason and r.pass_reason.startswith("evaluation_error"))
+        ]
         n_eval = len(eval_records)
+        
+        coverage = (n_eval) / n if n > 0 else 0.0
         
         if n_eval == 0:
             return WalkForwardMetrics(

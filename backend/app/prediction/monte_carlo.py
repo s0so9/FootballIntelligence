@@ -210,9 +210,11 @@ class MonteCarloSimulation(PredictionModel):
         Returns:
             Dict with simulation results
         """
-        # Initialize random generator with seed for reproducibility
+        # Use local RNG instance for reproducibility without global state pollution
         if self.seed is not None:
-            random.seed(self.seed)
+            rng = random.Random(self.seed)
+        else:
+            rng = random.Random()
         
         # Initialize counters
         scoreline_counts: Dict[Tuple[int, int], int] = {}
@@ -234,8 +236,8 @@ class MonteCarloSimulation(PredictionModel):
         # Run simulations
         for _ in range(self.n_simulations):
             # Draw goals from Poisson distributions
-            home_goals = self._poisson_sample(lambda_home)
-            away_goals = self._poisson_sample(lambda_away)
+            home_goals = self._poisson_sample(lambda_home, rng)
+            away_goals = self._poisson_sample(lambda_away, rng)
             
             # Record scoreline
             scoreline = (home_goals, away_goals)
@@ -281,13 +283,14 @@ class MonteCarloSimulation(PredictionModel):
             "away_totals": away_totals
         }
     
-    def _poisson_sample(self, lam: float) -> int:
-        """Sample from Poisson distribution.
+    def _poisson_sample(self, lam: float, rng: random.Random) -> int:
+        """Sample from Poisson distribution using local RNG.
         
         Uses Knuth's algorithm for Poisson sampling.
         
         Args:
             lam: Lambda parameter (expected value)
+            rng: Random number generator instance
         
         Returns:
             Sampled integer value
@@ -300,7 +303,7 @@ class MonteCarloSimulation(PredictionModel):
         # For large lambda, use normal approximation
         if lam > 30:
             # Normal approximation: N(lambda, lambda)
-            value = random.gauss(lam, math.sqrt(lam))
+            value = rng.gauss(lam, math.sqrt(lam))
             return max(0, int(round(value)))
         
         # Knuth's algorithm for smaller lambda
@@ -310,7 +313,7 @@ class MonteCarloSimulation(PredictionModel):
         
         while p > L:
             k += 1
-            p *= random.random()
+            p *= rng.random()
         
         return k - 1
     

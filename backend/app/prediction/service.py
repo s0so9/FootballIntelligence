@@ -21,7 +21,7 @@ The pipeline implements:
 - Immutable prediction versioning with full pipeline metadata
 """
 
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Tuple, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
 import uuid
@@ -85,6 +85,52 @@ class PipelineResult:
     pipeline_metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+from dataclasses import dataclass
+
+
+@dataclass
+class PredictionServiceConfig:
+    """Configuration for PredictionService behavior.
+    
+    This configuration controls how the service handles missing data
+    and other runtime behaviors.
+    """
+    min_matches: int = 3
+    min_sample_size: int = 5
+    allow_dev_baseline_fallback: bool = False  # EXPLICIT control for production safety
+    is_development: bool = False  # True for development mode
+    
+    @classmethod
+    def for_production(cls, min_matches: int = 5, min_sample_size: int = 8) -> "PredictionServiceConfig":
+        """Create production-safe configuration.
+        
+        Production config:
+        - Higher minimum data requirements
+        - NO baseline fallback (missing data returns None)
+        """
+        return cls(
+            min_matches=min_matches,
+            min_sample_size=min_sample_size,
+            allow_dev_baseline_fallback=False,  # Never allow in production
+            is_development=False
+        )
+    
+    @classmethod
+    def for_development(cls, min_matches: int = 3, min_sample_size: int = 5) -> "PredictionServiceConfig":
+        """Create development configuration.
+        
+        Development config:
+        - Lower minimum data requirements
+        - Baseline fallback allowed (enables testing with minimal data)
+        """
+        return cls(
+            min_matches=min_matches,
+            min_sample_size=min_sample_size,
+            allow_dev_baseline_fallback=True,  # Allow for dev/testing
+            is_development=True
+        )
+
+
 class PredictionService:
     """Service for generating match predictions.
     
@@ -107,6 +153,7 @@ class PredictionService:
         db_session: Optional[Session] = None,
         min_matches: int = 1,  # BUGFIX: Configurable parameter instead of hardcoded
         min_sample_size: int = 3,  # BUGFIX: Confidence gate threshold
+        config: Optional[PredictionServiceConfig] = None,
     ):
         """Initialize prediction service with canonical pipeline components.
         
@@ -118,15 +165,29 @@ class PredictionService:
             db_session: Optional database session for database-backed features
             min_matches: Minimum matches required for feature extraction (default: 1)
             min_sample_size: Minimum sample size for confidence gate (default: 3)
+            config: Service configuration (optional, auto-detects from provider if None)
         """
         self.provider = provider
         self.db_session = db_session
         self.poisson_model = poisson_model or PoissonModel(max_goals=10)
         
-        # BUGFIX: Store configuration for confidence gate
-        self.config = type('Config', (), {
-            'min_sample_size': min_sample_size
-        })()
+        # Configuration: auto-detect or use provided
+        if config is None:
+            # Development/production mode from config (explicit control)
+            from app.config import settings
+            is_dev = settings.is_development  # bool, env: FI_IS_DEVELOPMENT=true
+            if is_dev:
+                self.config = PredictionServiceConfig.for_development(
+                    min_matches=min_matches,
+                    min_sample_size=min_sample_size
+                )
+            else:
+                self.config = PredictionServiceConfig.for_production(
+                    min_matches=min_matches,
+                    min_sample_size=min_sample_size
+                )
+        else:
+            self.config = config
         
         import logging
         logger = logging.getLogger(__name__)
@@ -140,7 +201,7 @@ class PredictionService:
         )
         self.market_analyser = market_analyser or MarketAnalyser(
             value_threshold=0.03,
-            is_development_data=True,
+            is_development_data=self.config.is_development,
         )
         self.easy_match_detector = EasyMatchDetector()
         
@@ -265,19 +326,18 @@ class PredictionService:
         away_defense = features.get("away_defense_strength")
         
         if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
-            # For development data only: provide baseline strengths to enable full pipeline
-            # Check if provider has is_development_data method and it returns True
-            is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
-            if is_dev_data:
-                # Use neutral/average baseline values (1.0 = league average)
-                # This allows development matches to flow through Poisson → Markets → Pick → Versioning
-                # Production matches still fail safely with missing data
+            # PRODUCTION SAFETY: Only allow baseline fallback if explicitly configured
+            # This prevents production systems from silently masking insufficient data
+            if self.config.allow_dev_baseline_fallback:
+                # Development mode: use neutral baseline (1.0 = league average)
+                # This allows dev/testing with minimal data
                 home_attack = home_attack if home_attack is not None else 1.0
                 away_attack = away_attack if away_attack is not None else 1.0
                 home_defense = home_defense if home_defense is not None else 1.0
                 away_defense = away_defense if away_defense is not None else 1.0
             else:
-                # Production data: insufficient data - cannot generate prediction
+                # Production mode: insufficient data → return None
+                # Never mask missing data in production
                 return None
         
         # Estimate lambda parameters
@@ -356,15 +416,14 @@ class PredictionService:
         away_defense = features.get("away_defense_strength")
         
         if any(v is None for v in [home_attack, away_attack, home_defense, away_defense]):
-            # For development data only: provide baseline strengths
-            is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
-            if is_dev_data:
+            # PRODUCTION SAFETY: Only allow baseline fallback if explicitly configured
+            if self.config.allow_dev_baseline_fallback:
                 home_attack = home_attack if home_attack is not None else 1.0
                 away_attack = away_attack if away_attack is not None else 1.0
                 home_defense = home_defense if home_defense is not None else 1.0
                 away_defense = away_defense if away_defense is not None else 1.0
             else:
-                # Production data: insufficient data - return empty markets
+                # Production: insufficient data → return empty markets
                 return markets
         
         home_lambda = self.poisson_model.estimate_lambda_from_features(
@@ -1245,15 +1304,15 @@ class PredictionService:
             # Fallback to default confidence
             from app.prediction.confidence_engine import ConfidenceComponents, ConfidenceWeights
             confidence_assessment = ConfidenceAssessment(
-                overall_confidence=0.5,
-                confidence_label="MEDIUM",
+                overall_confidence=0.0,
+                confidence_label="INSUFFICIENT_DATA",
                 components=ConfidenceComponents(
-                    model_agreement=0.5,
-                    data_quality=0.5,
-                    sample_size=0.5,
-                    calibration_reliability=0.5,
-                    lineup_certainty=0.5,
-                    prediction_stability=0.5
+                    model_agreement=0.0,
+                    data_quality=0.0,
+                    sample_size=0.0,
+                    calibration_reliability=0.0,
+                    lineup_certainty=0.0,
+                    prediction_stability=0.0,
                 ),
                 weights=ConfidenceWeights(),
                 component_breakdown={}
@@ -1489,7 +1548,7 @@ class PredictionService:
             "home_xg": calibrated_prediction.home_score_mean,
             "away_xg": calibrated_prediction.away_score_mean,
             "predicted_score": predicted_score,
-            "btts_probability": None,  # TODO: derive from score distribution
+            "btts_probability": self._calculate_btts_from_distribution(calibrated_prediction.score_distribution),
             "score_distribution": calibrated_prediction.score_distribution,
             "markets": market_probs.__dict__ if market_probs else None,
             "shot_markets": self._serialize_shot_markets(shot_market_predictions) if shot_market_predictions else None,  # NEW: FEAT-003
@@ -1515,7 +1574,7 @@ class PredictionService:
                 stage=stage,
                 prediction_data=prediction_data,
                 model_versions=models_used,
-                data_quality_score=snapshot.data_quality_report.overall_score if snapshot.data_quality_report else 0.5,
+                data_quality_score=snapshot.data_quality_report.overall_score if snapshot.data_quality_report else None,
                 confidence_score=confidence_assessment.overall_confidence,
                 notes=[
                     f"Canonical Pipeline v1.0: {len(models_used)} models, "
@@ -1662,9 +1721,9 @@ class PredictionService:
         # DEVELOPMENT FALLBACK: Provide baseline values for missing features
         # This preserves determinism while allowing prediction generation
         substep_start = time.time()
-        is_dev_data = hasattr(self.provider, 'is_development_data') and self.provider.is_development_data()
-        if is_dev_data:
-            # Provide baseline strength values if missing
+        # PRODUCTION SAFETY: Only allow baseline fallback if explicitly configured
+        if self.config.allow_dev_baseline_fallback:
+            # Development mode: provide baseline strength values if missing
             if features.get("home_attack_strength") is None:
                 features["home_attack_strength"] = 1.0
             if features.get("away_attack_strength") is None:
@@ -1971,6 +2030,27 @@ class PredictionService:
                 ))
         
         return markets
+    
+    def _calculate_btts_from_distribution(self, score_distribution: Dict[Tuple[int, int], float]) -> Optional[float]:
+        """Calculate Both Teams To Score probability from score distribution.
+        
+        BTTS Yes = sum of probabilities where both home >= 1 and away >= 1.
+        
+        Args:
+            score_distribution: Score distribution {(home, away): probability}
+            
+        Returns:
+            BTTS probability [0, 1], or None if distribution is empty
+        """
+        if not score_distribution:
+            return None
+        
+        btts_prob = sum(
+            prob for (home_goals, away_goals), prob in score_distribution.items()
+            if home_goals >= 1 and away_goals >= 1
+        )
+        
+        return btts_prob
     
     def _serialize_shot_markets(
         self,
