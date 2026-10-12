@@ -1735,15 +1735,6 @@ class PredictionService:
         
         # Extract features using existing extractor
         features = self.feature_extractor.extract_features(match)
-        print(f"[FEATURE_DEBUG] Raw features from extract_features ({len(features)} total):")
-        for k, v in features.items():
-            if 'elo' in k.lower() or 'xg' in k.lower() or 'expected' in k.lower():
-                print(f"  {k}: {v}")
-        
-        # Show first 10 features to understand naming convention
-        print(f"[FEATURE_DEBUG] First 10 feature names:")
-        for i, k in enumerate(list(features.keys())[:10]):
-            print(f"  [{i}] {k}")
         
         logger.info(f"  [snapshot] extract_features: {(time.time() - substep_start) * 1000:.2f}ms")
         
@@ -1796,12 +1787,6 @@ class PredictionService:
             market_info=None  # TODO: extract from odds_data if available
         )
         
-        print(f"[SNAPSHOT_DEBUG] After extract_feature_snapshot, checking ELO in snapshot:")
-        if snapshot.home_strength:
-            print(f"  home_strength.elo_rating: {snapshot.home_strength.elo_rating}")
-        if snapshot.away_strength:
-            print(f"  away_strength.elo_rating: {snapshot.away_strength.elo_rating}")
-        
         # Add H2H features if available (will be populated later when analysis_context is built)
         # This is a placeholder for future H2H integration
         
@@ -1830,7 +1815,6 @@ class PredictionService:
                     attack_strength=features.get("home_attack_strength"),
                     defense_strength=features.get("home_defense_strength"),
                 )
-                print(f"[SNAPSHOT_DEBUG] Set home_strength with elo_rating={snapshot.home_strength.elo_rating}, xg_per_match={snapshot.home_strength.xg_per_match}")
             
             # Populate away strength from features
             if needs_away_strength:
@@ -1847,7 +1831,6 @@ class PredictionService:
                     attack_strength=features.get("away_attack_strength"),
                     defense_strength=features.get("away_defense_strength"),
                 )
-                print(f"[SNAPSHOT_DEBUG] Set away_strength with elo_rating={snapshot.away_strength.elo_rating}, xg_per_match={snapshot.away_strength.xg_per_match}")
             
             # Populate form metrics if missing
             if snapshot.home_form is None:
@@ -1880,29 +1863,8 @@ class PredictionService:
                     matches_analyzed=int(features.get("away_match_count", 5)) if features.get("away_match_count") is not None else 5,
                 )
         
-        # Final check: What does snapshot.get_feature_dict() return for ELO?
+        # Get features from snapshot for model input
         snapshot_features = snapshot.get_feature_dict()
-        print(f"[SNAPSHOT_DEBUG] Final snapshot.get_feature_dict() ELO check:")
-        for k, v in snapshot_features.items():
-            if 'elo' in k.lower() or 'xg' in k.lower() or 'expected' in k.lower():
-                print(f"  {k}: {v}")
-        
-        # LogisticRegression feature check
-        lr_required_features = [
-            "home_attack_strength", "home_defense_strength", "home_home_strength", "home_away_strength",
-            "home_recent_wins", "home_recent_draws", "home_recent_losses", "home_form_points_per_match",
-            "away_attack_strength", "away_defense_strength", "away_home_strength", "away_away_strength",
-            "away_recent_wins", "away_recent_draws", "away_recent_losses", "away_form_points_per_match"
-        ]
-        print(f"[LR_DEBUG] LogisticRegression features (16 required):")
-        available_count = 0
-        for feature in lr_required_features:
-            value = snapshot_features.get(feature)
-            status = "[OK]" if value is not None else "[MISSING]"
-            print(f"  {status} {feature}: {value}")
-            if value is not None:
-                available_count += 1
-        print(f"[LR_DEBUG] Available: {available_count}/16 features")
         
         # FEAT-003: Populate shot intelligence if database session is available
         if self.db_session:

@@ -166,8 +166,6 @@ class MatchFeatureExtractor:
         if self.elo_calculator:
             try:
                 step_start = time.time()
-                logger.info(f"[DEBUG] Attempting ELO feature calculation")
-                print(f"[ELO_DEBUG] Attempting ELO calculation for match {match.id}")
                 elo_features = self.elo_calculator.calculate_for_match(
                     home_team_id=match.home_team_id,
                     away_team_id=match.away_team_id,
@@ -175,21 +173,16 @@ class MatchFeatureExtractor:
                 )
                 elo_time = (time.time() - step_start) * 1000
                 logger.debug(f"[PERF] elo_calculator took {elo_time:.2f}ms")
-                print(f"[ELO_DEBUG] ELO result: home={elo_features.home_elo}, away={elo_features.away_elo}")
                 if elo_features.home_elo is not None:
                     features["elo_home"] = elo_features.home_elo
                     features["elo_away"] = elo_features.away_elo
                     logger.info(f"[DEBUG] ELO features added: home={elo_features.home_elo}, away={elo_features.away_elo}")
-                    print(f"[ELO_DEBUG] ELO features added successfully")
                 else:
                     logger.warning(f"[DEBUG] ELO features returned None")
-                    print(f"[ELO_DEBUG] ELO features returned None")
             except Exception as e:
                 logger.error(f"[DEBUG] ELO feature calculation failed: {e}")
-                print(f"[ELO_DEBUG] ELO calculation exception: {e}")
         else:
             logger.warning(f"[DEBUG] No ELO calculator available")
-            print(f"[ELO_DEBUG] No ELO calculator available - db_session is {type(self.db_session) if hasattr(self, 'db_session') else 'not set'}")
         
         # Add match metadata
         features["match_id"] = match.id
@@ -431,7 +424,6 @@ class MatchFeatureExtractor:
         logger.info(f"[DB_LOAD] Match away_team_id: {match.away_team_id}")
         logger.info(f"[DB_LOAD] Match scheduled_at: {match.scheduled_at}")
         logger.info(f"[DB_LOAD] DB session type: {type(self.db_session) if self.db_session else None}")
-        print(f"[DB_LOAD] Match ID: {match.id}, Home: {match.home_team_id[:16]}..., Away: {match.away_team_id[:16]}...")
         
         match_repo = MatchRepository(self.db_session)
         
@@ -452,7 +444,6 @@ class MatchFeatureExtractor:
         
         logger = logging.getLogger(__name__)
         logger.info(f"[DB_CONVERSION] Raw DB matches: home={len(home_team_matches_db)}, away={len(away_team_matches_db)}")
-        print(f"[DB_CONVERSION] Raw DB matches: home={len(home_team_matches_db)}, away={len(away_team_matches_db)}")
         
         # Convert DB models to domain models
         def db_to_domain_match(match_db) -> DomainMatch:
