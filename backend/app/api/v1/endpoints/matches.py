@@ -342,7 +342,7 @@ async def list_matches(
     # Build response with development data flag
     return MatchListResponse(
         matches=match_responses,
-        count=total_count,  # Total count from BEFORE pagination
+        count=len(match_responses),  # Count of matches returned in this response
         is_development_data=provider.is_development_data(),
     )
 
@@ -437,8 +437,9 @@ async def get_match(
     home_statistics_ht = None
     away_statistics_ht = None
 
-    # Get statistics for finished matches
-    if match.status == MatchStatus.FINISHED:
+    # Get statistics for finished, live, and halftime matches
+    # Statistics should be available for any match that has started
+    if match.status in (MatchStatus.FINISHED, MatchStatus.LIVE, MatchStatus.HALF_TIME):
         try:
             team_stats = provider.get_team_match_statistics(match.id)
             for stat in team_stats:
@@ -449,7 +450,8 @@ async def get_match(
         except Exception as exc:
             logger.warning(f"get_match: get_team_match_statistics failed for {match_id}: {exc}")
 
-        # Get first-half statistics (if provider supports it)
+    # Get first-half statistics for halftime and finished matches
+    if match.status in (MatchStatus.HALF_TIME, MatchStatus.FINISHED):
         try:
             ht_stats = provider.get_team_match_statistics_firsthalf(match.id)
             for stat in ht_stats:
@@ -515,23 +517,7 @@ async def get_match_prediction(
     provider: FootballDataProvider = Depends(get_data_provider),
     db: Optional[Session] = Depends(get_db),
 ) -> MatchPredictionResponse:
-    import time
-    import uuid
-    import logging
-    
-    # Generate correlation ID for this request
-    correlation_id = str(uuid.uuid4())[:8]
-    logger = logging.getLogger(__name__)
-    
-    stage_timings = {}
-    request_start = time.time()
-    
-    logger.info(f"[{correlation_id}] START prediction request for match {match_id}")
-    logger.info(f"[{correlation_id}] Provider type: {type(provider).__name__}")
-    print(f"DEBUG: [{correlation_id}] START prediction request for match {match_id}")  # TEST LOG
-    
-    """
-    Get prediction for a specific match.
+    """Get prediction for a specific match.
     
     Returns:
     - Match outcome probabilities (1X2)
@@ -583,18 +569,29 @@ async def get_match_prediction(
     Raises:
         HTTPException: 404 if match is not found
     """
+    import time
+    import uuid
+    import logging
+    
+    # Generate correlation ID for this request
+    correlation_id = str(uuid.uuid4())[:8]
+    logger = logging.getLogger(__name__)
+    
+    stage_timings = {}
+    request_start = time.time()
+    
+    logger.info(f"[{correlation_id}] START prediction request for match {match_id}")
+    logger.info(f"[{correlation_id}] Provider type: {type(provider).__name__}")
+    
     # Stage 1: Get match from provider or database
     stage_start = time.time()
     logger.info(f"[{correlation_id}] Stage 1: Getting match")
-    print(f"[{correlation_id}] Stage 1: Getting match")
     match = provider.get_match(match_id)
     logger.info(f"[{correlation_id}] Provider returned: {type(match).__name__ if match else 'None'}")
-    print(f"[{correlation_id}] Provider returned: {type(match).__name__ if match else 'None'}")
     
     # If provider returns None, try database lookup
     if match is None and db is not None:
         logger.info(f"[{correlation_id}] Provider returned None, trying database lookup")
-        print(f"[{correlation_id}] Provider returned None, trying database lookup")
         
         try:
             from app.database.models import Match as DBMatch
@@ -608,21 +605,17 @@ async def get_match_prediction(
                 db_match = db.query(DBMatch).filter(DBMatch.id == match_id).first()
                 if db_match:
                     logger.info(f"[{correlation_id}] Found match by canonical UUID")
-                    print(f"[{correlation_id}] Found match by canonical UUID")
             except ValueError:
                 # Not a UUID, try provider_id lookup
                 logger.info(f"[{correlation_id}] Not a UUID: {match_id}")
-                print(f"[{correlation_id}] Not a UUID: {match_id}")
             
             # Try 2: Provider ID lookup (e.g., fotmob_5795469)
             if db_match is None:
                 db_match = db.query(DBMatch).filter(DBMatch.provider_id == match_id).first()
                 if db_match:
                     logger.info(f"[{correlation_id}] Found match by provider_id")
-                    print(f"[{correlation_id}] Found match by provider_id")
                 else:
                     logger.warning(f"[{correlation_id}] No match found in database for ID: {match_id}")
-                    print(f"[{correlation_id}] No match found in database for ID: {match_id}")
             
             # Convert DB model to domain model
             if db_match:
@@ -644,17 +637,13 @@ async def get_match_prediction(
                     updated_at=db_match.updated_at,
                 )
                 logger.info(f"[{correlation_id}] Successfully loaded match from database")
-                print(f"[{correlation_id}] Successfully loaded match from database")
                 logger.info(f"[{correlation_id}] Match details - Home: {match.home_team_id[:8]}..., Away: {match.away_team_id[:8]}..., Status: {match.status}")
-                print(f"[{correlation_id}] Match - Home: {match.home_team_id[:8]}..., Away: {match.away_team_id[:8]}...")
                 
         except Exception as e:
             logger.warning(f"[{correlation_id}] Database lookup failed: {e}")
-            print(f"[{correlation_id}] Database lookup exception: {e}")
     
     stage_timings["1_match_lookup"] = (time.time() - stage_start) * 1000
     logger.info(f"[{correlation_id}] Stage 1 complete: {stage_timings['1_match_lookup']:.1f}ms")
-    print(f"[{correlation_id}] Stage 1 complete: {stage_timings['1_match_lookup']:.1f}ms")
     
     # Return 404 if match doesn't exist
     if match is None:
@@ -666,10 +655,7 @@ async def get_match_prediction(
     
     # Stage 2: Initialize prediction service
     stage_start = time.time()
-    logger.warning(f"[UNIQUE_TEST_LOG] Processing prediction request for match {match_id} - This should be visible!")
     logger.info(f"[{correlation_id}] Stage 2: Initializing prediction service")
-    logger.info(f"[{correlation_id}] DB session type at endpoint: {type(db) if db else None}")
-    logger.info(f"[{correlation_id}] DB session is None: {db is None}")
     
     prediction_service = PredictionService(
         provider=provider,
@@ -711,10 +697,16 @@ async def get_match_prediction(
     else:
         logger.info(f"[{correlation_id}] No odds data available for match {match_id}")
     
-    analysis_context = prediction_service.generate_full_prediction(
-        match=match,
-        odds_data=odds_data,
-        correlation_id=correlation_id
+    # B-10 Fix: Run sync prediction in executor to avoid blocking async event loop
+    import asyncio
+    loop = asyncio.get_running_loop()
+    analysis_context = await loop.run_in_executor(
+        None,
+        lambda: prediction_service.generate_full_prediction(
+            match=match,
+            odds_data=odds_data,
+            correlation_id=correlation_id
+        )
     )
     stage_timings["3_full_prediction"] = (time.time() - stage_start) * 1000
     logger.info(f"[{correlation_id}] Stage 3 complete: {stage_timings['3_full_prediction']:.1f}ms")

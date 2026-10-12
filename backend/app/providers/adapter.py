@@ -244,12 +244,32 @@ class ProviderManagerAdapter(FootballDataProvider):
                     f"Failed to map provider match {pm.source_id} to domain: {e}"
                 )
         
-        # Apply status filter if provided
+        # Apply all filters
+        original_count = len(matches)
+        
         if status:
             # Case-insensitive status comparison
             status_upper = status.upper()
             matches = [m for m in matches if m.status.value == status_upper]
             logger.debug(f"Filtered to {len(matches)} matches with status={status}")
+        
+        # CRITICAL FIX: Apply competition_id filter (was missing!)
+        if competition_id:
+            matches = [m for m in matches if m.competition_id == competition_id]
+            logger.debug(f"Filtered to {len(matches)} matches with competition_id={competition_id}")
+        
+        # Apply season_id filter
+        if season_id:
+            matches = [m for m in matches if m.season_id == season_id]
+            logger.debug(f"Filtered to {len(matches)} matches with season_id={season_id}")
+        
+        # Apply team_id filter (home or away)
+        if team_id:
+            matches = [m for m in matches if m.home_team_id == team_id or m.away_team_id == team_id]
+            logger.debug(f"Filtered to {len(matches)} matches with team_id={team_id}")
+        
+        if original_count != len(matches):
+            logger.debug(f"Applied filters: {original_count} -> {len(matches)} matches")
         
         # Log result
         logger.info(
@@ -486,6 +506,144 @@ class ProviderManagerAdapter(FootballDataProvider):
         return match
     
     # === Statistics ===
+    
+    def _extract_source_id_from_match_id(self, match_id: str) -> Optional[str]:
+        """Extract the numeric source ID from a match ID.
+        
+        Match IDs are formatted as '{provider}_{source_id}', e.g., 'fotmob_12345'.
+        
+        Args:
+            match_id: Full match ID with provider prefix
+            
+        Returns:
+            Numeric source ID or None if extraction fails
+        """
+        if '_' in match_id:
+            parts = match_id.split('_', 1)
+            if len(parts) == 2:
+                return parts[1]
+        # If no underscore, assume the match_id itself is the source ID
+        return match_id
+    
+    def _map_provider_stats_to_domain(self, provider_stats, team_id: str, match_id: str) -> "TeamMatchStatistic":
+        """Map ProviderMatchStats to domain TeamMatchStatistic.
+        
+        Args:
+            provider_stats: ProviderMatchStats instance
+            team_id: Team ID to use in domain model
+            match_id: Match ID
+            
+        Returns:
+            TeamMatchStatistic domain model
+        """
+        from app.domain.statistics import TeamMatchStatistic
+        
+        return TeamMatchStatistic(
+            id=f"{match_id}_{team_id}",
+            match_id=match_id,
+            team_id=team_id,
+            goals_scored=provider_stats.goals_scored or 0,
+            goals_conceded=provider_stats.goals_conceded or 0,
+            xg=provider_stats.xg,
+            xg_against=provider_stats.xg_against,
+            shots_total=provider_stats.shots_total,
+            shots_on_target=provider_stats.shots_on_target,
+            shots_off_target=provider_stats.shots_off_target,
+            shots_blocked=provider_stats.shots_blocked,
+            possession_percentage=provider_stats.possession_percentage,
+            passes_completed=provider_stats.passes_completed,
+            passes_attempted=provider_stats.passes_attempted,
+            pass_accuracy=provider_stats.pass_accuracy,
+            corners=provider_stats.corners,
+            free_kicks=provider_stats.free_kicks,
+            offsides=provider_stats.offsides,
+            yellow_cards=provider_stats.yellow_cards or 0,
+            red_cards=provider_stats.red_cards or 0,
+            fouls_committed=provider_stats.fouls_committed,
+            tackles=provider_stats.tackles,
+            interceptions=provider_stats.interceptions,
+            clearances=provider_stats.clearances,
+            saves=provider_stats.saves,
+        )
+    
+    def get_team_match_statistics(self, match_id: str) -> List["TeamMatchStatistic"]:
+        """Get team statistics for a match.
+        
+        Fetches statistics from FotMob provider and maps to domain models.
+        
+        Args:
+            match_id: Match ID (format: '{provider}_{source_id}')
+            
+        Returns:
+            List of TeamMatchStatistic objects (home and away)
+        """
+        from app.domain.statistics import TeamMatchStatistic
+        
+        # Extract source ID for FotMob API call
+        source_id = self._extract_source_id_from_match_id(match_id)
+        if not source_id:
+            logger.warning(f"Could not extract source_id from match_id: {match_id}")
+            return []
+        
+        # Determine which provider this match belongs to
+        provider_name = match_id.split('_')[0] if '_' in match_id else 'fotmob'
+        
+        # Try to get statistics from FotMob provider
+        try:
+            # Call the async method using asyncio.run() directly
+            # Note: FotMob's get_match_statistics returns (home_stats, away_stats), not (result, metadata)
+            result = asyncio.run(
+                self._manager._providers['fotmob'].get_match_statistics(source_id)
+            )
+            
+            if result is None:
+                return []
+            
+            home_provider_stats, away_provider_stats = result
+            
+            home_provider_stats, away_provider_stats = result
+            
+            # Convert to domain models
+            domain_stats = []
+            
+            if home_provider_stats:
+                # Use home team ID from the provider stats
+                home_team_id = home_provider_stats.team_id or f"fotmob_{source_id}_home"
+                domain_stats.append(
+                    self._map_provider_stats_to_domain(home_provider_stats, home_team_id, match_id)
+                )
+            
+            if away_provider_stats:
+                # Use away team ID from the provider stats
+                away_team_id = away_provider_stats.team_id or f"fotmob_{source_id}_away"
+                domain_stats.append(
+                    self._map_provider_stats_to_domain(away_provider_stats, away_team_id, match_id)
+                )
+            
+            return domain_stats
+            
+        except Exception as e:
+            logger.warning(f"get_team_match_statistics failed for {match_id}: {e}")
+            return []
+    
+    def get_team_match_statistics_firsthalf(self, match_id: str) -> List["TeamMatchStatistic"]:
+        """Get first-half team statistics for a match.
+        
+        Note: FotMob does not provide period-specific statistics via get_match_statistics.
+        This method returns an empty list as first-half statistics are not available
+        from the current provider implementation.
+        
+        Args:
+            match_id: Match ID
+            
+        Returns:
+            Empty list (first-half statistics not available from FotMob)
+        """
+        # FotMob's get_match_statistics returns only full-match statistics.
+        # First-half specific statistics would require separate API calls or
+        # parsing live match data which is not currently implemented.
+        logger.debug(f"get_team_match_statistics_firsthalf: not available from FotMob for {match_id}")
+        return []
     
     def get_standings(self, competition_id: str, season_id: str) -> List[Standing]:
         """Get league standings.

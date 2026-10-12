@@ -443,28 +443,28 @@ class HybridProvider(FootballDataProvider):
             except Exception as e:
                 logger.debug(f"HybridProvider.get_matches_async: External providers failed: {e}")
             
-            # Also get database matches for merge
-            try:
-                logger.debug(f"HybridProvider.get_matches_async: Getting database matches (status={db_status_filter})")
-                db_matches = self.db_provider.get_matches(
-                    competition_id=competition_id,
-                    season_id=season_id,
-                    team_id=team_id,
-                    from_date=from_date,
-                    to_date=to_date,
-                    status=db_status_filter,
-                )
-                
-                if db_matches:
-                    logger.debug(f"HybridProvider.get_matches_async: Database returned {len(db_matches)} matches")
-                    # Merge database matches, avoiding duplicates (external data takes precedence)
-                    external_ids = {m.id for m in all_matches}
-                    for db_match in db_matches:
-                        if db_match.id not in external_ids:
-                            all_matches.append(db_match)
-                    logger.debug(f"HybridProvider.get_matches_async: Total matches after merge: {len(all_matches)}")
-            except Exception as e:
-                logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
+            # Also get database matches for merge ONLY if external provider returned no results
+            # CRITICAL FIX: When competition_id filter is provided, external provider's results are authoritative.
+            # Merging with database here would cause duplicate matches (ID formats differ: external vs UUID),
+            # breaking the competition filter. Database is only used as fallback when external fails.
+            if not all_matches:
+                try:
+                    logger.debug(f"HybridProvider.get_matches_async: External returned nothing, trying database")
+                    db_matches = self.db_provider.get_matches(
+                        competition_id=competition_id,
+                        season_id=season_id,
+                        team_id=team_id,
+                        from_date=from_date,
+                        to_date=to_date,
+                        status=db_status_filter,
+                    )
+                    
+                    if db_matches:
+                        logger.debug(f"HybridProvider.get_matches_async: Database returned {len(db_matches)} matches")
+                        all_matches.extend(db_matches)
+                        logger.debug(f"HybridProvider.get_matches_async: Total matches after merge: {len(all_matches)}")
+                except Exception as e:
+                    logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
         
         else:
             # ALL STATUS queries: Database-first with freshness-based refresh
@@ -611,28 +611,28 @@ class HybridProvider(FootballDataProvider):
             except Exception as e:
                 logger.debug(f"HybridProvider.get_matches: External providers failed: {e}")
             
-            # Also get database matches for merge
-            try:
-                logger.debug(f"HybridProvider.get_matches: Getting database matches (status={db_status_filter})")
-                db_matches = self.db_provider.get_matches(
-                    competition_id=competition_id,
-                    season_id=season_id,
-                    team_id=team_id,
-                    from_date=from_date,
-                    to_date=to_date,
-                    status=db_status_filter,
-                )
-                
-                if db_matches:
-                    logger.debug(f"HybridProvider.get_matches: Database returned {len(db_matches)} matches")
-                    # Merge database matches, avoiding duplicates (external data takes precedence)
-                    external_ids = {m.id for m in all_matches}
-                    for db_match in db_matches:
-                        if db_match.id not in external_ids:
-                            all_matches.append(db_match)
-                    logger.debug(f"HybridProvider.get_matches: Total matches after merge: {len(all_matches)}")
-            except Exception as e:
-                logger.debug(f"HybridProvider.get_matches: Database lookup failed: {e}")
+            # Also get database matches for merge ONLY if external provider returned no results
+            # CRITICAL FIX: When competition_id filter is provided, external provider's results are authoritative.
+            # Merging with database here would cause duplicate matches (ID formats differ: external vs UUID),
+            # breaking the competition filter. Database is only used as fallback when external fails.
+            if not all_matches:
+                try:
+                    logger.debug(f"HybridProvider.get_matches: External returned nothing, trying database")
+                    db_matches = self.db_provider.get_matches(
+                        competition_id=competition_id,
+                        season_id=season_id,
+                        team_id=team_id,
+                        from_date=from_date,
+                        to_date=to_date,
+                        status=db_status_filter,
+                    )
+                    
+                    if db_matches:
+                        logger.debug(f"HybridProvider.get_matches: Database returned {len(db_matches)} matches")
+                        all_matches.extend(db_matches)
+                        logger.debug(f"HybridProvider.get_matches: Total matches after merge: {len(all_matches)}")
+                except Exception as e:
+                    logger.debug(f"HybridProvider.get_matches: Database lookup failed: {e}")
         
         else:
             # SCHEDULED/FINISHED queries: Database-first optimization is safe

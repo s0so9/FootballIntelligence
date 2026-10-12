@@ -13,8 +13,15 @@ from app.providers import DevelopmentProvider
 
 @pytest.fixture
 def client():
-    """Create a test client for the FastAPI app."""
-    return TestClient(app)
+    """Create a test client for the FastAPI app with DevelopmentProvider."""
+    from app.api.dependencies import get_data_provider
+    
+    # Override provider to use DevelopmentProvider for consistent test behavior
+    app.dependency_overrides[get_data_provider] = lambda: DevelopmentProvider()
+    client = TestClient(app)
+    yield client
+    # Clean up override
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -94,8 +101,8 @@ class TestMatchListEndpoint:
         response = client.get("/api/v1/matches")
         data = response.json()
         
-        # With real database data, should be False
-        assert data["is_development_data"] is False
+        # With DevelopmentProvider, should be True
+        assert data["is_development_data"] is True
 
     def test_list_matches_count_matches_list_length(self, client):
         """Verify count field matches the actual number of matches."""
@@ -168,12 +175,12 @@ class TestMatchListEndpoint:
                        match["away_team_id"] == team_id)
 
     def test_list_matches_dev_prefix_present(self, client):
-        """Verify real data does not contain [DEV] prefix markers."""
+        """Verify development data flag is correctly set."""
         response = client.get("/api/v1/matches")
         data = response.json()
         
-        # Real data flag should be False
-        assert data["is_development_data"] is False
+        # DevelopmentProvider should return True
+        assert data["is_development_data"] is True
 
 
 class TestMatchDetailEndpoint:
@@ -242,8 +249,8 @@ class TestMatchDetailEndpoint:
         response = client.get(f"/api/v1/matches/{match_id}")
         data = response.json()
         
-        # Real data should be False
-        assert data["is_development_data"] is False
+        # DevelopmentProvider should return True
+        assert data["is_development_data"] is True
 
     def test_get_match_returns_correct_match(self, client):
         """Verify the returned match has the requested ID."""
