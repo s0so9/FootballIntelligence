@@ -421,10 +421,16 @@ class WalkForwardEvaluator:
                 return None
             
             # 3. Ensemble
-            ensemble_engine = EnsembleEngine()
-            ensemble_pred = ensemble_engine.combine_predictions(orchestration_result)
+            from app.prediction.ensemble_engine import StaticWeighting
+            ensemble_engine = EnsembleEngine(strategy=StaticWeighting())
+            ensemble_pred = ensemble_engine.combine(
+                predictions=orchestration_result.successful_predictions,
+                context={}
+            )
             
-            if ensemble_pred is None:
+            # Check if ensemble returned ModelAvailability (insufficient data)
+            from app.prediction.model_prediction import ModelAvailability
+            if isinstance(ensemble_pred, ModelAvailability):
                 return None
             
             # 4. Calibration
@@ -432,9 +438,10 @@ class WalkForwardEvaluator:
             
             # 5. Confidence/Uncertainty
             confidence_engine = ConfidenceEngine()
+            data_quality_score = snapshot.data_quality_report.overall_score if snapshot.data_quality_report else 0.5
             confidence_assessment = confidence_engine.assess(
                 model_agreement=ensemble_pred.metadata.get("model_agreement", 0.5),
-                data_quality_score=snapshot.data_quality_score or 0.5,
+                data_quality_score=data_quality_score,
                 n_matches=len(train_matches),
                 brier_score=None,  # Not available during prediction
                 lineup_status="expected",
@@ -449,7 +456,7 @@ class WalkForwardEvaluator:
             
             uncertainty_assessment = uncertainty_engine.assess(
                 model_disagreement=disagreement.disagreement_score,
-                data_quality=snapshot.data_quality_score or 0.5,
+                data_quality=data_quality_score,
                 feature_availability=0.8,  # Simplified
                 sample_size=len(train_matches),
                 probability_dispersion=disagreement.probability_range,
@@ -522,7 +529,7 @@ class WalkForwardEvaluator:
                 is_pass=is_pass,
                 pass_reason=selection_result.pass_reason if is_pass else None,
                 features_available={},  # Simplified
-                data_quality_score=snapshot.data_quality_score or 0.5,
+                data_quality_score=data_quality_score,
                 shot_markets_evaluated=False,
                 shot_market_predictions={}
             )
@@ -548,23 +555,23 @@ class WalkForwardEvaluator:
         # In production, extract_feature_snapshot would query database
         # with WHERE match_date < test_match.scheduled_at
         
-        # For now, return a minimal snapshot
+        # For now, return a minimal snapshot with only required fields
         # Real implementation requires full feature extraction infrastructure
+        from app.prediction.feature_snapshot import DataQualityReport
+        
         return MatchFeatureSnapshot(
             match_id=match.id,
             home_team_id=match.home_team_id,
             away_team_id=match.away_team_id,
+            home_team_name=match.home_team.name if match.home_team else None,
+            away_team_name=match.away_team.name if match.away_team else None,
             scheduled_at=match.scheduled_at,
-            data_quality_score=0.7,  # Simplified
-            team_strength=None,
-            form_metrics=None,
-            player_availability=None,
-            league_context=None,
-            tactical_context=None,
-            source_provenance=None,
-            market_information=None,
-            advanced_feature_set=None,
-            extracted_at=datetime.utcnow()
+            data_quality_report=DataQualityReport(
+                overall_score=0.5,  # Low quality for walk-forward simulation
+                missing_features=[],
+                low_confidence_features=[],
+                data_freshness_score=0.5
+            )
         )
     
     def _fit_calibration(

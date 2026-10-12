@@ -656,9 +656,39 @@ async def get_match_prediction(
     # Stage 3: Generate full TUTAR X prediction
     stage_start = time.time()
     logger.info(f"[{correlation_id}] Stage 3: Starting generate_full_prediction")
+    
+    # Fetch bookmaker odds from database if available
+    from app.database.models import AverageMarketOdds
+    odds_records = db.query(AverageMarketOdds).filter(
+        AverageMarketOdds.match_id == match_id
+    ).all()
+    
+    # Structure odds data for prediction pipeline
+    odds_data = None
+    if odds_records:
+        odds_data = {}
+        for record in odds_records:
+            market_key = f"{record.market_key}"
+            if record.market_point is not None:
+                market_key += f"_{record.market_point}"
+            
+            if market_key not in odds_data:
+                odds_data[market_key] = {}
+            
+            odds_data[market_key][record.outcome_name] = {
+                "average_odds": record.average_odds,
+                "bookmaker_count": record.bookmaker_count,
+                "min_odds": record.min_odds,
+                "max_odds": record.max_odds
+            }
+        
+        logger.info(f"[{correlation_id}] Loaded {len(odds_records)} odds records from database")
+    else:
+        logger.info(f"[{correlation_id}] No odds data available for match {match_id}")
+    
     analysis_context = prediction_service.generate_full_prediction(
         match=match,
-        odds_data=None,  # No real bookmaker odds available in development
+        odds_data=odds_data,
         correlation_id=correlation_id
     )
     stage_timings["3_full_prediction"] = (time.time() - stage_start) * 1000

@@ -204,6 +204,13 @@ class OddsUpdaterService:
                         stats['odds_created'] += 1
         
         # Calculate and store averages for this event
+        # Flush bookmaker odds to database first so they're visible to the average calculation
+        try:
+            self.db.flush()
+        except Exception as e:
+            logger.error(f"Failed to flush bookmaker odds for event {event_id}: {e}")
+            # Continue anyway - might work if records already exist
+        
         averages_count = self._calculate_and_store_averages(event_id, match_id, fetched_at)
         stats['averages_calculated'] = averages_count
         

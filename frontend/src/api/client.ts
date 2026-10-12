@@ -413,3 +413,57 @@ export async function getLiveMarkets(matchId: string): Promise<import('../types/
   console.warn(`[API] getLiveMarkets not implemented for match ${matchId} - backend endpoint not available`);
   return [];
 }
+
+/**
+ * Centralized API client object for consistent usage across components.
+ * Wraps the request function for GET and POST methods.
+ */
+export const apiClient = {
+  /**
+   * Make a GET request to the API.
+   * Returns a promise-like object with .json() method for type safety.
+   */
+  get: (endpoint: string, signal?: AbortSignal) => {
+    return {
+      json: <T>() => request<T>(endpoint, { method: 'GET', signal })
+    };
+  },
+
+  /**
+   * Make a POST request to the API.
+   * Returns a promise-like object with .json() method for type safety.
+   */
+  post: (endpoint: string, body?: any, signal?: AbortSignal) => {
+    return {
+      json: <T>() => request<T>(endpoint, {
+        method: 'POST',
+        body: body ? JSON.stringify(body) : undefined,
+        signal
+      })
+    };
+  },
+
+  /**
+   * Make a PUT request to the API.
+   * Returns a promise-like object with .json() method for type safety.
+   */
+  put: (endpoint: string, body?: any, signal?: AbortSignal) => {
+    return {
+      json: <T>() => request<T>(endpoint, {
+        method: 'PUT',
+        body: body ? JSON.stringify(body) : undefined,
+        signal
+      })
+    };
+  },
+
+  /**
+   * Make a DELETE request to the API.
+   * Returns a promise-like object with .json() method for type safety.
+   */
+  delete: (endpoint: string, signal?: AbortSignal) => {
+    return {
+      json: <T>() => request<T>(endpoint, { method: 'DELETE', signal })
+    };
+  }
+};

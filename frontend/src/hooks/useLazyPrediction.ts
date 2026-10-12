@@ -7,11 +7,20 @@ import { usePredictionCache } from '../contexts/PredictionCacheContext';
  * 
  * Automatically fetches prediction when component mounts if not already cached.
  * Prevents duplicate requests and handles component unmount cleanup.
+ * 
+ * REACT STRICTMODE SAFE: Handles double-mount/abort scenarios correctly.
  */
 export function useLazyPrediction(matchId: string | null | undefined) {
   const cache = usePredictionCache();
   const abortControllerRef = useRef<AbortController | null>(null);
-  const fetchStartedRef = useRef<Set<string>>(new Set());
+  const isMountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!matchId) return;
@@ -24,13 +33,12 @@ export function useLazyPrediction(matchId: string | null | undefined) {
       if (cached.prediction || cached.error) {
         return;
       }
-      
-      // If loading but no prediction/error, this might be a stuck state from aborted request
-      // Allow refetch in this case (handles React StrictMode double-mount scenario)
     }
 
     // Check if another component is already loading this prediction
+    // Allow current component to wait for shared request
     if (cache.isLoading(matchId)) {
+      console.log('[useLazyPrediction] Already loading, waiting for result:', matchId);
       return;
     }
 
@@ -39,13 +47,7 @@ export function useLazyPrediction(matchId: string | null | undefined) {
     abortControllerRef.current = abortController;
 
     async function fetchPrediction() {
-      if (!matchId) return;
-
-      // Prevent duplicate fetches INSIDE async function (StrictMode-safe)
-      if (fetchStartedRef.current.has(matchId)) {
-        return;
-      }
-      fetchStartedRef.current.add(matchId);
+      if (!matchId || !isMountedRef.current) return;
 
       try {
         // Mark as loading to prevent other components from fetching
@@ -55,8 +57,8 @@ export function useLazyPrediction(matchId: string | null | undefined) {
         const prediction = await getMatchPrediction(matchId, abortController.signal);
         console.log('[useLazyPrediction] Prediction received:', prediction ? 'SUCCESS' : 'NULL');
 
-        // Only update if not aborted
-        if (!abortController.signal.aborted) {
+        // Only update if still mounted and not aborted
+        if (isMountedRef.current && !abortController.signal.aborted) {
           cache.setPrediction(matchId, prediction);
         }
       } catch (err) {
@@ -65,31 +67,34 @@ export function useLazyPrediction(matchId: string | null | undefined) {
         // Don't update cache if request was aborted (component unmounted)
         if (err instanceof DOMException && err.name === 'AbortError') {
           console.log('[useLazyPrediction] Request aborted - clearing loading state');
-          cache.clearLoading(matchId);
+          if (isMountedRef.current) {
+            cache.clearLoading(matchId);
+          }
           return;
         }
 
         // Check ApiError wrapped AbortError  
         if (err instanceof Error && err.message.includes('aborted')) {
           console.log('[useLazyPrediction] Request aborted (wrapped) - clearing loading state');
-          cache.clearLoading(matchId);
+          if (isMountedRef.current) {
+            cache.clearLoading(matchId);
+          }
           return;
         }
 
         // For all other errors (timeout, network, API errors), set error state
         console.log('[useLazyPrediction] Setting error state for match:', matchId);
-        if (!abortController.signal.aborted) {
+        if (isMountedRef.current && !abortController.signal.aborted) {
           cache.setError(
             matchId,
             err instanceof Error ? err : new Error('Failed to fetch prediction')
           );
         } else {
           // Aborted but didn't throw AbortError - still need to clear loading state
-          cache.clearLoading(matchId);
+          if (isMountedRef.current) {
+            cache.clearLoading(matchId);
+          }
         }
-      } finally {
-        // Always cleanup fetch tracking
-        fetchStartedRef.current.delete(matchId);
       }
     }
 
@@ -100,9 +105,8 @@ export function useLazyPrediction(matchId: string | null | undefined) {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      // Cleanup happens in finally block of fetchPrediction
     };
-  }, [matchId]); // Only depend on matchId - cache callbacks are stable now
+  }, [matchId]); // cache methods are stable, no need to include
 
   // Return cached state
   if (!matchId) {

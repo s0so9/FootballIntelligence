@@ -2,9 +2,11 @@
  * useOdds Hook - Bookmaker odds data fetching
  * 
  * Provides functionality to fetch average market odds from TUTAR X backend.
+ * Uses centralized API client for consistent URL handling across environments.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { apiClient } from '../api/client'
 
 export interface MarketOdds {
   provider_event_id: string
@@ -49,39 +51,51 @@ export function useMatchOdds(matchId?: string) {
   const [odds, setOdds] = useState<MatchOdds | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentMatchId, setCurrentMatchId] = useState<string | undefined>(matchId)
+
+  const fetchOdds = useCallback(async (id: string) => {
+    setLoading(true)
+    setError(null)
+    setCurrentMatchId(id)
+
+    try {
+      const response = await apiClient.get(`/api/v1/odds/match/${id}`)
+      const data: MatchOdds = await response.json()
+      
+      // Only update if this is still the current match ID
+      setOdds(prevOdds => currentMatchId === id ? data : prevOdds)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Odds fetch failed'
+      
+      // Only set error if this is still the current match ID
+      if (currentMatchId === id) {
+        setError(errorMessage)
+        console.error('Failed to fetch match odds:', err)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [currentMatchId])
 
   useEffect(() => {
     if (!matchId) {
       setOdds(null)
+      setCurrentMatchId(undefined)
       return
     }
 
-    const fetchOdds = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const response = await fetch(`/api/v1/odds/match/${matchId}`)
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-        }
-
-        const data: MatchOdds = await response.json()
-        setOdds(data)
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Odds fetch failed'
-        setError(errorMessage)
-        console.error('Failed to fetch match odds:', err)
-      } finally {
-        setLoading(false)
-      }
+    if (matchId !== currentMatchId) {
+      fetchOdds(matchId)
     }
+  }, [matchId, currentMatchId, fetchOdds])
 
-    fetchOdds()
-  }, [matchId])
+  const refetch = useCallback(() => {
+    if (matchId) {
+      fetchOdds(matchId)
+    }
+  }, [matchId, fetchOdds])
 
-  return { odds, loading, error, refetch: () => matchId && setOdds(null) }
+  return { odds, loading, error, refetch }
 }
 
 /**
@@ -106,13 +120,8 @@ export function useSearchOdds() {
         sport_key: sportKey
       })
 
-      const response = await fetch(`/api/v1/odds/search?${params}`)
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      const data = await response.json()
+      const response = await apiClient.get(`/api/v1/odds/search?${params}`)
+      const data: any = await response.json()
       
       if (data.match_found === false) {
         return null
@@ -145,12 +154,7 @@ export function useOddsHealth() {
     setError(null)
 
     try {
-      const response = await fetch('/api/v1/odds/health')
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
+      const response = await apiClient.get('/api/v1/odds/health')
       const data: OddsHealth = await response.json()
       setHealth(data)
     } catch (err) {
@@ -185,12 +189,7 @@ export function useManualOddsUpdate() {
         ? `/api/v1/odds/manual-update?sport_key=${sportKey}`
         : '/api/v1/odds/manual-update'
 
-      const response = await fetch(url, { method: 'POST' })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-
+      const response = await apiClient.post(url)
       const data = await response.json()
       return data
     } catch (err) {

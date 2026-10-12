@@ -102,6 +102,16 @@ async def get_match_odds(
     # Maç bilgilerini al (ilk kayıttan)
     sample_record = odds_records[0]
     
+    # Provider event'ten takım ve zaman bilgilerini al
+    # AverageMarketOdds directly doesn't have these fields, get from BookmakerOdds
+    event_info = db.query(BookmakerOdds).filter(
+        BookmakerOdds.provider_event_id == sample_record.provider_event_id
+    ).first()
+    
+    home_team_name = event_info.home_team_name if event_info else ""
+    away_team_name = event_info.away_team_name if event_info else ""
+    commence_time = event_info.commence_time if event_info else None
+    
     # Oranları outcome_name'e göre grupla
     odds_by_outcome = {}
     last_updated = None
@@ -112,11 +122,11 @@ async def get_match_odds(
             outcome_lower = record.outcome_name.lower()
             if 'draw' in outcome_lower:
                 odds_by_outcome['draw'] = record
-            elif sample_record.provider_event_id:
-                # Provider event'ten takım isimlerini çıkar (basitleştirilmiş)
-                if record.outcome_name == sample_record.home_team_name:
+            elif event_info:
+                # Provider event'ten takım isimlerini çıkar
+                if record.outcome_name == event_info.home_team_name:
                     odds_by_outcome['home_win'] = record
-                elif record.outcome_name == sample_record.away_team_name:
+                elif record.outcome_name == event_info.away_team_name:
                     odds_by_outcome['away_win'] = record
         
         elif record.market_key == 'totals' and record.market_point == 2.5:
@@ -139,9 +149,9 @@ async def get_match_odds(
     
     return MatchOddsResponse(
         match_found=True,
-        home_team=sample_record.home_team_name or "",
-        away_team=sample_record.away_team_name or "",
-        commence_time=sample_record.commence_time,
+        home_team=home_team_name,
+        away_team=away_team_name,
+        commence_time=commence_time,
         home_win=convert_to_response(odds_by_outcome.get('home_win')),
         draw=convert_to_response(odds_by_outcome.get('draw')),
         away_win=convert_to_response(odds_by_outcome.get('away_win')),
@@ -266,7 +276,18 @@ async def manual_odds_update(
     
     Bu endpoint admin/test amaçlı kullanılır.
     Production'da scheduler otomatik güncelleme yapar.
+    
+    SECURITY NOTE: This endpoint should be protected with authentication/authorization
+    in production environments. Currently open for development only.
     """
+    # TODO: Add authentication/authorization check
+    # Example: require admin role or API key
+    # if not current_user.is_admin:
+    #     raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Rate limiting: prevent multiple concurrent updates
+    # (In production, use proper distributed lock or rate limiter)
+    
     try:
         if sport_key:
             # Tek spor güncellemesi
@@ -286,8 +307,12 @@ async def manual_odds_update(
         }
         
     except Exception as e:
-        logger.error(f"Manual update failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Manual update failed: {e}", exc_info=True)
+        # Don't expose internal error details to client
+        raise HTTPException(
+            status_code=500,
+            detail="Odds update failed. Please check server logs."
+        )
 
 
 @router.get("/bookmakers")
