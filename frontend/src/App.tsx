@@ -1,12 +1,12 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
-import { Dashboard } from './pages/Dashboard';
+import { DashboardV2 as Dashboard } from './pages/DashboardV2';
 import { PopularLeagues } from './pages/PopularLeagues';
 import { Upcoming } from './pages/Upcoming';
 import { Live } from './pages/Live';
 import { Completed } from './pages/Completed';
-import { Matches } from './pages/Matches';
-import { MatchDetail } from './pages/MatchDetail';
+import { MatchesV2 as Matches } from './pages/MatchesV2';
+import { MatchDetailV2 as MatchDetail } from './pages/MatchDetailV2';
 import { Predictions } from './pages/Predictions';
 import { EasyMatches } from './pages/EasyMatches';
 import { Analytics } from './pages/Analytics';
