@@ -312,11 +312,11 @@ class ConfidenceEngine:
                                for the same match (e.g., last 5 updates)
             
         Returns:
-            Stability in [0, 1]
+            Stability in [0, 1]. Returns 0.5 (neutral) when insufficient data.
         """
         if not recent_predictions or len(recent_predictions) < 2:
-            # Insufficient data - assume stable
-            return 1.0
+            # Insufficient data - return neutral score (not confident absence or presence of stability)
+            return 0.5
         
         # Calculate variance
         mean = sum(recent_predictions) / len(recent_predictions)

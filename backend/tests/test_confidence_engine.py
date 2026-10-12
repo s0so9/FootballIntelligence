@@ -276,8 +276,8 @@ class TestConfidenceEngine:
             recent_predictions=None
         )
         
-        # Should default to stable (1.0)
-        assert assessment.components.feature_stability == 1.0
+        # Should default to neutral (0.5) when no measurement available
+        assert assessment.components.feature_stability == 0.5
     
     def test_component_breakdown_included(self):
         """Test that component breakdown is included in assessment."""

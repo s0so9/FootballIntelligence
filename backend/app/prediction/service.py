@@ -233,23 +233,22 @@ class PredictionService:
         self.model_orchestrator = ModelOrchestrator.create_default_registry()
         
         # Integration layers
-        # Phase 10.3: Use optimized ensemble weights
+        # Phase 10.3: Use optimized ensemble weights with caching (Section 7 optimization)
         try:
-            from app.prediction.ensemble_optimizer import create_optimized_ensemble
-            optimized_engine = create_optimized_ensemble()
-            self.ensemble_integration = EnsembleIntegration(engine=optimized_engine)
+            from app.prediction.model_cache import load_ensemble_cached
+            self.ensemble_integration = load_ensemble_cached()
         except Exception as e:
             import logging
-            logging.warning(f"Could not load optimized ensemble, using default: {e}")
+            logging.warning(f"Could not load cached ensemble, using default: {e}")
             self.ensemble_integration = EnsembleIntegration.create_default()
         
-        # Load trained calibration if available (Phase 10.3)
+        # Load trained calibration if available (Phase 10.3) with caching (Section 7 optimization)
         try:
-            from app.prediction.calibration_loader import create_calibration_integration_with_trained_model
-            self.calibration_integration = create_calibration_integration_with_trained_model()
+            from app.prediction.model_cache import create_calibration_integration_cached
+            self.calibration_integration = create_calibration_integration_cached()
         except Exception as e:
             import logging
-            logging.warning(f"Could not load trained calibration, using default: {e}")
+            logging.warning(f"Could not load cached calibration, using default: {e}")
             self.calibration_integration = CalibrationIntegration.create_default()
         
         self.confidence_integration = ConfidenceIntegration()
@@ -1309,10 +1308,10 @@ class PredictionService:
                 components=ConfidenceComponents(
                     model_agreement=0.0,
                     data_quality=0.0,
-                    sample_size=0.0,
+                    sample_size_score=0.0,
                     calibration_reliability=0.0,
                     lineup_certainty=0.0,
-                    prediction_stability=0.0,
+                    feature_stability=0.0,
                 ),
                 weights=ConfidenceWeights(),
                 component_breakdown={}
@@ -1541,6 +1540,36 @@ class PredictionService:
         # STEP 11: Create versioned prediction with full pipeline metadata
         profiler.start_stage("PREDICTION_VERSIONING", match_id=match.id)
         step_start = time.time()
+        
+        # Serialize score_distribution: convert tuple keys to "h-a" string format for JSON compatibility
+        serialized_score_dist = None
+        if calibrated_prediction.score_distribution:
+            serialized_score_dist = {}
+            for score_key, prob in calibrated_prediction.score_distribution.items():
+                if isinstance(score_key, tuple) and len(score_key) == 2:
+                    # Format: (home_goals, away_goals) → "home_goals-away_goals"
+                    key_str = f"{score_key[0]}-{score_key[1]}"
+                    serialized_score_dist[key_str] = prob
+                elif isinstance(score_key, str):
+                    # Already string format
+                    serialized_score_dist[score_key] = prob
+        
+        # Serialize markets: convert nested structures to JSON-safe format
+        serialized_markets = None
+        if market_probs:
+            serialized_markets = {}
+            for attr, value in market_probs.__dict__.items():
+                if value is None:
+                    serialized_markets[attr] = None
+                elif isinstance(value, (int, float, str, bool)):
+                    serialized_markets[attr] = value
+                elif isinstance(value, dict):
+                    # Convert any enum/complex keys to strings
+                    serialized_markets[attr] = {str(k): v for k, v in value.items()}
+                else:
+                    # Other types: attempt str() conversion
+                    serialized_markets[attr] = str(value)
+        
         prediction_data = {
             "home_win_prob": calibrated_prediction.home_win_prob,
             "draw_prob": calibrated_prediction.draw_prob,
@@ -1549,8 +1578,8 @@ class PredictionService:
             "away_xg": calibrated_prediction.away_score_mean,
             "predicted_score": predicted_score,
             "btts_probability": self._calculate_btts_from_distribution(calibrated_prediction.score_distribution),
-            "score_distribution": calibrated_prediction.score_distribution,
-            "markets": market_probs.__dict__ if market_probs else None,
+            "score_distribution": serialized_score_dist,
+            "markets": serialized_markets,
             "shot_markets": self._serialize_shot_markets(shot_market_predictions) if shot_market_predictions else None,  # NEW: FEAT-003
             "mensione_pick": mensione_pick,
             "confidence": {

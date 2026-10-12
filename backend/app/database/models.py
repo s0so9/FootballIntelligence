@@ -447,7 +447,7 @@ class PredictionVersionDB(BaseModel, Base):
     model_versions = Column(JSON, nullable=True)  # {model_id: version}
     
     # Quality scores
-    data_quality_score = Column(Float, nullable=False, default=0.0)
+    data_quality_score = Column(Float, nullable=True)  # None = unknown/insufficient data
     confidence_score = Column(Float, nullable=False, default=0.0)
     
     # Notes

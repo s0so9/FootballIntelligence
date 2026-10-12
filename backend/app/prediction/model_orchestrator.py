@@ -768,9 +768,11 @@ class ConfidenceIntegration:
             recent_predictions=None  # Not calculating stability yet
         )
         
+        # Format data_quality_score null-safe
+        dq_str = f"{data_quality_score:.3f}" if data_quality_score is not None else "None"
         logger.info(
             f"Confidence assessed: {assessment.overall_confidence:.3f} "
-            f"(agreement={model_agreement:.3f}, data_quality={data_quality_score:.3f})"
+            f"(agreement={model_agreement:.3f}, data_quality={dq_str})"
         )
         
         return assessment
