@@ -96,75 +96,58 @@ def simulate_historical_predictions(matches: List[Dict]) -> Tuple[
     List[float], List[float], List[float],  # Actual outcomes (home, draw, away)
     List[datetime]  # Timestamps
 ]:
-    """Simulate generating predictions for historical matches.
+    """Generate predictions for historical matches using the production pipeline.
     
-    NOTE: In a real implementation, this would:
-    1. For each match at time T
-    2. Extract features using only data before T
-    3. Run the production models
-    4. Collect ensemble probabilities
+    PRODUCTION CALIBRATION REQUIREMENTS:
+    - Must use actual production model predictions, not random/simulated probabilities
+    - For each match at time T, extract features using only data before T (no data leakage)
+    - Run the same prediction pipeline that runs in production
+    - Collect ensemble output probabilities and actual outcomes
+    - Maintain strict temporal ordering
     
-    For Phase 10.3, we'll use a simplified approach based on basic statistics
-    to demonstrate the calibration framework. The key is maintaining temporal integrity.
+    CURRENT STATUS:
+    This function requires the production prediction pipeline to be implemented.
+    Until then, calibration training cannot proceed with valid data.
+    
+    DO NOT USE RANDOM PROBABILITIES FOR PRODUCTION CALIBRATION.
     
     Args:
         matches: List of finished matches with outcomes
         
     Returns:
         Tuple of (home_probs, draw_probs, away_probs, home_outcomes, draw_outcomes, away_outcomes, timestamps)
+        
+    Raises:
+        NotImplementedError: Until production prediction pipeline is available
     """
-    logger.info(f"Simulating predictions for {len(matches)} historical matches...")
+    logger.error("=" * 80)
+    logger.error("CALIBRATION TRAINING BLOCKED: Production prediction pipeline required")
+    logger.error("=" * 80)
+    logger.error("")
+    logger.error("Calibration models must be trained on REAL prediction outputs, not random data.")
+    logger.error("")
+    logger.error("Required implementation:")
+    logger.error("  1. Implement production prediction pipeline (ensemble of models)")
+    logger.error("  2. For each historical match at time T:")
+    logger.error("     - Extract features using only data BEFORE T")
+    logger.error("     - Run production models to generate probabilities")
+    logger.error("     - Collect predicted probs and actual outcome")
+    logger.error("  3. Train calibration on these prediction-outcome pairs")
+    logger.error("")
+    logger.error("Training metadata to include:")
+    logger.error("  - Training date range")
+    logger.error("  - Number of samples (matches)")
+    logger.error("  - Model version/commit hash")
+    logger.error("  - Evaluation metrics (Brier score, calibration error)")
+    logger.error("  - Cross-validation results if applicable")
+    logger.error("")
+    logger.error("NEVER use random.gauss() or fabricated probabilities for calibration training.")
+    logger.error("=" * 80)
     
-    home_probs = []
-    draw_probs = []
-    away_probs = []
-    home_outcomes = []
-    draw_outcomes = []
-    away_outcomes = []
-    timestamps = []
-    
-    # Simple baseline: use league-average probabilities as starting point
-    # In production, these would come from actual model predictions
-    baseline_home = 0.43
-    baseline_draw = 0.28
-    baseline_away = 0.29
-    
-    for match in matches:
-        # Simulate prediction (in production, this would be the actual ensemble output)
-        # Add some variation based on match characteristics
-        import random
-        random.seed(hash(match['id']))  # Deterministic per match
-        
-        variation = random.gauss(0, 0.15)
-        pred_home = max(0.05, min(0.90, baseline_home + variation))
-        pred_draw = max(0.05, min(0.50, baseline_draw - variation/2))
-        pred_away = max(0.05, min(0.90, baseline_away + variation/2))
-        
-        # Normalize to sum to 1.0
-        total = pred_home + pred_draw + pred_away
-        pred_home /= total
-        pred_draw /= total
-        pred_away /= total
-        
-        # Determine actual outcome
-        actual_home, actual_draw, actual_away = determine_outcome(
-            match['home_score'],
-            match['away_score']
-        )
-        
-        home_probs.append(pred_home)
-        draw_probs.append(pred_draw)
-        away_probs.append(pred_away)
-        home_outcomes.append(actual_home)
-        draw_outcomes.append(actual_draw)
-        away_outcomes.append(actual_away)
-        timestamps.append(match['scheduled_at'])
-    
-    logger.info(f"Generated {len(home_probs)} prediction-outcome pairs")
-    return (
-        home_probs, draw_probs, away_probs,
-        home_outcomes, draw_outcomes, away_outcomes,
-        timestamps
+    raise NotImplementedError(
+        "Calibration training requires production prediction pipeline. "
+        "Do not use random/simulated probabilities for calibration training. "
+        "Implement proper out-of-sample prediction generation first."
     )
 
 

@@ -4,13 +4,18 @@ This module provides functions to load pre-trained calibration models
 and integrate them into the prediction pipeline.
 """
 
-import os
+import logging
+from pathlib import Path
+from typing import Optional
 import pickle
 import json
-import logging
-from typing import Optional
 
 from app.prediction.model_orchestrator import Calibrator1X2
+from app.prediction.model_paths import (
+    get_calibration_config_path,
+    get_calibration_model_path,
+    get_trained_calibration_model_path
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +31,11 @@ def load_calibration_config(config_path: Optional[str] = None) -> Optional[dict]
         Configuration dictionary or None if not found
     """
     if config_path is None:
-        # Default path
-        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(backend_dir, 'config', 'calibration_config.json')
+        config_path = get_calibration_config_path()
+    else:
+        config_path = Path(config_path)
     
-    if not os.path.exists(config_path):
+    if not config_path.exists():
         logger.warning(f"Calibration config not found at {config_path}")
         return None
     
@@ -52,40 +57,46 @@ def load_trained_calibrator(calibrator_path: Optional[str] = None) -> Optional[C
                         If None, uses path from config
     
     Returns:
-        Trained Calibrator1X2 instance or None if not found
+        Trained Calibrator1X2 instance or None if not found/invalid
     """
     if calibrator_path is None:
         # Try to get path from config
         config = load_calibration_config()
         if config and 'calibrator_path' in config:
-            calibrator_path = config['calibrator_path']
+            calibrator_path = Path(config['calibrator_path'])
         else:
-            # Default path
-            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            calibrator_path = os.path.join(backend_dir, 'config', 'calibration_config.pkl')
+            calibrator_path = get_calibration_model_path()
+    else:
+        calibrator_path = Path(calibrator_path)
     
-    if not os.path.exists(calibrator_path):
+    if not calibrator_path.exists():
         logger.warning(f"Calibrator not found at {calibrator_path}")
+        logger.info("Calibration model has not been trained yet.")
+        logger.info("To train: run backend/scripts/train_calibration.py after implementing production prediction pipeline")
         return None
     
     try:
         with open(calibrator_path, 'rb') as f:
             calibrator = pickle.load(f)
-        
-        if not isinstance(calibrator, Calibrator1X2):
-            logger.error(f"Loaded object is not a Calibrator1X2: {type(calibrator)}")
-            return None
-        
-        logger.info(f"Loaded trained calibrator from {calibrator_path}")
-        logger.info(f"  Home fitted: {calibrator.home_calibrator.is_fitted}")
-        logger.info(f"  Draw fitted: {calibrator.draw_calibrator.is_fitted}")
-        logger.info(f"  Away fitted: {calibrator.away_calibrator.is_fitted}")
-        logger.info(f"  Overall fitted: {calibrator.is_fitted}")
-        
-        return calibrator
+    except ImportError as e:
+        logger.error(f"Failed to load calibrator: missing dependency {e}")
+        logger.error("Calibration requires scikit-learn. Install with: pip install scikit-learn")
+        return None
     except Exception as e:
         logger.error(f"Failed to load calibrator: {e}")
         return None
+    
+    if not isinstance(calibrator, Calibrator1X2):
+        logger.error(f"Loaded object is not a Calibrator1X2: {type(calibrator)}")
+        return None
+    
+    logger.info(f"Loaded trained calibrator from {calibrator_path}")
+    logger.info(f"  Home fitted: {calibrator.home_calibrator.is_fitted}")
+    logger.info(f"  Draw fitted: {calibrator.draw_calibrator.is_fitted}")
+    logger.info(f"  Away fitted: {calibrator.away_calibrator.is_fitted}")
+    logger.info(f"  Overall fitted: {calibrator.is_fitted}")
+    
+    return calibrator
 
 
 def create_calibration_integration_with_trained_model():

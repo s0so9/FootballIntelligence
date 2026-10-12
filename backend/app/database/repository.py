@@ -275,15 +275,16 @@ class MatchRepository(BaseRepository[Match]):
         """Get team's matches before a specific datetime.
         
         Used for feature extraction to prevent data leakage.
+        Returns the most recent N matches if limit is specified.
         
         Args:
             team_id: Team UUID
             before_datetime: Only matches scheduled before this datetime
-            limit: Maximum number of matches to return
+            limit: Maximum number of matches to return (most recent N)
             finished_only: Only return finished matches
             
         Returns:
-            List of matches, ordered by scheduled_at ascending
+            List of matches, ordered by scheduled_at ascending (chronological)
         """
         from app.domain.enums import MatchStatus
         
@@ -300,12 +301,27 @@ class MatchRepository(BaseRepository[Match]):
         if finished_only:
             stmt = stmt.where(Match.status == MatchStatus.FINISHED)
         
-        stmt = stmt.order_by(Match.scheduled_at.asc())
-        
+        # When limit is specified, we want the most recent N matches
+        # To achieve this: first order DESC to get the newest, apply limit,
+        # then reverse to chronological order for consumers
         if limit:
-            stmt = stmt.limit(limit)
-        
-        return list(self.session.execute(stmt).scalars().all())
+            # Subquery: get most recent N matches
+            stmt = stmt.order_by(
+                Match.scheduled_at.desc(),
+                Match.id.desc()  # Stable secondary sort for equal timestamps
+            ).limit(limit)
+            
+            # Execute subquery and reverse to chronological order
+            matches = list(self.session.execute(stmt).scalars().all())
+            matches.reverse()
+            return matches
+        else:
+            # No limit: return all in chronological order
+            stmt = stmt.order_by(
+                Match.scheduled_at.asc(),
+                Match.id.asc()  # Stable secondary sort
+            )
+            return list(self.session.execute(stmt).scalars().all())
     
     def get_matches_by_date_range(
         self,

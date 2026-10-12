@@ -361,7 +361,8 @@ function transformStatsToLiveStats(stats: import('./types').MatchStatisticsRespo
   return {
     shots: stats.shots_total ?? undefined,
     shotsOnTarget: stats.shots_on_target ?? undefined,
-    shotsOutsideBox: stats.shots_off_target ?? undefined,
+    // shotsOutsideBox: No reliable mapping available - shots_off_target means missed target, not outside box
+    shotsOutsideBox: undefined,  // CORRECTED: Do not use shots_off_target
     xG: stats.xg ?? undefined,
     possession: stats.possession_percentage ?? undefined,
     corners: stats.corners ?? undefined,

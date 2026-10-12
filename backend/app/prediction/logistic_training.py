@@ -28,7 +28,7 @@ class LogisticRegressionTrainer:
         session: Session,
         min_training_samples: int = 100,
         validation_split: float = 0.2,
-        model_cache_path: str = "backend/app/config/logistic_model.pkl"
+        model_cache_path: Optional[str] = None  # Use default from model_paths if None
     ):
         """Initialize trainer.
         

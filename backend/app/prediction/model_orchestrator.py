@@ -349,25 +349,33 @@ class ModelOrchestrator:
         try:
             # Try to load cached trained model
             import pickle
-            from pathlib import Path
+            from app.prediction.model_paths import get_trained_logistic_model_path
             
-            model_cache_path = Path("backend/app/config/logistic_model.pkl")
-            if model_cache_path.exists():
-                logger.info("Loading cached logistic regression model")
-                with open(model_cache_path, 'rb') as f:
-                    model_data = pickle.load(f)
-                
-                logistic_model = LogisticRegressionModel()
-                logistic_model._weights = model_data['weights']
-                logistic_model._training_stats = model_data.get('training_stats')
-                logistic_model._is_fitted = model_data.get('is_fitted', True)
-                
-                orchestrator.register_model(logistic_model)
-                logger.info("Registered trained LogisticRegressionModel from cache")
+            model_cache_path = get_trained_logistic_model_path()
+            if model_cache_path:
+                logger.info(f"Loading cached logistic regression model from {model_cache_path}")
+                try:
+                    with open(model_cache_path, 'rb') as f:
+                        model_data = pickle.load(f)
+                    
+                    logistic_model = LogisticRegressionModel()
+                    logistic_model._weights = model_data['weights']
+                    logistic_model._training_stats = model_data.get('training_stats')
+                    logistic_model._is_fitted = model_data.get('is_fitted', True)
+                    
+                    orchestrator.register_model(logistic_model)
+                    logger.info("Registered trained LogisticRegressionModel from cache")
+                except ImportError as e:
+                    logger.warning(f"Failed to load logistic model: missing dependency {e}")
+                    logger.warning("Model requires scikit-learn or other dependencies")
+                    orchestrator.register_model(LogisticRegressionModel())
+                except Exception as e:
+                    logger.warning(f"Failed to load logistic model: {e}")
+                    orchestrator.register_model(LogisticRegressionModel())
             else:
                 # Register unfitted model - will be unavailable
                 orchestrator.register_model(LogisticRegressionModel())
-                logger.warning("No trained logistic model found - registered unfitted model (unavailable)")
+                logger.info("No trained logistic model found - registered unfitted model (unavailable)")
                 
         except Exception as e:
             logger.warning(f"Failed to load logistic regression model: {e}")

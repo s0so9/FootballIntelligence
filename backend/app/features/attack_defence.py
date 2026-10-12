@@ -79,16 +79,23 @@ class AttackDefenceFeatureCalculator(FeatureCalculator):
         total_conceded = 0
         
         # Track xG separately (may not be available for all matches)
+        # IMPORTANT: Count each source only once to avoid double-counting
         total_xg = 0.0
         total_xga = 0.0
-        xg_count = 0
+        xg_count = 0  # Number of matches with xG data
+        xga_count = 0  # Number of matches with xGA data (tracked separately)
         
         # Track shots
         total_shots = 0
         total_shots_on_target = 0
-        shots_count = 0
+        shots_count = 0  # Number of matches with shot data
+        shots_on_target_count = 0  # May differ from shots_count
         
         for match in matches:
+            # Track whether we've counted xG/xGA from this match
+            xg_counted_this_match = False
+            xga_counted_this_match = False
+            
             # Goals
             if match.home_team_id == team_id:
                 if match.home_score is not None:
@@ -96,12 +103,15 @@ class AttackDefenceFeatureCalculator(FeatureCalculator):
                 if match.away_score is not None:
                     total_conceded += match.away_score
                 
-                # Try to get xG from match directly or from statistics
+                # Try to get xG from match directly
                 if match.home_xg is not None:
                     total_xg += match.home_xg
                     xg_count += 1
+                    xg_counted_this_match = True
                 if match.away_xg is not None:
                     total_xga += match.away_xg
+                    xga_count += 1
+                    xga_counted_this_match = True
                 
             elif match.away_team_id == team_id:
                 if match.away_score is not None:
@@ -112,8 +122,11 @@ class AttackDefenceFeatureCalculator(FeatureCalculator):
                 if match.away_xg is not None:
                     total_xg += match.away_xg
                     xg_count += 1
+                    xg_counted_this_match = True
                 if match.home_xg is not None:
                     total_xga += match.home_xg
+                    xga_count += 1
+                    xga_counted_this_match = True
             
             # Get match statistics if available
             stat = self.match_stat_repo.get_by_match_and_team(
@@ -122,19 +135,25 @@ class AttackDefenceFeatureCalculator(FeatureCalculator):
             )
             
             if stat:
-                # xG from statistics (if not already counted from match)
-                if stat.xg is not None and match.home_xg is None and match.away_xg is None:
+                # xG from statistics - ONLY if not already counted from match
+                if stat.xg is not None and not xg_counted_this_match:
                     total_xg += stat.xg
                     xg_count += 1
-                if stat.xg_against is not None:
-                    total_xga += stat.xg_against
+                    xg_counted_this_match = True
                 
-                # Shots
+                # xGA from statistics - ONLY if not already counted from match
+                if stat.xg_against is not None and not xga_counted_this_match:
+                    total_xga += stat.xg_against
+                    xga_count += 1
+                    xga_counted_this_match = True
+                
+                # Shots - count each field independently
                 if stat.shots_total is not None:
                     total_shots += stat.shots_total
                     shots_count += 1
                 if stat.shots_on_target is not None:
                     total_shots_on_target += stat.shots_on_target
+                    shots_on_target_count += 1
         
         # Calculate per-match averages
         n_matches = len(matches)
@@ -142,13 +161,14 @@ class AttackDefenceFeatureCalculator(FeatureCalculator):
         goals_per_match = self.safe_divide(total_goals, n_matches)
         goals_conceded_per_match = self.safe_divide(total_conceded, n_matches)
         
-        # xG averages (only if data available)
+        # xG averages - use actual sample sizes, not zero-count
+        # If no xG data exists, return None (not 0.0)
         xg_per_match = self.safe_divide(total_xg, xg_count) if xg_count > 0 else None
-        xga_per_match = self.safe_divide(total_xga, xg_count) if xg_count > 0 else None
+        xga_per_match = self.safe_divide(total_xga, xga_count) if xga_count > 0 else None
         
-        # Shot averages
+        # Shot averages - each stat has its own denominator
         shots_per_match = self.safe_divide(total_shots, shots_count) if shots_count > 0 else None
-        shots_on_target_per_match = self.safe_divide(total_shots_on_target, shots_count) if shots_count > 0 else None
+        shots_on_target_per_match = self.safe_divide(total_shots_on_target, shots_on_target_count) if shots_on_target_count > 0 else None
         
         return AttackDefenceFeatures(
             team_id=team_id,

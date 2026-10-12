@@ -322,12 +322,13 @@ class HybridProvider(FootballDataProvider):
         all_matches = []
         
         # DATA FRESHNESS POLICY:
-        # - Database-first for all status queries (canonical data is authoritative)
-        # - External only for no-status queries (fresh data across all statuses)
-        # - Trust database status filtering over external provider status
+        # - For LIVE matches: Always check external providers (real-time data critical)
+        # - For SCHEDULED/FINISHED/CANCELLED: Database-first is safe (canonical statuses)
+        # - For no status filter: Check external providers first (user expects fresh data)
         
         should_check_external_first = (
-            not status  # No status filter = user expects fresh data across all statuses
+            not status or  # No status filter = user expects fresh data across all statuses
+            status.upper() == "LIVE"  # Live matches need real-time updates
         )
         
         if should_check_external_first:
@@ -375,7 +376,7 @@ class HybridProvider(FootballDataProvider):
                 logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
         
         else:
-            # ALL STATUS queries: Database-first with controlled fallback
+            # ALL STATUS queries: Database-first with freshness-based refresh
             # Database is authoritative for status filtering (SCHEDULED, LIVE, FINISHED, CANCELLED)
             db_matches = []
             try:
@@ -391,20 +392,15 @@ class HybridProvider(FootballDataProvider):
                 
                 if db_matches:
                     logger.debug(f"HybridProvider.get_matches_async: Database returned {len(db_matches)} matches")
-                    
-                    # DATABASE-FIRST OPTIMIZATION:
-                    # For status queries (SCHEDULED/LIVE/FINISHED/CANCELLED), database is authoritative.
-                    # Database has canonical UUIDs and team relationships.
-                    logger.debug(f"HybridProvider.get_matches_async: Using database matches (canonical data)")
-                    all_matches.extend(db_matches)
             except Exception as e:
                 logger.debug(f"HybridProvider.get_matches_async: Database lookup failed: {e}")
             
-            # CONTROLLED FALLBACK: Only try external providers if database returned nothing
-            # This handles cases where database is not yet populated (e.g., fresh deployment)
-            if not all_matches:
+            # UNIFIED FRESHNESS POLICY: Check if external refresh is needed
+            should_refresh = self._should_refresh_from_external(db_matches, status)
+            
+            if should_refresh:
                 try:
-                    logger.debug(f"HybridProvider.get_matches_async: Database empty for status={status}, trying external providers as fallback")
+                    logger.debug(f"HybridProvider.get_matches_async: Data stale or unavailable, refreshing from external providers")
                     external_matches = await self.external_provider.get_matches_async(
                         competition_id=competition_id,
                         season_id=season_id,
@@ -432,8 +428,19 @@ class HybridProvider(FootballDataProvider):
                             self._resolve_match_team_uuids(m)
 
                         all_matches.extend(external_matches)
+                    else:
+                        # External refresh failed but we have db data - use it with availability info
+                        logger.debug(f"HybridProvider.get_matches_async: External refresh returned no data, using cached database matches")
+                        all_matches.extend(db_matches)
                 except Exception as e:
-                    logger.debug(f"HybridProvider.get_matches_async: External providers fallback failed: {e}")
+                    logger.warning(f"HybridProvider.get_matches_async: External provider refresh failed: {e}")
+                    # Use stale database data when external provider fails
+                    logger.debug(f"HybridProvider.get_matches_async: Using stale database matches due to external failure")
+                    all_matches.extend(db_matches)
+            else:
+                # Data is fresh enough, use database matches
+                logger.debug(f"HybridProvider.get_matches_async: Using fresh database matches (canonical data)")
+                all_matches.extend(db_matches)
             
             if not all_matches:
                 logger.debug(f"HybridProvider.get_matches_async: No matches found from any source for status={status}")
@@ -904,68 +911,60 @@ class HybridProvider(FootballDataProvider):
     def _update_match_statuses(self, matches: List[Match]) -> List[Match]:
         """Update match statuses based on current time for stale SCHEDULED matches.
         
-        CONSERVATIVE POLICY: 
-        - Only update SCHEDULED matches that are clearly finished (>= 3 hours past kickoff)
-        - Never modify LIVE, FINISHED, CANCELLED statuses from providers
-        - Never add fake scores
-        - Preserve provider data integrity
+        REMOVED AUTO-FINISH LOGIC per code review:
+        - Time-based auto-finish removed (was causing false positives)
+        - Time threshold should only trigger refresh attempts, not status changes
+        - Match status must come from provider data, not assumptions
+        - Preserves all match fields including live data (minute, added_time, HT scores)
         
-        This handles edge case where database has old SCHEDULED status but match has finished.
-        External providers should provide authoritative real-time status.
+        This method now only ensures field preservation during status updates.
+        External providers remain authoritative for status changes.
         """
         from datetime import datetime, timezone
         from app.domain.enums import MatchStatus
         import logging
         
         logger = logging.getLogger(__name__)
-        current_time = datetime.now(timezone.utc)
         updated_matches = []
         
-        status_changes = 0
-        
         for match in matches:
-            # Create a copy to preserve immutability
-            updated_match = Match(
-                id=match.id,
-                competition_id=match.competition_id,
-                season_id=match.season_id,
-                home_team_id=match.home_team_id,
-                away_team_id=match.away_team_id,
-                venue_id=match.venue_id,
-                scheduled_at=match.scheduled_at,
-                status=match.status,
-                home_score=match.home_score,
-                away_score=match.away_score,
-                round=match.round,
-                created_at=match.created_at,
-                updated_at=match.updated_at,
-                provider_fetched_at=match.provider_fetched_at,
-            )
+            # Use model_copy if available (Pydantic v2), otherwise manual copy
+            # This preserves ALL fields including minute, added_time, HT scores, outcome
+            if hasattr(match, 'model_copy'):
+                # Pydantic v2
+                updated_match = match.model_copy(deep=False)
+            elif hasattr(match, 'copy'):
+                # Pydantic v1
+                updated_match = match.copy(deep=False)
+            else:
+                # Manual copy preserving all domain model fields
+                updated_match = Match(
+                    id=match.id,
+                    competition_id=match.competition_id,
+                    season_id=match.season_id,
+                    home_team_id=match.home_team_id,
+                    away_team_id=match.away_team_id,
+                    venue_id=match.venue_id,
+                    scheduled_at=match.scheduled_at,
+                    status=match.status,
+                    home_score=match.home_score,
+                    away_score=match.away_score,
+                    home_score_ht=match.home_score_ht,
+                    away_score_ht=match.away_score_ht,
+                    minute=match.minute,
+                    added_time=match.added_time,
+                    outcome=match.outcome,
+                    round=match.round,
+                    created_at=match.created_at,
+                    updated_at=match.updated_at,
+                    provider_fetched_at=match.provider_fetched_at,
+                )
             
-            # ONLY update SCHEDULED matches that are clearly finished
-            # Use 3-hour threshold: typical match is 90 min + 15 min HT + buffer
-            if match.status == MatchStatus.SCHEDULED and match.scheduled_at:
-                # Make scheduled_at timezone-aware if it isn't already
-                if match.scheduled_at.tzinfo is None:
-                    match_time = match.scheduled_at.replace(tzinfo=timezone.utc)
-                else:
-                    match_time = match.scheduled_at
-                
-                time_diff = current_time - match_time
-                hours_passed = time_diff.total_seconds() / 3600
-                
-                # Conservative 3-hour window: only mark as finished if clearly over
-                # This prevents false positives for delayed kickoffs
-                if hours_passed >= 3:
-                    updated_match.status = MatchStatus.FINISHED
-                    status_changes += 1
-                    logger.debug(f"Auto-updated match {match.id[:8]} SCHEDULED->FINISHED (hours_passed: {hours_passed:.1f})")
+            # NOTE: Removed automatic SCHEDULED -> FINISHED conversion
+            # If match data is stale, the caller should trigger a provider refresh
+            # rather than assuming the status based on elapsed time
             
-            # All other statuses remain unchanged (LIVE, FINISHED, CANCELLED, etc.)
             updated_matches.append(updated_match)
-        
-        if status_changes > 0:
-            logger.info(f"HybridProvider._update_match_statuses: Updated {status_changes} matches from SCHEDULED to FINISHED")
         
         return updated_matches
     
