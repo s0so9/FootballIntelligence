@@ -60,10 +60,14 @@ class StaticWeights(WeightingStrategy):
         predictions: List[ModelPrediction],
         context: Optional[Dict] = None
     ) -> Dict[str, float]:
-        """Return configured weights for available models."""
+        """Return configured weights for available models.
+        
+        BUGFIX: Models not explicitly configured now get weight 0.0 instead of 1.0.
+        This prevents untested/unvalidated models from dominating the ensemble.
+        """
         result = {}
         for pred in predictions:
-            result[pred.model_id] = self.weights.get(pred.model_id, 1.0)
+            result[pred.model_id] = self.weights.get(pred.model_id, 0.0)
         return result
 
 

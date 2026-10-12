@@ -105,6 +105,8 @@ class PredictionService:
         feature_extractor: Optional[MatchFeatureExtractor] = None,
         market_analyser: Optional[MarketAnalyser] = None,
         db_session: Optional[Session] = None,
+        min_matches: int = 1,  # BUGFIX: Configurable parameter instead of hardcoded
+        min_sample_size: int = 3,  # BUGFIX: Confidence gate threshold
     ):
         """Initialize prediction service with canonical pipeline components.
         
@@ -114,10 +116,17 @@ class PredictionService:
             feature_extractor: Feature extractor (default: create new)
             market_analyser: Market analyser (default: create new)
             db_session: Optional database session for database-backed features
+            min_matches: Minimum matches required for feature extraction (default: 1)
+            min_sample_size: Minimum sample size for confidence gate (default: 3)
         """
         self.provider = provider
         self.db_session = db_session
         self.poisson_model = poisson_model or PoissonModel(max_goals=10)
+        
+        # BUGFIX: Store configuration for confidence gate
+        self.config = type('Config', (), {
+            'min_sample_size': min_sample_size
+        })()
         
         import logging
         logger = logging.getLogger(__name__)
@@ -125,7 +134,7 @@ class PredictionService:
         
         self.feature_extractor = feature_extractor or MatchFeatureExtractor(
             provider=provider,
-            min_matches=1,  # Reduced from 3 to 1 to allow predictions with minimal data
+            min_matches=min_matches,  # BUGFIX: Use parameter instead of hardcoded value
             recent_matches=5,
             db_session=db_session  # Pass db_session for optimized queries
         )

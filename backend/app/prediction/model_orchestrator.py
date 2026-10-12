@@ -542,6 +542,9 @@ class CalibrationIntegration:
             
         Returns:
             New ModelPrediction with calibrated probabilities
+        
+        BUGFIX: score_distribution is now rescaled proportionally after 1X2 calibration
+        to maintain consistency between marginal probabilities and score distribution.
         """
         # Calibrate probabilities
         cal_home, cal_draw, cal_away = self.calibrator.calibrate_1x2(
@@ -555,6 +558,17 @@ class CalibrationIntegration:
         calibration_status = (
             "calibrated" if is_calibrated
             else "uncalibrated_fallback"
+        )
+        
+        # BUGFIX: Rescale score_distribution to match calibrated 1X2 probabilities
+        rescaled_distribution = self._rescale_score_distribution(
+            score_distribution=prediction.score_distribution,
+            original_home_prob=prediction.home_win_prob,
+            original_draw_prob=prediction.draw_prob,
+            original_away_prob=prediction.away_win_prob,
+            calibrated_home_prob=cal_home,
+            calibrated_draw_prob=cal_draw,
+            calibrated_away_prob=cal_away
         )
         
         # Create new prediction with calibrated probabilities
@@ -576,9 +590,70 @@ class CalibrationIntegration:
             away_win_prob=cal_away,
             confidence_score=prediction.confidence_score,
             data_quality_score=prediction.data_quality_score,
-            score_distribution=prediction.score_distribution,
+            score_distribution=rescaled_distribution,
             metadata=calibrated_metadata
         )
+    
+    def _rescale_score_distribution(
+        self,
+        score_distribution: Dict[Tuple[int, int], float],
+        original_home_prob: float,
+        original_draw_prob: float,
+        original_away_prob: float,
+        calibrated_home_prob: float,
+        calibrated_draw_prob: float,
+        calibrated_away_prob: float
+    ) -> Dict[Tuple[int, int], float]:
+        """Rescale score distribution to match calibrated 1X2 probabilities.
+        
+        Strategy:
+        1. Classify each scoreline as Home/Draw/Away
+        2. Calculate scaling factor for each outcome category
+        3. Apply category-specific scaling to maintain proportions within category
+        
+        Args:
+            score_distribution: Original score distribution
+            original_*_prob: Original 1X2 probabilities before calibration
+            calibrated_*_prob: Calibrated 1X2 probabilities after calibration
+            
+        Returns:
+            Rescaled score distribution consistent with calibrated 1X2 probs
+        """
+        if not score_distribution:
+            return {}
+        
+        # Categorize scorelines and sum probabilities by outcome
+        home_scorelines: Dict[Tuple[int, int], float] = {}
+        draw_scorelines: Dict[Tuple[int, int], float] = {}
+        away_scorelines: Dict[Tuple[int, int], float] = {}
+        
+        for (home_goals, away_goals), prob in score_distribution.items():
+            if home_goals > away_goals:
+                home_scorelines[(home_goals, away_goals)] = prob
+            elif home_goals == away_goals:
+                draw_scorelines[(home_goals, away_goals)] = prob
+            else:
+                away_scorelines[(home_goals, away_goals)] = prob
+        
+        home_sum = sum(home_scorelines.values())
+        draw_sum = sum(draw_scorelines.values())
+        away_sum = sum(away_scorelines.values())
+        
+        # Calculate scaling factors (avoid division by zero)
+        home_scale = calibrated_home_prob / original_home_prob if original_home_prob > 1e-6 else 1.0
+        draw_scale = calibrated_draw_prob / original_draw_prob if original_draw_prob > 1e-6 else 1.0
+        away_scale = calibrated_away_prob / original_away_prob if original_away_prob > 1e-6 else 1.0
+        
+        # Apply category-specific scaling
+        rescaled = {}
+        for scoreline, prob in home_scorelines.items():
+            rescaled[scoreline] = prob * home_scale
+        for scoreline, prob in draw_scorelines.items():
+            rescaled[scoreline] = prob * draw_scale
+        for scoreline, prob in away_scorelines.items():
+            rescaled[scoreline] = prob * away_scale
+        
+        return rescaled
     
     @staticmethod
     def create_default() -> "CalibrationIntegration":
