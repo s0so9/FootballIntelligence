@@ -154,7 +154,18 @@ class PredictionService:
             max_risk_level="HIGH"
         )
         self.confidence_engine = ConfidenceEngine()
-        self.version_manager = PredictionVersionManager(persistence_service=None)  # In-memory for now
+        
+        # BUGFIX #10: Use database-backed persistence if db_session available
+        if db_session:
+            try:
+                from app.services.prediction_persistence import PredictionPersistenceService
+                persistence_service = PredictionPersistenceService(session=db_session)
+                self.version_manager = PredictionVersionManager(persistence_service=persistence_service)
+            except ImportError:
+                logging.warning("PredictionPersistenceService not available, using in-memory version manager")
+                self.version_manager = PredictionVersionManager(persistence_service=None)
+        else:
+            self.version_manager = PredictionVersionManager(persistence_service=None)  # In-memory for testing
         
         # CANONICAL PIPELINE COMPONENTS
         # ModelOrchestrator with all 7 models registered

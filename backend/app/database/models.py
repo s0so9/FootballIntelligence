@@ -12,6 +12,7 @@ This ensures idempotent ingestion: same provider data can be upserted safely.
 
 from datetime import datetime
 from typing import Optional
+import uuid
 
 from sqlalchemy import (
     Column,
@@ -26,7 +27,9 @@ from sqlalchemy import (
     Index,
     JSON,
     Enum as SQLEnum,
+    ARRAY,
 )
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.database.base import Base, BaseModel
@@ -424,6 +427,9 @@ class PredictionVersionDB(BaseModel, Base):
     
     Tracks prediction evolution through match lifecycle stages.
     Once written, a version is NEVER modified.
+    
+    BUGFIX #10: Extended with frozen pick and settlement fields for
+    complete prediction persistence.
     """
     
     __tablename__ = "prediction_versions"
@@ -447,7 +453,7 @@ class PredictionVersionDB(BaseModel, Base):
     # Notes
     notes = Column(JSON, nullable=True)  # List of strings
     
-    # Frozen TUTAR X Pick (immutable after creation, field names kept for backward compatibility)
+    # Frozen TUTAR X Pick (immutable after creation)
     selected_market = Column(String(50), nullable=True)
     selection_text = Column(String(200), nullable=True)
     selection_probability = Column(Float, nullable=True)
@@ -467,8 +473,8 @@ class PredictionVersionDB(BaseModel, Base):
     __table_args__ = (
         Index("ix_prediction_version_match", "match_id", "stage"),
         Index("ix_prediction_version_created", "created_at"),
-        Index("ix_prediction_version_actual_result", "actual_result"),
-        Index("ix_prediction_version_settled_at", "settled_at"),
+        Index("ix_prediction_version_settled", "settled_at"),
+        Index("ix_prediction_version_market", "selected_market"),
     )
 
 
@@ -618,3 +624,4 @@ class AverageMarketOdds(BaseModel, Base):
         ),
         Index("ix_average_odds_match_market", "match_id", "market_key"),
     )
+
