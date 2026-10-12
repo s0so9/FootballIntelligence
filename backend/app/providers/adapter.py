@@ -246,7 +246,9 @@ class ProviderManagerAdapter(FootballDataProvider):
         
         # Apply status filter if provided
         if status:
-            matches = [m for m in matches if m.status.value == status]
+            # Case-insensitive status comparison
+            status_upper = status.upper()
+            matches = [m for m in matches if m.status.value == status_upper]
             logger.debug(f"Filtered to {len(matches)} matches with status={status}")
         
         # Log result
@@ -320,7 +322,9 @@ class ProviderManagerAdapter(FootballDataProvider):
         
         # Apply status filter if provided
         if status:
-            matches = [m for m in matches if m.status.value == status]
+            # Case-insensitive status comparison
+            status_upper = status.upper()
+            matches = [m for m in matches if m.status.value == status_upper]
             logger.debug(f"Filtered to {len(matches)} matches with status={status}")
         
         # Log result

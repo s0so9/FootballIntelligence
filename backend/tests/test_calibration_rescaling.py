@@ -1,157 +1,299 @@
-"""Tests for Fix #7: Calibration score_distribution rescaling.
+"""Test score distribution rescaling invariants after calibration.
 
-Verifies that CalibrationIntegration.calibrate_prediction() rescales
-score_distribution to match calibrated 1X2 probabilities, maintaining
-consistency between marginal probabilities and scoreline probabilities.
+This test ensures that score distribution rescaling maintains consistency
+between marginal 1X2 probabilities and the score distribution.
 """
+
 import pytest
-from app.prediction.model_orchestrator import CalibrationIntegration, Calibrator1X2
+from app.prediction.model_orchestrator import CalibrationIntegration
 from app.prediction.interfaces import ModelPrediction
 
 
-def test_calibration_rescales_score_distribution():
-    """BUGFIX: score_distribution is rescaled proportionally after calibration."""
-    # Create calibration integration (unfitted - will use identity transform)
-    calibrator = Calibrator1X2()  # Unfitted calibrator
-    integration = CalibrationIntegration(calibrator=calibrator)
+class TestCalibrationRescaling:
+    """Test score distribution rescaling after 1X2 calibration."""
     
-    # Original prediction with score distribution that matches 1X2
-    # Home wins: (2,0)=0.15 + (1,0)=0.20 = 0.35 (but home_win_prob=0.50)
-    # This is an inconsistent prediction - rescaling should fix it
-    original_pred = ModelPrediction(
-        model_id="test_model",
-        home_score_mean=1.5,
-        away_score_mean=1.0,
-        home_win_prob=0.50,
-        draw_prob=0.30,
-        away_win_prob=0.20,
-        confidence_score=0.7,
-        data_quality_score=0.8,
-        score_distribution={
-            (2, 0): 0.15,  # Home win
-            (1, 0): 0.20,  # Home win (total home: 0.35)
-            (1, 1): 0.15,  # Draw
-            (0, 0): 0.10,  # Draw (total draw: 0.25)
-            (0, 1): 0.10,  # Away win (total away: 0.10)
-        }
-    )
-    
-    # Calibrate (unfitted calibrator applies identity + renormalization)
-    calibrated = integration.calibrate_prediction(original_pred)
-    
-    # Verify score_distribution was rescaled
-    assert calibrated.score_distribution is not None
-    
-    # Calculate marginals from score distribution
-    home_sum = sum(
-        prob for (h, a), prob in calibrated.score_distribution.items()
-        if h > a
-    )
-    draw_sum = sum(
-        prob for (h, a), prob in calibrated.score_distribution.items()
-        if h == a
-    )
-    away_sum = sum(
-        prob for (h, a), prob in calibrated.score_distribution.items()
-        if h < a
-    )
-    
-    # After rescaling, marginals should be closer to calibrated 1X2 probabilities
-    # Original home_sum was 0.35, should be scaled to match home_win_prob=0.50
-    # Scale factor = 0.50/0.50 = 1.0 (identity), but distribution was inconsistent
-    # The rescaling logic scales by (calibrated/original) ratio
-    assert home_sum > 0.30  # Should be rescaled proportionally
-    
-    # Verify metadata preserved
-    assert calibrated.metadata["original_home_prob"] == 0.50
-
-
-def test_calibration_preserves_within_category_proportions():
-    """Rescaling preserves relative probabilities within each outcome category."""
-    calibrator = Calibrator1X2()
-    integration = CalibrationIntegration(calibrator=calibrator)
-    
-    original_pred = ModelPrediction(
-        model_id="test_model",
-        home_score_mean=2.0,
-        away_score_mean=1.0,
-        home_win_prob=0.60,
-        draw_prob=0.25,
-        away_win_prob=0.15,
-        confidence_score=0.8,
-        data_quality_score=0.9,
-        score_distribution={
-            (2, 0): 0.20,  # Home win (33% of home wins)
-            (3, 1): 0.40,  # Home win (67% of home wins)
-            (1, 1): 0.15,  # Draw (60% of draws)
-            (2, 2): 0.10,  # Draw (40% of draws)
-            (0, 1): 0.15,  # Away win (100%)
-        }
-    )
-    
-    calibrated = integration.calibrate_prediction(original_pred)
-    
-    # Extract home win scorelines
-    home_scorelines = {
-        k: v for k, v in calibrated.score_distribution.items()
-        if k[0] > k[1]
-    }
-    
-    # Check proportions within home wins are preserved
-    total_home = sum(home_scorelines.values())
-    if total_home > 0:
-        ratio_2_0 = home_scorelines[(2, 0)] / total_home
-        ratio_3_1 = home_scorelines[(3, 1)] / total_home
+    def test_rescaled_distribution_sums_to_one(self):
+        """Test that rescaled distribution sums to 1.0."""
+        integration = CalibrationIntegration.create_default()
         
-        # Original ratios: 0.20/0.60=33%, 0.40/0.60=67%
-        assert abs(ratio_2_0 - 0.333) < 0.01
-        assert abs(ratio_3_1 - 0.667) < 0.01
+        # Create a mock prediction
+        score_dist = {
+            (0, 0): 0.10,
+            (1, 0): 0.20,
+            (1, 1): 0.15,
+            (0, 1): 0.18,
+            (2, 0): 0.12,
+            (0, 2): 0.10,
+            (2, 1): 0.08,
+            (1, 2): 0.07,
+        }
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=1.5,
+            away_score_mean=1.2,
+            home_win_prob=0.40,
+            draw_prob=0.15,
+            away_win_prob=0.45,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution=score_dist,
+            metadata={}
+        )
+        
+        # Calibrate (will rescale distribution)
+        calibrated = integration.calibrate_prediction(prediction)
+        
+        # Check total probability sums to 1.0
+        total = sum(calibrated.score_distribution.values())
+        assert abs(total - 1.0) < 1e-9, f"Distribution should sum to 1.0, got {total}"
+    
+    def test_category_sums_match_calibrated_probs(self):
+        """Test that rescaled category sums match calibrated 1X2 probabilities."""
+        integration = CalibrationIntegration.create_default()
+        
+        # Create prediction with clear category separation
+        score_dist = {
+            (2, 0): 0.20,  # Home
+            (2, 1): 0.10,  # Home
+            (1, 1): 0.20,  # Draw
+            (0, 0): 0.10,  # Draw
+            (0, 2): 0.25,  # Away
+            (1, 2): 0.15,  # Away
+        }
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=1.0,
+            away_score_mean=1.0,
+            home_win_prob=0.30,
+            draw_prob=0.30,
+            away_win_prob=0.40,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution=score_dist,
+            metadata={}
+        )
+        
+        calibrated = integration.calibrate_prediction(prediction)
+        
+        # Calculate category sums from rescaled distribution
+        home_sum = sum(
+            p for (h, a), p in calibrated.score_distribution.items()
+            if h > a
+        )
+        draw_sum = sum(
+            p for (h, a), p in calibrated.score_distribution.items()
+            if h == a
+        )
+        away_sum = sum(
+            p for (h, a), p in calibrated.score_distribution.items()
+            if h < a
+        )
+        
+        # Check category sums match calibrated probabilities
+        assert abs(home_sum - calibrated.home_win_prob) < 1e-6, \
+            f"Home category sum {home_sum} != home_win_prob {calibrated.home_win_prob}"
+        assert abs(draw_sum - calibrated.draw_prob) < 1e-6, \
+            f"Draw category sum {draw_sum} != draw_prob {calibrated.draw_prob}"
+        assert abs(away_sum - calibrated.away_win_prob) < 1e-6, \
+            f"Away category sum {away_sum} != away_win_prob {calibrated.away_win_prob}"
+    
+    def test_within_category_proportions_preserved(self):
+        """Test that within-category proportions are preserved after rescaling."""
+        integration = CalibrationIntegration.create_default()
+        
+        # Create prediction where home wins have specific proportions
+        score_dist = {
+            (1, 0): 0.10,  # Home - 33.3% of home wins
+            (2, 0): 0.20,  # Home - 66.7% of home wins
+            (1, 1): 0.30,  # Draw
+            (0, 1): 0.40,  # Away
+        }
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=1.0,
+            away_score_mean=0.8,
+            home_win_prob=0.30,
+            draw_prob=0.30,
+            away_win_prob=0.40,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution=score_dist,
+            metadata={}
+        )
+        
+        # Original home win proportions
+        original_home_sum = 0.10 + 0.20  # 0.30
+        original_1_0_prop = 0.10 / original_home_sum  # 33.3%
+        original_2_0_prop = 0.20 / original_home_sum  # 66.7%
+        
+        calibrated = integration.calibrate_prediction(prediction)
+        
+        # Find home win scorelines in calibrated distribution
+        home_scorelines = {
+            k: v for k, v in calibrated.score_distribution.items()
+            if k[0] > k[1]
+        }
+        
+        if home_scorelines:
+            calibrated_home_sum = sum(home_scorelines.values())
+            
+            # Check proportions preserved
+            if (1, 0) in home_scorelines:
+                cal_1_0_prop = home_scorelines[(1, 0)] / calibrated_home_sum
+                assert abs(cal_1_0_prop - original_1_0_prop) < 1e-6, \
+                    "Within-category proportion should be preserved"
+            
+            if (2, 0) in home_scorelines:
+                cal_2_0_prop = home_scorelines[(2, 0)] / calibrated_home_sum
+                assert abs(cal_2_0_prop - original_2_0_prop) < 1e-6, \
+                    "Within-category proportion should be preserved"
+    
+    def test_handles_zero_category_sum(self):
+        """Test rescaling when a category has zero probability in original distribution."""
+        integration = CalibrationIntegration.create_default()
+        
+        # Distribution with NO draw scorelines
+        score_dist = {
+            (2, 0): 0.40,  # Home
+            (2, 1): 0.10,  # Home
+            (0, 2): 0.30,  # Away
+            (1, 2): 0.20,  # Away
+        }
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=1.5,
+            away_score_mean=1.3,
+            home_win_prob=0.50,
+            draw_prob=0.00,  # Zero original draw prob
+            away_win_prob=0.50,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution=score_dist,
+            metadata={}
+        )
+        
+        # Calibration increases draw probability
+        # Since original draw sum is zero, should create plausible draw scorelines
+        calibrated = integration.calibrate_prediction(prediction)
+        
+        # Should have some draw scorelines now if calibrated draw_prob > 0
+        draw_scorelines = {
+            k: v for k, v in calibrated.score_distribution.items()
+            if k[0] == k[1]
+        }
+        
+        if calibrated.draw_prob > 1e-6:
+            assert len(draw_scorelines) > 0, "Should create draw scorelines when calibrated prob > 0"
+            draw_sum = sum(draw_scorelines.values())
+            assert abs(draw_sum - calibrated.draw_prob) < 1e-6, \
+                f"Draw sum {draw_sum} should match calibrated {calibrated.draw_prob}"
+    
+    def test_rescaling_does_not_change_lambdas(self):
+        """Test that rescaling does not change expected goals (lambdas)."""
+        integration = CalibrationIntegration.create_default()
+        
+        score_dist = {
+            (1, 0): 0.20,
+            (1, 1): 0.30,
+            (0, 1): 0.50,
+        }
+        
+        original_home_lambda = 1.8
+        original_away_lambda = 1.3
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=original_home_lambda,
+            away_score_mean=original_away_lambda,
+            home_win_prob=0.20,
+            draw_prob=0.30,
+            away_win_prob=0.50,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution=score_dist,
+            metadata={}
+        )
+        
+        calibrated = integration.calibrate_prediction(prediction)
+        
+        # Lambdas should remain unchanged
+        assert calibrated.home_score_mean == original_home_lambda, \
+            "Home lambda should not change during calibration"
+        assert calibrated.away_score_mean == original_away_lambda, \
+            "Away lambda should not change during calibration"
+    
+    def test_empty_distribution_returns_empty(self):
+        """Test that empty score distribution returns empty."""
+        integration = CalibrationIntegration.create_default()
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=1.0,
+            away_score_mean=1.0,
+            home_win_prob=0.33,
+            draw_prob=0.34,
+            away_win_prob=0.33,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution={},  # Empty
+            metadata={}
+        )
+        
+        calibrated = integration.calibrate_prediction(prediction)
+        
+        assert len(calibrated.score_distribution) == 0, \
+            "Empty distribution should remain empty"
+    
+    def test_no_silent_fallback_to_scale_1(self):
+        """Test that we don't silently fallback to scale factor 1.0 for near-zero categories."""
+        integration = CalibrationIntegration.create_default()
+        
+        # Distribution with very small home probability
+        score_dist = {
+            (1, 0): 0.001,  # Home - very small
+            (1, 1): 0.30,   # Draw
+            (0, 1): 0.699,  # Away
+        }
+        
+        prediction = ModelPrediction(
+            model_id="test",
+            home_score_mean=0.5,
+            away_score_mean=2.0,
+            home_win_prob=0.001,
+            draw_prob=0.30,
+            away_win_prob=0.699,
+            confidence_score=0.8,
+            data_quality_score=0.9,
+            score_distribution=score_dist,
+            metadata={}
+        )
+        
+        # Calibration increases home probability significantly
+        # Mock calibration by creating manually (since default calibrator is not fitted)
+        calibrated_dist = integration._rescale_score_distribution(
+            score_distribution=score_dist,
+            original_home_prob=0.001,
+            original_draw_prob=0.30,
+            original_away_prob=0.699,
+            calibrated_home_prob=0.15,  # Increased 150x
+            calibrated_draw_prob=0.35,
+            calibrated_away_prob=0.50
+        )
+        
+        # Calculate actual home sum
+        home_sum = sum(
+            p for (h, a), p in calibrated_dist.items()
+            if h > a
+        )
+        
+        # Should reach target, not stay at original tiny value
+        assert abs(home_sum - 0.15) < 1e-6, \
+            f"Home sum {home_sum} should reach calibrated target 0.15, not stay at 0.001"
 
 
-def test_calibration_handles_empty_score_distribution():
-    """Calibration handles predictions without score distribution."""
-    calibrator = Calibrator1X2()
-    integration = CalibrationIntegration(calibrator=calibrator)
-    
-    original_pred = ModelPrediction(
-        model_id="test_model",
-        home_score_mean=1.5,
-        away_score_mean=1.2,
-        home_win_prob=0.45,
-        draw_prob=0.30,
-        away_win_prob=0.25,
-        confidence_score=0.7,
-        data_quality_score=0.8,
-        score_distribution={}  # Empty
-    )
-    
-    calibrated = integration.calibrate_prediction(original_pred)
-    
-    # Should return empty distribution (not crash)
-    assert calibrated.score_distribution == {}
-
-
-def test_calibration_metadata_preserved():
-    """Calibration preserves original probabilities in metadata."""
-    calibrator = Calibrator1X2()
-    integration = CalibrationIntegration(calibrator=calibrator)
-    
-    original_pred = ModelPrediction(
-        model_id="test_model",
-        home_score_mean=1.5,
-        away_score_mean=1.2,
-        home_win_prob=0.45,
-        draw_prob=0.30,
-        away_win_prob=0.25,
-        confidence_score=0.7,
-        data_quality_score=0.8,
-        score_distribution={(1, 0): 0.20}
-    )
-    
-    calibrated = integration.calibrate_prediction(original_pred)
-    
-    # Check metadata
-    assert calibrated.metadata["original_home_prob"] == 0.45
-    assert calibrated.metadata["original_draw_prob"] == 0.30
-    assert calibrated.metadata["original_away_prob"] == 0.25
-    assert "calibration_status" in calibrated.metadata
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

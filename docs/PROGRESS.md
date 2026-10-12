@@ -5232,3 +5232,67 @@ If no odds available, `odds_data=None` and pipeline's `NO_ODDS` fallback activat
 - B-9: dependencies.py provider cache app-lifecycle
 - B-10: matches.py async blocking (run_in_executor)
 
+
+
+---
+
+## 2026-10-12: Empty Upcoming Matches Bug Fix
+
+**Issue**: "Yaklaşan maç bulunamadı" showing despite matches existing
+
+**Root Causes Identified**:
+1. FotMob provider returns [] on total failure instead of raising ProviderError → manager doesn't try fallback
+2. Client-side time filter applied AFTER pagination → first 300 stale matches hide match 301+
+3. Status filter case-sensitive (uppercase vs lowercase mismatch)
+
+**Fixes Implemented**:
+
+### Backend Changes
+1. **fotmob.py**: Track successful vs failed days in range query
+   - If zero successful days → raise ProviderError (enables fallback)
+   - If partial success → return matches + log warnings
+   - Legitimate empty (successful query, no matches) → return []
+
+2. **matches.py**: Added `scheduled_after` UTC datetime parameter
+   - Filters scheduled_at >= scheduled_after BEFORE pagination
+   - Ensures pagination sees only truly upcoming matches
+   - Handles timezone-naive datetimes gracefully
+
+3. **adapter.py**: Case-insensitive status filter
+   - status.upper() before comparison
+   - Both sync and async methods updated
+
+### Frontend Changes
+1. **Upcoming.tsx**: Server-side filtering
+   - Calculate `scheduledAfterUTC` once per request
+   - Pass to API as `scheduled_after` parameter
+   - Remove client-side time filter (now redundant)
+   - Request cleanup with AbortController
+   - Competition fetch non-blocking
+   - Changed 30-day to 7-day (matches UI text)
+   - Fixed "Tahmin Mevcut" → "Maç Detayları"
+
+2. **client.ts**: Added scheduled_after param + signal support
+
+**Tests Added**:
+- `test_fotmob_empty_range.py`: 3 tests for provider failure scenarios
+  - All days fail → raises ProviderError ✓
+  - Partial success → returns matches ✓
+  - Legitimate empty → returns [] ✓
+
+**Verification**:
+- ✅ Backend tests: 11/11 passed
+- ✅ Frontend build: successful
+- ✅ Backward compatible (optional parameter)
+- ✅ No database migration required
+
+**Files Modified**: 6 files
+- Backend: fotmob.py, adapter.py, matches.py
+- Frontend: Upcoming.tsx, client.ts
+- Tests: test_fotmob_empty_range.py (new)
+
+**Deferred to Future**:
+- Root cause #2 (hybrid provider merge logic) - requires deeper refactoring
+- Root cause #4 (timezone handling) - no evidence of actual bug
+
+**Documentation**: See `.agents/tasks/upcoming-empty-fix/IMPLEMENTATION-SUMMARY.md`

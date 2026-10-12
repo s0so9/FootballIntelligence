@@ -150,7 +150,7 @@ class ConfidenceEngine:
     def assess(
         self,
         model_agreement: float,
-        data_quality_score: float,
+        data_quality_score: Optional[float],  # Can be None = unknown/insufficient
         n_matches: int,
         brier_score: Optional[float] = None,
         lineup_status: str = "expected",
@@ -160,7 +160,7 @@ class ConfidenceEngine:
         
         Args:
             model_agreement: Model agreement score [0, 1] from ensemble
-            data_quality_score: Data quality score [0, 1] from DataQualityGate
+            data_quality_score: Data quality score [0, 1] from DataQualityGate (None = unknown)
             n_matches: Number of historical matches available
             brier_score: Calibration Brier score (optional)
             lineup_status: Lineup confirmation ("confirmed", "expected", "unknown")
@@ -169,6 +169,14 @@ class ConfidenceEngine:
         Returns:
             ConfidenceAssessment with overall score and breakdown
         """
+        # FIXED: Handle None data_quality_score as "insufficient_data"
+        # None = data quality unknown → use minimal score (0.0) and flag as insufficient
+        if data_quality_score is None:
+            data_quality_score = 0.0
+            data_quality_insufficient = True
+        else:
+            data_quality_insufficient = False
+        
         # Build components
         components = ConfidenceComponents(
             model_agreement=model_agreement,
@@ -192,7 +200,11 @@ class ConfidenceEngine:
         )
         
         # Determine label
-        if overall > 0.7:
+        # If data quality is insufficient/unknown, cap at LOW
+        if data_quality_insufficient:
+            label = "LOW_INSUFFICIENT_DATA"
+            overall = min(overall, 0.39)  # Cap at LOW tier
+        elif overall > 0.7:
             label = "HIGH"
         elif overall >= 0.4:
             label = "MEDIUM"
@@ -208,6 +220,10 @@ class ConfidenceEngine:
             "lineup_certainty": components.lineup_certainty * self.weights.lineup_certainty,
             "feature_stability": components.feature_stability * self.weights.feature_stability,
         }
+        
+        # Add flag if data quality was insufficient
+        if data_quality_insufficient:
+            breakdown["data_quality_status"] = "insufficient"
         
         return ConfidenceAssessment(
             overall_confidence=overall,

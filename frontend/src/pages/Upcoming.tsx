@@ -19,59 +19,67 @@ export function Upcoming() {
   // Load all upcoming matches from all competitions
   useEffect(() => {
     let isMounted = true;
+    const abortController = new AbortController();
 
     async function fetchUpcomingMatches() {
       try {
         setLoading(true);
         setError(null);
 
-        // Fetch competitions first for display names
-        const competitionsResponse = await getCompetitions();
-        
-        if (!isMounted) return;
-        
-        setCompetitions(competitionsResponse.competitions);
+        // Fetch competitions first for display names (non-blocking)
+        getCompetitions().then(competitionsResponse => {
+          if (isMounted) {
+            setCompetitions(competitionsResponse.competitions);
+          }
+        }).catch(err => {
+          // Competition fetch failure should not block match display
+          console.warn('Failed to fetch competitions:', err);
+        });
 
-        // Use UTC date range for filtering - next 30 days for more matches
+        // Calculate UTC "now" for consistent filtering across requests
+        const now = new Date();
+        const scheduledAfterUTC = now.toISOString();
+
+        // Use date range for next 7 days (matching UI text)
         const today = new Date();
         const fromDate = formatDateForAPI(today);
         const futureDate = new Date(today);
-        futureDate.setDate(futureDate.getDate() + 30); // Increased to 30 days
+        futureDate.setDate(futureDate.getDate() + 7);  // Changed from 30 to 7
         const toDate = formatDateForAPI(futureDate);
 
-        // Fetch upcoming matches with broader date range and pagination
+        // Fetch upcoming matches with server-side datetime filter
         const matchesResponse = await getMatches({
           from_date: fromDate,
           to_date: toDate,
           status: 'SCHEDULED',
-          limit: 300, // Limit for better performance
-        });
+          scheduled_after: scheduledAfterUTC,  // Server-side filter
+          limit: 300,
+        }, abortController.signal);
         
         if (!isMounted) return;
 
         const normalizedMatches = normalizeMatches(matchesResponse.matches);
-        setRawMatches(matchesResponse.matches); // Store raw matches for FavoriteButton
+        setRawMatches(matchesResponse.matches);
         
-        // Filter for truly upcoming matches - scheduled status AND future time
-        const now = new Date();
-        const upcomingMatches = normalizedMatches.filter(match => {
-          // Must be scheduled status
-          if (match.status !== 'SCHEDULED') return false;
-          
-          // Must be in the future (Istanbul timezone consideration)
-          const matchTime = new Date(match.scheduledAt);
-          return matchTime > now;
-        });
-        
-        // Sort by kick-off time (earliest first)
-        upcomingMatches.sort((a, b) => 
+        // Server already filtered by scheduled_after, no client-side time filter needed
+        // Just sort by kick-off time (earliest first)
+        normalizedMatches.sort((a, b) => 
           new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
         );
         
-        setMatches(upcomingMatches);
+        setMatches(normalizedMatches);
         setIsDevelopmentData(matchesResponse.is_development_data);
       } catch (err) {
         if (!isMounted) return;
+        
+        // Don't show error if request was aborted
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+        
         console.error('Error loading upcoming matches:', err);
         setError(err instanceof Error ? err.message : 'Yaklaşan maçlar yüklenirken bir hata oluştu');
       } finally {
@@ -85,6 +93,7 @@ export function Upcoming() {
 
     return () => {
       isMounted = false;
+      abortController.abort();
     };
   }, []);
 
@@ -261,8 +270,10 @@ export function Upcoming() {
                               </div>
 
                               <div className="match-card__indicator">
+                                {/* Only show prediction indicator if we know predictions are available */}
+                                {/* For now, show "Match Details" for all matches */}
                                 <span className="prediction-indicator">
-                                  📊 Tahmin Mevcut
+                                  📊 Maç Detayları
                                 </span>
                               </div>
                             </div>

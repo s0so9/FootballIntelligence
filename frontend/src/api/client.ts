@@ -237,9 +237,10 @@ export async function getMatches(params?: {
   from_date?: string;
   to_date?: string;
   status?: string;
+  scheduled_after?: string;  // ISO8601 UTC datetime
   limit?: number;
   offset?: number;
-}): Promise<MatchListResponse> {
+}, signal?: AbortSignal): Promise<MatchListResponse> {
   const searchParams = new URLSearchParams();
   
   if (params) {
@@ -253,7 +254,7 @@ export async function getMatches(params?: {
   const query = searchParams.toString();
   const endpoint = query ? `/matches?${query}` : '/matches';
 
-  return request<MatchListResponse>(endpoint);
+  return request<MatchListResponse>(endpoint, { signal });
 }
 
 /**

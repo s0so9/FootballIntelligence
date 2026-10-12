@@ -606,15 +606,22 @@ class CalibrationIntegration:
     ) -> Dict[Tuple[int, int], float]:
         """Rescale score distribution to match calibrated 1X2 probabilities.
         
-        Strategy:
+        FIXED Strategy:
         1. Classify each scoreline as Home/Draw/Away
-        2. Calculate scaling factor for each outcome category
-        3. Apply category-specific scaling to maintain proportions within category
+        2. Calculate category sums from the distribution
+        3. For each category with non-zero sum, scale proportionally to reach calibrated target
+        4. For categories with zero sum, distribute calibrated prob equally among most likely scorelines
+        5. Normalize final distribution to sum to 1.0
+        
+        This ensures:
+        - Category sums match calibrated probabilities (invariant)
+        - Total distribution sums to 1.0
+        - No silent fallback to 1.0 scale factors
         
         Args:
             score_distribution: Original score distribution
-            original_*_prob: Original 1X2 probabilities before calibration
-            calibrated_*_prob: Calibrated 1X2 probabilities after calibration
+            original_*_prob: Original 1X2 probabilities before calibration (for reference)
+            calibrated_*_prob: Calibrated 1X2 probabilities (target category sums)
             
         Returns:
             Rescaled score distribution consistent with calibrated 1X2 probs
@@ -622,7 +629,7 @@ class CalibrationIntegration:
         if not score_distribution:
             return {}
         
-        # Categorize scorelines and sum probabilities by outcome
+        # Categorize scorelines by outcome
         home_scorelines: Dict[Tuple[int, int], float] = {}
         draw_scorelines: Dict[Tuple[int, int], float] = {}
         away_scorelines: Dict[Tuple[int, int], float] = {}
@@ -635,23 +642,54 @@ class CalibrationIntegration:
             else:
                 away_scorelines[(home_goals, away_goals)] = prob
         
+        # Calculate current category sums
         home_sum = sum(home_scorelines.values())
         draw_sum = sum(draw_scorelines.values())
         away_sum = sum(away_scorelines.values())
         
-        # Calculate scaling factors (avoid division by zero)
-        home_scale = calibrated_home_prob / original_home_prob if original_home_prob > 1e-6 else 1.0
-        draw_scale = calibrated_draw_prob / original_draw_prob if original_draw_prob > 1e-6 else 1.0
-        away_scale = calibrated_away_prob / original_away_prob if original_away_prob > 1e-6 else 1.0
-        
-        # Apply category-specific scaling
         rescaled = {}
-        for scoreline, prob in home_scorelines.items():
-            rescaled[scoreline] = prob * home_scale
-        for scoreline, prob in draw_scorelines.items():
-            rescaled[scoreline] = prob * draw_scale
-        for scoreline, prob in away_scorelines.items():
-            rescaled[scoreline] = prob * away_scale
+        
+        # Rescale Home category
+        if home_sum > 1e-9:  # Non-zero category sum
+            scale = calibrated_home_prob / home_sum
+            for scoreline, prob in home_scorelines.items():
+                rescaled[scoreline] = prob * scale
+        elif calibrated_home_prob > 1e-9:  # Zero sum but non-zero target
+            # Distribute target prob equally among plausible home scorelines
+            # Use scorelines with home_goals in [1, 2, 3] and away_goals in [0, 1]
+            fallback_scorelines = [(1, 0), (2, 0), (2, 1), (3, 0), (3, 1)]
+            n_fallback = len(fallback_scorelines)
+            for scoreline in fallback_scorelines:
+                rescaled[scoreline] = calibrated_home_prob / n_fallback
+        
+        # Rescale Draw category
+        if draw_sum > 1e-9:
+            scale = calibrated_draw_prob / draw_sum
+            for scoreline, prob in draw_scorelines.items():
+                rescaled[scoreline] = prob * scale
+        elif calibrated_draw_prob > 1e-9:
+            # Distribute equally among plausible draws
+            fallback_scorelines = [(0, 0), (1, 1), (2, 2)]
+            n_fallback = len(fallback_scorelines)
+            for scoreline in fallback_scorelines:
+                rescaled[scoreline] = calibrated_draw_prob / n_fallback
+        
+        # Rescale Away category
+        if away_sum > 1e-9:
+            scale = calibrated_away_prob / away_sum
+            for scoreline, prob in away_scorelines.items():
+                rescaled[scoreline] = prob * scale
+        elif calibrated_away_prob > 1e-9:
+            # Distribute equally among plausible away wins
+            fallback_scorelines = [(0, 1), (0, 2), (1, 2), (0, 3), (1, 3)]
+            n_fallback = len(fallback_scorelines)
+            for scoreline in fallback_scorelines:
+                rescaled[scoreline] = calibrated_away_prob / n_fallback
+        
+        # Normalize to ensure total = 1.0
+        total = sum(rescaled.values())
+        if total > 1e-9:
+            rescaled = {k: v / total for k, v in rescaled.items()}
         
         return rescaled
     
@@ -704,7 +742,8 @@ class ConfidenceIntegration:
         model_agreement = ensemble_prediction.metadata.get("model_agreement", 0.0)
         
         # Extract data quality from snapshot
-        data_quality_score = 0.5  # Default fallback
+        # FIXED: Report unknown/insufficient instead of defaulting to 0.5
+        data_quality_score = None  # None = unknown/insufficient
         if snapshot.data_quality_report:
             data_quality_score = snapshot.data_quality_report.overall_score
         

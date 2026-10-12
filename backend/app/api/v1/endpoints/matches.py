@@ -4,7 +4,7 @@ This module implements the match-related REST API endpoints.
 """
 
 from typing import Optional
-from datetime import date
+from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -154,6 +154,7 @@ async def list_matches(
     from_date: Optional[date] = Query(None, description="Filter matches from this date"),
     to_date: Optional[date] = Query(None, description="Filter matches to this date"),
     status: Optional[str] = Query(None, description="Filter by match status"),
+    scheduled_after: Optional[datetime] = Query(None, description="Filter matches scheduled after this UTC datetime (ISO8601)"),
     limit: Optional[int] = Query(100, description="Maximum number of matches to return", ge=1, le=1000),
     offset: Optional[int] = Query(0, description="Number of matches to skip", ge=0),
     provider: FootballDataProvider = Depends(get_data_provider),
@@ -201,6 +202,30 @@ async def list_matches(
             from_date=from_date,
             to_date=to_date,
             status=status,
+        )
+    
+    # Apply scheduled_after filter BEFORE pagination
+    # This ensures pagination works correctly for upcoming matches
+    if scheduled_after is not None:
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Ensure scheduled_after is UTC-aware
+        if scheduled_after.tzinfo is None:
+            scheduled_after = scheduled_after.replace(tzinfo=timezone.utc)
+        
+        original_count = len(matches)
+        matches = [
+            m for m in matches 
+            if m.scheduled_at and (
+                # Make scheduled_at timezone-aware if it isn't
+                (m.scheduled_at.replace(tzinfo=timezone.utc) if m.scheduled_at.tzinfo is None else m.scheduled_at)
+                >= scheduled_after
+            )
+        ]
+        logger.debug(
+            f"[FILTER] scheduled_after={scheduled_after.isoformat()}: "
+            f"{original_count} → {len(matches)} matches"
         )
     
     # Convert domain models to API response schemas

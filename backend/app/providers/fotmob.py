@@ -1137,20 +1137,43 @@ class FotMobFootballProvider:
                 return cached
 
         # Iterate through dates and collect matches
+        # Track successful vs failed days to distinguish legitimate empty from failure
         all_matches = []
+        successful_dates = []
+        failed_dates = []
         current_date = start_date
 
         while current_date <= end_date:
             try:
                 daily_matches = await self.get_matches_by_date(current_date)
+                # Successfully queried this date (even if empty)
+                successful_dates.append(current_date)
                 all_matches.extend(daily_matches)
             except ProviderError as e:
+                # Failed to query this date
+                failed_dates.append(current_date)
                 logger.warning(
                     f"[{self.PROVIDER_NAME}] Failed to fetch matches for {current_date}: {e}"
                 )
                 # Continue with other dates even if one fails
 
             current_date += timedelta(days=1)
+
+        # If NO successful dates, raise ProviderError (don't return empty list)
+        # This allows manager to try fallback providers
+        if not successful_dates:
+            raise ProviderError(
+                provider_name=self.PROVIDER_NAME,
+                operation='get_matches_by_range',
+                message=f'Fixture data unavailable for requested range {start_date} to {end_date} - all {len(failed_dates)} days failed'
+            )
+
+        # If partial success, cache what we got
+        if failed_dates:
+            logger.warning(
+                f"[{self.PROVIDER_NAME}] Partial data coverage: "
+                f"{len(successful_dates)} successful, {len(failed_dates)} failed days"
+            )
 
         # Cache result with TTL based on date range
         if self.cache:
@@ -1167,7 +1190,8 @@ class FotMobFootballProvider:
             self.cache.set(cache_key, all_matches, ttl_seconds=ttl)
 
         logger.info(
-            f"[{self.PROVIDER_NAME}] Fetched {len(all_matches)} matches for range {start_date} to {end_date}"
+            f"[{self.PROVIDER_NAME}] Fetched {len(all_matches)} matches for range {start_date} to {end_date} "
+            f"(successful days: {len(successful_dates)}, failed days: {len(failed_dates)})"
         )
         return all_matches
 

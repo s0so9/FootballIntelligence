@@ -299,42 +299,63 @@ class PoissonModel(PredictionModel):
         
         return sorted_scorelines[:n]
     
+    def estimate_lambda(
+        self,
+        team_attack_strength: float,
+        opponent_defense_strength: float,
+        venue_adjustment: float = 1.0,
+    ) -> float:
+        """CANONICAL lambda estimation method - single source of truth.
+        
+        Formula: λ = team_attack_strength × opponent_defense_strength × venue_adjustment
+        
+        Domain logic:
+        - team_attack_strength: team's goals scored per match (higher = more attacking)
+        - opponent_defense_strength: opponent's goals conceded per match (higher = weaker defense)
+        - venue_adjustment: home advantage multiplier (typically 1.0 for away, 1.1-1.3 for home)
+        
+        Higher values in all three components → higher expected goals.
+        This is the ONLY lambda formula; all call sites must use this method.
+        
+        Args:
+            team_attack_strength: Goals scored per match by team (≥ 0)
+            opponent_defense_strength: Goals conceded per match by opponent (≥ 0)
+            venue_adjustment: Home advantage factor (default: 1.0 = neutral)
+        
+        Returns:
+            Estimated lambda (expected goals, ≥ 0)
+            
+        Raises:
+            ValueError: If any strength value is negative
+        """
+        if team_attack_strength < 0:
+            raise ValueError(f"team_attack_strength must be >= 0, got {team_attack_strength}")
+        if opponent_defense_strength < 0:
+            raise ValueError(f"opponent_defense_strength must be >= 0, got {opponent_defense_strength}")
+        if venue_adjustment < 0:
+            raise ValueError(f"venue_adjustment must be >= 0, got {venue_adjustment}")
+        
+        # CANONICAL FORMULA: attack × defense_weakness × venue
+        lambda_ = team_attack_strength * opponent_defense_strength * venue_adjustment
+        
+        return max(0.0, lambda_)  # Ensure non-negative
+    
+    # Backward compatibility alias - deprecated
     def estimate_lambda_from_features(
         self,
         team_attack_strength: float,
         opponent_defense_strength: float,
         venue_adjustment: float = 1.0,
     ) -> float:
-        """Estimate lambda (expected goals) from team features.
+        """DEPRECATED: Use estimate_lambda() instead.
         
-        Simple estimation: λ = attack_strength * opponent_defense_weakness * venue_adjustment
-        
-        This is a basic approach. More sophisticated models could:
-        - Use league average adjustments
-        - Apply regression coefficients
-        - Include additional features
-        
-        Args:
-            team_attack_strength: Goals scored per match by team
-            opponent_defense_strength: Goals conceded per match by opponent
-            venue_adjustment: Home advantage factor (typically 1.1-1.3 for home)
-        
-        Returns:
-            Estimated lambda (expected goals)
+        Kept for backward compatibility only.
         """
-        if team_attack_strength < 0 or opponent_defense_strength < 0:
-            raise ValueError("Strength values must be non-negative")
-        
-        # Basic estimation
-        lambda_ = team_attack_strength * venue_adjustment
-        
-        # Adjust based on opponent defense
-        # If opponent defense is strong (low conceding rate), reduce lambda
-        # If opponent defense is weak (high conceding rate), increase lambda
-        if opponent_defense_strength > 0:
-            lambda_ *= opponent_defense_strength
-        
-        return max(0.0, lambda_)  # Ensure non-negative
+        return self.estimate_lambda(
+            team_attack_strength=team_attack_strength,
+            opponent_defense_strength=opponent_defense_strength,
+            venue_adjustment=venue_adjustment
+        )
 
     # ========================================================================
     # PredictionModel Interface Implementation
@@ -364,15 +385,24 @@ class PoissonModel(PredictionModel):
                 missing_features=missing
             )
 
-        # Extract lambda values from features
-        home_lambda = features.get("home_goals_scored_avg", 0.0) or 0.0
-        away_lambda = features.get("away_goals_scored_avg", 0.0) or 0.0
-
-        # Adjust based on opponent defense if available
-        if features.get("away_goals_conceded_avg"):
-            home_lambda *= (features["away_goals_conceded_avg"] / 1.0)  # Normalize
-        if features.get("home_goals_conceded_avg"):
-            away_lambda *= (features["home_goals_conceded_avg"] / 1.0)  # Normalize
+        # Use CANONICAL lambda estimation - single source of truth
+        # Home team expected goals: home attack vs away defense
+        home_attack = features.get("home_goals_scored_avg", 0.0) or 0.0
+        away_defense = features.get("away_goals_conceded_avg", 1.0) or 1.0  # Default to neutral
+        home_lambda = self.estimate_lambda(
+            team_attack_strength=home_attack,
+            opponent_defense_strength=away_defense,
+            venue_adjustment=1.0  # Can be enhanced with home advantage
+        )
+        
+        # Away team expected goals: away attack vs home defense
+        away_attack = features.get("away_goals_scored_avg", 0.0) or 0.0
+        home_defense = features.get("home_goals_conceded_avg", 1.0) or 1.0  # Default to neutral
+        away_lambda = self.estimate_lambda(
+            team_attack_strength=away_attack,
+            opponent_defense_strength=home_defense,
+            venue_adjustment=1.0
+        )
 
         # Validate lambdas
         if home_lambda < 0 or away_lambda < 0:
